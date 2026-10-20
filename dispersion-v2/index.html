@@ -136,6 +136,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         </button>
         <input type="file" id="file" accept=".svg,image/svg+xml,image/*" hidden>
         <p class="hint">También podés arrastrarlo o pegar el código del SVG (por ejemplo, “Copiar como SVG” en Figma).</p>
+        <div id="sl-scale"></div>
+        <div id="sl-offX"></div>
+        <div id="sl-offY"></div>
       </section>
 
       <section>
@@ -162,8 +165,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-amount"></div>
         <div id="sl-cell"></div>
         <div id="sl-frag"></div>
-        <div id="sl-endScale"></div>
-        <div id="sl-trail"></div>
       </section>
 
       <section>
@@ -203,14 +204,16 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
 <script>
 // ---------- State ----------
-const LONG = 3000;   // export size of the long side
-const MASK = 320;    // selection mask, long side
+const AW = 1080, AH = 1920; // fixed artboard, in units
+const RES = 2;              // the source raster and the exports render at 2x
+const MASK = 320;           // selection mask, long side
 const SVGNS = 'http://www.w3.org/2000/svg';
 const DEFAULTS = {
   seed: 1,
-  tool: 'paint', brush: 260, soft: .6, showMask: false,
-  dot: 'square', amount: .9, cell: 10, frag: .55, endScale: .5, trail: .15,
-  mode: 'dir', angle: 0, dist: .22, spread: .25, turb: .4, irreg: .5,
+  tool: 'paint', brush: 120, soft: .6, showMask: false,
+  scale: .7, offX: 0, offY: .12,
+  dot: 'square', amount: .9, cell: 8, frag: .55,
+  mode: 'dir', angle: 270, dist: .22, spread: .25, turb: .4, irreg: .5,
   paper: '#ede6da', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -252,46 +255,50 @@ const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 
 // ---------- Source ----------
-// The source stays a crisp raster of the SVG at export size; only the cut cells are replaced by particles.
-let src = null, srcId = 0;
-let mask = null, MW = 0, MH = 0, maskVer = 0, centroid = [0, 0];
+// The SVG sits on the artboard and is kept as a crisp 2x raster; only the cut squares turn into particles.
+let src = null, srcId = 0, raster = null, rasterKey = '';
+const MW = Math.round(MASK * AW / AH), MH = MASK;
+let mask = new Float32Array(MW * MH), maskVer = 0, centroid = [AW / 2, AH / 2];
 const undoStack = [];
 
-function fitSize(w, h) { return w >= h ? [LONG, Math.round(LONG * h / w)] : [Math.round(LONG * w / h), LONG]; }
 async function loadSvgText(text) {
   if (!/xmlns\s*=\s*["']http:\/\/www\.w3\.org\/2000\/svg/.test(text)) text = text.replace(/<svg\b/, `<svg xmlns="${SVGNS}"`);
   const doc = new DOMParser().parseFromString(text, 'image/svg+xml'), root = doc.documentElement;
   if (doc.querySelector('parsererror') || root.localName !== 'svg') throw new Error('svg inválido');
   const num = a => { const v = root.getAttribute(a); return v && !v.trim().endsWith('%') ? parseFloat(v) : NaN; };
-  let w = num('width'), h = num('height');
+  const w = num('width'), h = num('height');
   let vb = (root.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
   if (vb.length !== 4 || vb.some(isNaN) || vb[2] <= 0 || vb[3] <= 0) {
     vb = [0, 0, w > 0 ? w : 300, h > 0 ? h : 150];
     root.setAttribute('viewBox', vb.join(' '));
   }
-  const [W, H] = w > 0 && h > 0 ? fitSize(w, h) : fitSize(vb[2], vb[3]);
-  root.setAttribute('width', W); root.setAttribute('height', H);
-  const svg = new XMLSerializer().serializeToString(root);
-  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  const ar = w > 0 && h > 0 ? w / h : vb[2] / vb[3];
+  root.setAttribute('width', ar >= 1 ? 1000 : Math.round(1000 * ar)); root.setAttribute('height', ar >= 1 ? Math.round(1000 / ar) : 1000);
+  const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(root)], { type: 'image/svg+xml' }));
   try {
     const img = new Image(); img.src = url; await img.decode();
-    setSource(img, W, H, { svg });
+    src = { img, ar, root, href: null }; srcId++;
   } finally { URL.revokeObjectURL(url); }
 }
 async function loadRaster(file) {
   const href = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
   const img = new Image(); img.src = href; await img.decode();
-  const [W, H] = fitSize(img.naturalWidth, img.naturalHeight);
-  setSource(img, W, H, { href });
+  src = { img, ar: img.naturalWidth / img.naturalHeight, root: null, href }; srcId++;
 }
-function setSource(img, W, H, extra) {
-  const c = document.createElement('canvas'); c.width = W; c.height = H;
+// Fits the source inside scale × artboard, centered, then shifted by the offsets.
+function placement() {
+  const w0 = AW * S.scale, h0 = AH * S.scale;
+  const [w, h] = w0 / h0 > src.ar ? [h0 * src.ar, h0] : [w0, w0 / src.ar];
+  return { x: (AW - w) / 2 + S.offX * AW, y: (AH - h) / 2 + S.offY * AH, w, h };
+}
+function rasterize() {
+  const key = JSON.stringify([srcId, S.scale, S.offX, S.offY]);
+  if (key === rasterKey) return;
+  const rect = placement(), c = document.createElement('canvas'); c.width = AW * RES; c.height = AH * RES;
   const ctx = c.getContext('2d', { willReadFrequently: true });
-  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(img, 0, 0, W, H);
-  src = { W, H, canvas: c, data: ctx.getImageData(0, 0, W, H).data, svg: null, href: null, ...extra };
-  srcId++;
-  MW = Math.max(2, Math.round(MASK * W / LONG)); MH = Math.max(2, Math.round(MASK * H / LONG));
-  mask = new Float32Array(MW * MH); undoStack.length = 0;
+  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(src.img, rect.x * RES, rect.y * RES, rect.w * RES, rect.h * RES);
+  raster = { canvas: c, data: ctx.getImageData(0, 0, c.width, c.height).data, rect };
+  rasterKey = key;
 }
 
 const SAMPLE_SVG = `<svg xmlns="${SVGNS}" viewBox="0 0 1200 800" width="1200" height="800">
@@ -309,16 +316,16 @@ function maskChanged() {
   maskVer++;
   let sw = 0, sx = 0, sy = 0;
   for (let j = 0; j < MH; j++) for (let i = 0; i < MW; i++) { const m = mask[j * MW + i]; sw += m; sx += m * (i + .5); sy += m * (j + .5); }
-  centroid = sw > 0 ? [sx / sw / MW * src.W, sy / sw / MH * src.H] : [src.W / 2, src.H / 2];
+  centroid = sw > 0 ? [sx / sw / MW * AW, sy / sw / MH * AH] : [AW / 2, AH / 2];
 }
 function maskAt(x, y) {
-  const fx = x / src.W * MW - .5, fy = y / src.H * MH - .5;
+  const fx = x / AW * MW - .5, fy = y / AH * MH - .5;
   const i = Math.floor(fx), j = Math.floor(fy), u = fx - i, v = fy - j;
   const i0 = clamp(i, 0, MW - 1), i1 = clamp(i + 1, 0, MW - 1), j0 = clamp(j, 0, MH - 1), j1 = clamp(j + 1, 0, MH - 1);
   return (mask[j0 * MW + i0] * (1 - u) + mask[j0 * MW + i1] * u) * (1 - v) + (mask[j1 * MW + i0] * (1 - u) + mask[j1 * MW + i1] * u) * v;
 }
 function stamp(x, y, r, soft, erase) {
-  const sx = MW / src.W, sy = MH / src.H, cx = x * sx, cy = y * sy, rx = r * sx, ry = r * sy, hard = 1 - soft;
+  const sx = MW / AW, sy = MH / AH, cx = x * sx, cy = y * sy, rx = r * sx, ry = r * sy, hard = 1 - soft;
   for (let j = Math.max(0, Math.floor(cy - ry)); j <= Math.min(MH - 1, Math.ceil(cy + ry)); j++) {
     for (let i = Math.max(0, Math.floor(cx - rx)); i <= Math.min(MW - 1, Math.ceil(cx + rx)); i++) {
       const d = Math.hypot((i + .5 - cx) / rx, (j + .5 - cy) / ry);
@@ -334,7 +341,7 @@ function stamp(x, y, r, soft, erase) {
 function gradient(a, b) {
   const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1;
   for (let j = 0; j < MH; j++) for (let i = 0; i < MW; i++) {
-    const x = (i + .5) / MW * src.W, y = (j + .5) / MH * src.H;
+    const x = (i + .5) / MW * AW, y = (j + .5) / MH * AH;
     const t = clamp(((x - a[0]) * dx + (y - a[1]) * dy) / l2);
     mask[j * MW + i] = t * t * (3 - 2 * t);
   }
@@ -352,36 +359,43 @@ function push(b, x, y, s, c, al) {
   b.a[o] = x; b.a[o + 1] = y; b.a[o + 2] = s; b.a[o + 3] = c; b.a[o + 4] = al;
 }
 
-// Selected cells are cut out of the SVG and break into k×k particles (k grows with the selection),
-// each taking the color underneath and drifting along a path whose length also grows with the selection.
+// Selected cells split into k×k squares (k grows with the selection). Each square that lets go is cut out
+// of the SVG and travels as one particle of the same size carrying the average color it covered,
+// so what disappears is exactly what disperses.
 function disintegrate(st) {
-  const { W, H, data } = src, cell = st.cell;
-  const cols = Math.ceil(W / cell), rows = Math.ceil(H / cell);
-  const unit = Math.min(W, H), far = Math.max(W, H);
-  const noise = noiseKit(st.seed), tf = 2.4 / unit, sf = 7 / unit;
+  const { data, rect } = raster, cell = st.cell, PW = AW * RES, PH = AH * RES;
+  const cols = Math.ceil(AW / cell);
+  const i0 = Math.max(0, Math.floor(rect.x / cell)), i1 = Math.min(cols, Math.ceil((rect.x + rect.w) / cell));
+  const j0 = Math.max(0, Math.floor(rect.y / cell)), j1 = Math.min(Math.ceil(AH / cell), Math.ceil((rect.y + rect.h) / cell));
+  const noise = noiseKit(st.seed), tf = 2.4 / AW, sf = 7 / AW;
   const ang = st.angle * Math.PI / 180, ca = Math.cos(ang), sa = Math.sin(ang);
   const turb = st.mode === 'flow' ? 1 : st.turb * 1.6;
   const N = 10, px = new Float32Array(N + 1), py = new Float32Array(N + 1);
   const sb = st.seed * 64;
   const cuts = [], parts = buffer(4096);
-  const pixel = (x, y) => (clamp(y | 0, 0, H - 1) * W + clamp(x | 0, 0, W - 1)) * 4;
-  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+  const pixel = (x, y) => (clamp(Math.floor(y * RES), 0, PH - 1) * PW + clamp(Math.floor(x * RES), 0, PW - 1)) * 4;
+  for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) {
     const cx = (i + .5) * cell, cy = (j + .5) * cell, m = maskAt(cx, cy);
     if (m <= .002) continue;
     const id = j * cols + i;
     // Low-frequency streaks make neighbouring cells crumble (and travel) together.
     const streak = clamp(.55 + noise(cx * sf, cy * sf, 2) * 1.8, .05, 1.3);
-    if (hash(id, sb) >= st.amount * m * lerp(1, streak, st.irreg)) continue;
-    cuts.push(i * cell, j * cell);
+    const chance = st.amount * m * lerp(1, streak, st.irreg);
     const k = Math.min(4, 1 + Math.floor(st.frag * m * 3 + hash(id, sb + 1)));
     const sub = cell / k;
     for (let b = 0; b < k; b++) for (let a = 0; a < k; a++) {
-      const sid = id * 16 + b * 4 + a, x0 = i * cell + a * sub, y0 = j * cell + b * sub;
-      // Keep the most opaque of a few samples so thin strokes don't vanish.
-      let q = -1, al = 0;
-      for (const [u, v] of SAMPLES) { const p = pixel(x0 + u * sub, y0 + v * sub); if (data[p + 3] > al) { al = data[p + 3]; q = p; } }
-      if (al < 24) continue;
-      const col = data[q] << 16 | data[q + 1] << 8 | data[q + 2];
+      const sid = id * 16 + b * 4 + a;
+      if (hash(sid, sb) >= chance) continue;
+      const x0 = i * cell + a * sub, y0 = j * cell + b * sub;
+      // Premultiplied average over a 4×4 sample of the square, so color and coverage are conserved.
+      let sA = 0, sR = 0, sG = 0, sB = 0;
+      for (let v = 0; v < 4; v++) for (let u = 0; u < 4; u++) {
+        const q = pixel(x0 + (u + .5) / 4 * sub, y0 + (v + .5) / 4 * sub), al = data[q + 3];
+        sA += al; sR += data[q] * al; sG += data[q + 1] * al; sB += data[q + 2] * al;
+      }
+      if (sA < 16 * 8) continue;
+      const col = Math.round(sR / sA) << 16 | Math.round(sG / sA) << 8 | Math.round(sB / sA);
+      cuts.push(x0, y0, sub);
       const x = x0 + sub / 2, y = y0 + sub / 2;
       let dx = 0, dy = 0;
       if (st.mode === 'dir') { dx = ca; dy = sa; }
@@ -391,7 +405,7 @@ function disintegrate(st) {
         if (l < 1e-3) { const r = hash(sid, sb + 2) * Math.PI * 2; dx = Math.cos(r); dy = Math.sin(r); } else { dx /= l; dy /= l; }
       }
       const rot = (hash(sid, sb + 3) - .5) * st.spread * Math.PI, rc = Math.cos(rot), rs = Math.sin(rot);
-      const L = st.dist * far * m ** 1.4 * lerp(1, .2 + .8 * hash(sid, sb + 4), st.irreg * .8) * lerp(1, streak, st.irreg), step = L / N;
+      const L = st.dist * AH * m ** 1.4 * lerp(1, .2 + .8 * hash(sid, sb + 4), st.irreg * .8) * lerp(1, streak, st.irreg), step = L / N;
       px[0] = x; py[0] = y;
       for (let n = 1; n <= N; n++) {
         const r = noise(px[n - 1] * tf, py[n - 1] * tf, 0) * Math.PI * 3;
@@ -400,38 +414,33 @@ function disintegrate(st) {
         px[n] = px[n - 1] + (vx * rc - vy * rs) * step;
         py[n] = py[n - 1] + (vx * rs + vy * rc) * step;
       }
-      const end = sub * lerp(1, st.endScale, m);
-      const echoes = Math.floor(st.trail * 6 * m * (.35 + .65 * hash(sid, sb + 5)) + hash(sid, sb + 6));
-      for (let e = 1; e <= echoes; e++) {
-        const t = clamp((e + (hash(sid, sb + 10 + e) - .5) * .8) / (echoes + 1), 0, 1);
-        const f = t * N, n0 = Math.min(N - 1, f | 0), u = f - n0;
-        push(parts, px[n0] + (px[n0 + 1] - px[n0]) * u, py[n0] + (py[n0 + 1] - py[n0]) * u,
-          lerp(sub, end, t) * (.45 + .4 * hash(sid, sb + 30 + e)), col, al);
-      }
-      push(parts, px[N], py[N], end, col, al);
+      push(parts, px[N], py[N], sub, col, sA / 16);
     }
   }
-  return { W, H, cuts, items: parts.a.subarray(0, parts.n * STRIDE), cell };
+  return { cuts, items: parts.a.subarray(0, parts.n * STRIDE) };
 }
 
 // ---------- Rendering ----------
-// Particles batched per color (5 bits per channel, 4 alpha steps).
+// Particles batched per color (5 bits per channel, 8 alpha steps).
 function groups(it) {
   const g = new Map();
   for (let i = 0; i < it.length; i += STRIDE) {
-    const c = it[i + 3] & 0xF8F8F8, a = Math.max(1, Math.round(it[i + 4] / 255 * 4)), key = c * 8 + a;
+    const c = it[i + 3] & 0xF8F8F8, a = Math.max(1, Math.round(it[i + 4] / 255 * 8)), key = c * 16 + a;
     let list = g.get(key); if (!list) g.set(key, list = []);
     list.push(i);
   }
-  return [...g].map(([key, idx]) => ({ hex: '#' + Math.floor(key / 8).toString(16).padStart(6, '0'), alpha: (key % 8) / 4, idx }));
+  return [...g].map(([key, idx]) => ({ hex: '#' + Math.floor(key / 16).toString(16).padStart(6, '0'), alpha: (key % 16) / 8, idx }));
 }
+// A dot keeps the area of the square it was cut from.
+const DOT = 1 / Math.sqrt(Math.PI);
 function draw(ctx, gen, st) {
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(src.canvas, 0, 0, gen.W, gen.H);
-  if (gen.cuts.length) {
+  ctx.drawImage(raster.canvas, 0, 0, AW, AH);
+  const c = gen.cuts;
+  if (c.length) {
     ctx.globalCompositeOperation = 'destination-out';
     ctx.beginPath();
-    for (let i = 0; i < gen.cuts.length; i += 2) ctx.rect(gen.cuts[i], gen.cuts[i + 1], gen.cell, gen.cell);
+    for (let i = 0; i < c.length; i += 3) ctx.rect(c[i], c[i + 1], c[i + 2], c[i + 2]);
     ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
   }
@@ -440,7 +449,7 @@ function draw(ctx, gen, st) {
     ctx.fillStyle = g.hex; ctx.globalAlpha = g.alpha; ctx.beginPath();
     for (const i of g.idx) {
       const x = it[i], y = it[i + 1], s = it[i + 2];
-      if (round) { ctx.moveTo(x + s / 2, y); ctx.arc(x, y, s / 2, 0, Math.PI * 2); }
+      if (round) { const rr = s * DOT; ctx.moveTo(x + rr, y); ctx.arc(x, y, rr, 0, Math.PI * 2); }
       else ctx.rect(x - s / 2, y - s / 2, s, s);
     }
     ctx.fill();
@@ -448,22 +457,29 @@ function draw(ctx, gen, st) {
   ctx.globalAlpha = 1;
 }
 function toSvg(gen, st) {
-  const r = v => Math.round(v * 10) / 10, { W, H } = gen, out = [];
-  out.push(`<svg xmlns="${SVGNS}" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`);
+  const r = v => Math.round(v * 100) / 100, out = [];
+  out.push(`<svg xmlns="${SVGNS}" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW} ${AH}">`);
   if (st.bgExport) out.push(`<rect width="100%" height="100%" fill="${st.paper}"/>`);
-  const c = gen.cell, original = src.svg || `<image href="${src.href}" width="${W}" height="${H}"/>`;
-  if (gen.cuts.length) {
+  const { x, y, w, h } = raster.rect;
+  let original;
+  if (src.root) {
+    const el = src.root.cloneNode(true);
+    el.setAttribute('x', r(x)); el.setAttribute('y', r(y)); el.setAttribute('width', r(w)); el.setAttribute('height', r(h));
+    original = new XMLSerializer().serializeToString(el);
+  } else original = `<image href="${src.href}" x="${r(x)}" y="${r(y)}" width="${r(w)}" height="${r(h)}" preserveAspectRatio="none"/>`;
+  const c = gen.cuts;
+  if (c.length) {
     let d = '';
-    for (let i = 0; i < gen.cuts.length; i += 2) d += `M${gen.cuts[i]} ${gen.cuts[i + 1]}h${c}v${c}h-${c}Z`;
-    out.push(`<defs><mask id="dispersion-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#fff"/><path fill="#000" shape-rendering="crispEdges" d="${d}"/></mask></defs>`);
+    for (let i = 0; i < c.length; i += 3) d += `M${r(c[i])} ${r(c[i + 1])}h${r(c[i + 2])}v${r(c[i + 2])}h${r(-c[i + 2])}Z`;
+    out.push(`<defs><mask id="dispersion-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="${AW}" height="${AH}"><rect width="${AW}" height="${AH}" fill="#fff"/><path fill="#000" d="${d}"/></mask></defs>`);
     out.push(`<g mask="url(#dispersion-cut)">${original}</g>`);
   } else out.push(original);
   const it = gen.items, round = st.dot === 'circle';
   for (const g of groups(it)) {
     let d = '';
     for (const i of g.idx) {
-      const x = it[i], y = it[i + 1], s = it[i + 2];
-      d += round ? `M${r(x - s / 2)} ${r(y)}a${r(s / 2)} ${r(s / 2)} 0 1 0 ${r(s)} 0a${r(s / 2)} ${r(s / 2)} 0 1 0 ${r(-s)} 0Z`
+      const x = it[i], y = it[i + 1], s = it[i + 2], rr = s * DOT;
+      d += round ? `M${r(x - rr)} ${r(y)}a${r(rr)} ${r(rr)} 0 1 0 ${r(2 * rr)} 0a${r(rr)} ${r(rr)} 0 1 0 ${r(-2 * rr)} 0Z`
         : `M${r(x - s / 2)} ${r(y - s / 2)}h${r(s)}v${r(s)}h${r(-s)}Z`;
     }
     out.push(`<path fill="${g.hex}"${g.alpha < 1 ? ` fill-opacity="${g.alpha}"` : ''} d="${d}"/>`);
@@ -479,13 +495,14 @@ let gen = null, genKey = '', raf = 0, ovVer = -1, painting = false;
 
 const pct = v => Math.round(v * 100) + '%';
 const SLIDERS = {
-  brush: { label: 'Tamaño del pincel', min: 20, max: 900, step: 5, fmt: v => v + ' px' },
+  scale: { label: 'Escala', min: .1, max: 1, step: .01, fmt: pct },
+  offX: { label: 'Posición horizontal', min: -.5, max: .5, step: .005, fmt: pct },
+  offY: { label: 'Posición vertical', min: -.5, max: .5, step: .005, fmt: pct },
+  brush: { label: 'Tamaño del pincel', min: 10, max: 500, step: 5, fmt: v => v + ' px' },
   soft: { label: 'Suavidad', min: 0, max: 1, step: .01, fmt: pct },
   amount: { label: 'Desintegración', min: 0, max: 1, step: .01, fmt: pct, emph: true },
-  cell: { label: 'Tamaño de partícula', min: 3, max: 60, step: 1, fmt: v => v + ' px' },
+  cell: { label: 'Tamaño de partícula', min: 2, max: 40, step: 1, fmt: v => v + ' px' },
   frag: { label: 'Fragmentación', min: 0, max: 1, step: .01, fmt: pct },
-  endScale: { label: 'Escala al dispersarse', min: .1, max: 1.5, step: .01, fmt: pct },
-  trail: { label: 'Estela', min: 0, max: 1, step: .01, fmt: pct },
   angle: { label: 'Ángulo', min: 0, max: 360, step: 1, fmt: v => v + '°' },
   dist: { label: 'Distancia', min: 0, max: 1, step: .01, fmt: pct, emph: true },
   spread: { label: 'Apertura', min: 0, max: 1, step: .01, fmt: pct },
@@ -551,26 +568,27 @@ function sync() {
 }
 
 function fit() {
-  const { W, H } = src, r = stage.getBoundingClientRect();
-  const k = Math.max(0, Math.min((r.width - 64) / W, (r.height - 96) / H));
-  return { w: Math.round(W * k), h: Math.round(H * k), W, H };
+  const r = stage.getBoundingClientRect();
+  const k = Math.max(0, Math.min((r.width - 64) / AW, (r.height - 96) / AH));
+  return { w: Math.round(AW * k), h: Math.round(AH * k) };
 }
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
 function render() {
   if (!src) return;
-  const gk = JSON.stringify([srcId, maskVer, S.seed, S.amount, S.cell, S.frag, S.endScale, S.trail, S.mode, S.angle, S.dist, S.spread, S.turb, S.irreg]);
+  rasterize();
+  const gk = JSON.stringify([rasterKey, maskVer, S.seed, S.amount, S.cell, S.frag, S.mode, S.angle, S.dist, S.spread, S.turb, S.irreg]);
   if (gk !== genKey) { gen = disintegrate(S); genKey = gk; }
-  const { w, h, W, H } = fit();
+  const { w, h } = fit();
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.paper;
   const dpr = devicePixelRatio || 1;
   cv.width = Math.max(1, Math.round(w * dpr)); cv.height = Math.max(1, Math.round(h * dpr));
   const ctx = cv.getContext('2d');
-  ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
-  ctx.clearRect(0, 0, W, H);
+  ctx.setTransform(cv.width / AW, 0, 0, cv.height / AH, 0, 0);
+  ctx.clearRect(0, 0, AW, AH);
   draw(ctx, gen, S);
   if (ovVer !== maskVer) paintOverlay();
   frame.classList.toggle('show-mask', S.showMask || painting);
-  $('#stats').textContent = `${(gen.items.length / STRIDE).toLocaleString('es')} partículas · ${W} × ${H} px`;
+  $('#stats').textContent = `${(gen.items.length / STRIDE).toLocaleString('es')} partículas · ${AW} × ${AH} · exporta a ${AW * RES} × ${AH * RES} px`;
 }
 function paintOverlay() {
   ov.width = MW; ov.height = MH;
@@ -585,11 +603,11 @@ new ResizeObserver(schedule).observe(stage);
 let last = null, gradFrom = null;
 function toImage(e) {
   const r = frame.getBoundingClientRect();
-  return [(e.clientX - r.left) / r.width * src.W, (e.clientY - r.top) / r.height * src.H];
+  return [(e.clientX - r.left) / r.width * AW, (e.clientY - r.top) / r.height * AH];
 }
 function moveCursor(e) {
   if (S.tool === 'gradient') return;
-  const r = frame.getBoundingClientRect(), d = 2 * S.brush * r.width / src.W;
+  const r = frame.getBoundingClientRect(), d = 2 * S.brush * r.width / AW;
   cursor.hidden = false;
   cursor.style.width = cursor.style.height = d + 'px';
   cursor.style.left = (e.clientX - r.left) + 'px'; cursor.style.top = (e.clientY - r.top) + 'px';
@@ -604,7 +622,7 @@ function strokeTo(p) {
   last = p; maskChanged(); schedule();
 }
 function showGuide(a, b) {
-  const r = frame.getBoundingClientRect(), k = r.width / src.W, g = $('#guide');
+  const r = frame.getBoundingClientRect(), k = r.width / AW, g = $('#guide');
   g.hidden = false;
   $('#guide-line').setAttribute('x1', a[0] * k); $('#guide-line').setAttribute('y1', a[1] * k);
   $('#guide-line').setAttribute('x2', b[0] * k); $('#guide-line').setAttribute('y2', b[1] * k);
@@ -636,7 +654,7 @@ async function openFile(file) {
   if (!isSvg && !file.type.startsWith('image/')) return toast('Eso no parece un SVG.');
   try {
     if (isSvg) await loadSvgText(await file.text()); else await loadRaster(file);
-    maskChanged(); schedule(); toast('Cargado. Pintá la zona a desintegrar.');
+    schedule(); toast('Cargado. Pintá la zona a desintegrar.');
   } catch { toast('No se pudo leer el archivo.'); }
 }
 $('#upload').addEventListener('click', () => $('#file').click());
@@ -652,7 +670,7 @@ addEventListener('paste', async e => {
   if (item) return openFile(item.getAsFile());
   const text = e.clipboardData?.getData('text/plain')?.trim();
   if (text && /^(<\?xml[^>]*>\s*)?<svg\b/i.test(text)) {
-    try { await loadSvgText(text); maskChanged(); schedule(); toast('SVG pegado. Pintá la zona a desintegrar.'); }
+    try { await loadSvgText(text); schedule(); toast('SVG pegado. Pintá la zona a desintegrar.'); }
     catch { toast('No se pudo leer el SVG.'); }
   }
 });
@@ -666,18 +684,20 @@ function download(name, blob) {
   toast(name + ' descargado');
 }
 $('#png').addEventListener('click', () => {
-  const c = document.createElement('canvas'); c.width = gen.W; c.height = gen.H;
+  const c = document.createElement('canvas'); c.width = AW * RES; c.height = AH * RES;
   const ctx = c.getContext('2d');
+  ctx.setTransform(RES, 0, 0, RES, 0, 0);
   draw(ctx, gen, S);
-  if (S.bgExport) { ctx.globalCompositeOperation = 'destination-over'; ctx.fillStyle = S.paper; ctx.fillRect(0, 0, gen.W, gen.H); }
+  if (S.bgExport) { ctx.globalCompositeOperation = 'destination-over'; ctx.fillStyle = S.paper; ctx.fillRect(0, 0, AW, AH); }
   c.toBlob(b => b ? download(`dispersion-v2-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
 });
 $('#svg').addEventListener('click', () => download(`dispersion-v2-${S.seed}.svg`, new Blob([toSvg(gen, S)], { type: 'image/svg+xml' })));
 
-// Start with the sample and a left-to-right ramp, so it reads as a progressive dissolve.
+// Start with the sample and a bottom-to-top ramp, so it reads as a progressive dissolve upwards.
 sync();
 loadSvgText(SAMPLE_SVG).then(() => {
-  gradient([src.W * .35, 0], [src.W * .85, 0]); maskChanged(); schedule();
+  const r = placement();
+  gradient([0, r.y + r.h * .9], [0, r.y]); maskChanged(); schedule();
 });
 </script>
 </body>
