@@ -6,6 +6,7 @@
     { name: 'Cube Dispersion', path: 'cube-dispersion/' },
     { name: 'Dispersion v2', path: 'dispersion-v2/' },
     { name: 'Pixel Trail', path: 'pixel-trail/' },
+    { name: 'Photo Preset', path: 'photo-preset/' },
   ];
 
   const script = document.currentScript;

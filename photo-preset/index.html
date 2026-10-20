@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photo Preset</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --page: #f4f2ee;
+  --stage: #e9e6e0;
+  --surface: #fbfaf8;
+  --fill: #efece7;
+  --line: #dcd7cf;
+  --text: #1a1714;
+  --text-2: #5e5850;
+  --text-3: #8f887e;
+  --accent: #1a1714;
+  --accent-text: #fbfaf8;
+  --font: Inter, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+    --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+  --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; background: var(--page); color: var(--text); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
+
+.app { display: grid; flex: 1; min-height: 0; grid-template-columns: 1fr 280px; }
+main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding-bottom: 32px; }
+.frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); touch-action: none; cursor: none; }
+.frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity .15s ease-out; }
+.frame.busy #cv { opacity: .6; }
+.frame #ov { pointer-events: none; opacity: 0; transition: opacity .2s ease-out; }
+.frame.show-mask #ov { opacity: 1; }
+.cursor { position: absolute; left: 0; top: 0; pointer-events: none; border-radius: 50%; border: 1px solid #fff; mix-blend-mode: difference; transform: translate(-50%, -50%); }
+.cursor.erase { border-style: dashed; }
+.drop { position: absolute; inset: 12px; display: grid; place-items: center; border-radius: 12px; border: 1.5px dashed var(--text-2); background: color-mix(in srgb, var(--stage) 85%, transparent); color: var(--text); font-weight: 500; pointer-events: none; z-index: 2; }
+.hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; white-space: nowrap;
+  background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
+.hud kbd { font: 500 11px var(--mono); color: var(--text); }
+.hud .dim { color: var(--text-3); }
+
+aside { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-left: 1px solid var(--line); }
+.controls { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 24px; }
+section { display: flex; flex-direction: column; gap: 10px; }
+h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.hint { margin: 0; color: var(--text-3); font-size: 12px; }
+
+.seg { display: flex; background: var(--fill); border-radius: 8px; padding: 2px; gap: 2px; }
+.seg button { flex: 1; border: 0; background: transparent; color: var(--text-2); font: 500 12px var(--font); height: 26px; border-radius: 6px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .08), 0 0 0 1px var(--line); }
+.seg button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.slider { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; }
+.slider label { color: var(--text-2); font-size: 12px; }
+.slider output { font: 12px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.slider input { grid-column: 1 / -1; }
+.slider.emph label { color: var(--text); font-weight: 500; }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; margin: 0; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(var(--text), var(--text)) 0 / var(--p, 50%) 100% no-repeat, var(--line); }
+input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line); }
+input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--text); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text); }
+input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text); }
+
+.row { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; align-items: center; }
+.row > span { color: var(--text-2); font-size: 12px; }
+.btns { display: flex; gap: 6px; }
+.btns .btn { flex: 1; }
+.text { font: 12px var(--mono); height: 28px; min-width: 0; border-radius: 8px; border: 0; background: var(--fill); color: var(--text); padding: 0 8px; box-shadow: inset 0 0 0 1px var(--line); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 0; background: var(--fill);
+  color: var(--text); font: 500 12px var(--font); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); }
+.btn:hover { background: var(--line); }
+.btn.icon { width: 28px; padding: 0; }
+.btn.primary { background: var(--accent); color: var(--accent-text); box-shadow: none; }
+.btn.primary:hover { opacity: .9; }
+.btn.big { height: 40px; width: 100%; border-radius: 12px; }
+.btn:disabled { opacity: .5; cursor: default; }
+
+.swatch { position: relative; display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px 0 4px; border-radius: 8px; background: var(--fill); box-shadow: inset 0 0 0 1px var(--line); font: 12px var(--mono); min-width: 0; }
+.swatch i { width: 20px; height: 20px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); flex: none; }
+.swatch input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.check { display: flex; gap: 8px; align-items: center; color: var(--text-2); font-size: 12px; cursor: pointer; }
+.check input { accent-color: var(--text); margin: 0; }
+
+footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--surface); color: var(--text); padding: 6px 12px; border-radius: 8px; box-shadow: 0 0 0 1px var(--line); font-size: 12px; z-index: 5; }
+[hidden] { display: none !important; }
+
+@media (max-width: 767px) {
+  html, body { height: auto; min-height: 100%; }
+  .app { flex: none; grid-template-columns: 1fr; grid-template-rows: minmax(300px, 55vh) auto; }
+  aside { border-left: 0; border-top: 1px solid var(--line); }
+  .controls { overflow: visible; }
+  .hud .dim { display: none; }
+}
+.frame { cursor: zoom-in; background: var(--fill); }
+main.zoom { place-items: start; overflow: auto; }
+main.zoom .frame { cursor: zoom-out; margin: 24px; }
+main.zoom .hud { position: fixed; bottom: 14px; left: calc(50% - 140px); }
+</style>
+</head>
+<body>
+<script src="../toolbar.js"></script>
+<div class="app">
+  <main id="stage">
+    <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Foto con el preset aplicado"></canvas></div>
+    <div class="drop" id="drop" hidden>Soltá la foto</div>
+    <div class="hud"><span id="stats">—</span><span class="dim">Clic: ver al 100% · Mantené <kbd>Espacio</kbd> para ver el original</span></div>
+  </main>
+
+  <aside>
+    <div class="controls">
+      <section>
+        <h2>Foto</h2>
+        <button class="btn" id="upload">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10.5V2.5M4.5 6 8 2.5 11.5 6"/><path d="M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2"/></svg>
+          Subir foto
+        </button>
+        <input type="file" id="file" accept="image/*" hidden>
+        <p class="hint">También podés arrastrarla o pegarla.</p>
+        <div class="seg" id="presets" aria-label="Preset">
+          <button data-preset="registro">Registro</button><button data-preset="gastado">Gastado</button><button data-preset="suave">Suave</button>
+        </div>
+        <button class="btn" id="compare">Mantener para ver el original</button>
+      </section>
+
+      <section>
+        <h2>Tono</h2>
+        <div class="seg" data-key="filter" aria-label="Filtro de blanco y negro">
+          <button data-v="neutral">Neutro</button><button data-v="red">Rojo</button><button data-v="green">Verde</button><button data-v="blue">Azul</button>
+        </div>
+        <div id="sl-exposure"></div>
+        <div id="sl-contrast"></div>
+        <div id="sl-black"></div>
+        <div id="sl-white"></div>
+      </section>
+
+      <section>
+        <h2>Color</h2>
+        <div id="sl-warmth"></div>
+        <div id="sl-cool"></div>
+      </section>
+
+      <section>
+        <h2>Textura</h2>
+        <div id="sl-blur"></div>
+        <div id="sl-glow"></div>
+        <div id="sl-grain"></div>
+        <div id="sl-grainSize"></div>
+        <div id="sl-wear"></div>
+        <div id="sl-vignette"></div>
+        <div id="sl-dust"></div>
+        <div class="row">
+          <span>Semilla</span>
+          <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
+          <button class="btn icon" id="reseed" title="Nueva semilla (R)" aria-label="Nueva semilla">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg>
+          </button>
+        </div>
+      </section>
+    </div>
+    <footer>
+      <button class="btn primary big" id="jpg">Exportar JPG</button>
+      <button class="btn big" id="png">Exportar PNG</button>
+    </footer>
+  </aside>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+// ---------- Presets ----------
+const MAX_SIDE = 4000; // working and export resolution, long side
+const PRESETS = {
+  // Tuned against the reference: blacks sit around 20% and lean green, whites stop near 75% and lean yellow.
+  registro: { filter: 'neutral', exposure: 0, contrast: .2, black: .19, white: .76, warmth: .4, cool: .6, blur: .35, glow: .3, grain: .5, grainSize: 1.2, wear: .45, vignette: .45, dust: .25 },
+  gastado: { filter: 'neutral', exposure: .05, contrast: .05, black: .24, white: .7, warmth: .55, cool: .75, blur: .6, glow: .45, grain: .75, grainSize: 1.6, wear: .8, vignette: .65, dust: .55 },
+  suave: { filter: 'neutral', exposure: 0, contrast: .15, black: .1, white: .88, warmth: .25, cool: .3, blur: .15, glow: .15, grain: .3, grainSize: 1, wear: .2, vignette: .25, dust: .08 },
+};
+const DEFAULTS = { ...PRESETS.registro, seed: 1 };
+const S = structuredClone(DEFAULTS);
+const FILTERS = { neutral: [.2126, .7152, .0722], red: [.7, .27, .03], green: [.25, .65, .1], blue: [.12, .28, .6] };
+
+// ---------- WebGL ----------
+const $ = s => document.querySelector(s);
+const cv = $('#cv'), frame = $('#frame'), stage = $('#stage');
+const gl = cv.getContext('webgl2', { preserveDrawingBuffer: true, premultipliedAlpha: false, antialias: false });
+
+const VS = `#version 300 es
+in vec2 p; out vec2 uv;
+void main() { uv = p * .5 + .5; gl_Position = vec4(p, 0, 1); }`;
+
+const BLUR = `#version 300 es
+precision highp float;
+in vec2 uv; out vec4 o;
+uniform sampler2D t; uniform vec2 dir; uniform float sigma;
+void main() {
+  if (sigma < .3) { o = texture(t, uv); return; }
+  float r = ceil(sigma * 3.), stp = max(1., ceil(r / 24.));
+  vec4 acc = vec4(0); float ws = 0.;
+  for (int i = -24; i <= 24; i++) {
+    float x = float(i) * stp;
+    if (abs(x) > r) continue;
+    float w = exp(-x * x / (2. * sigma * sigma));
+    acc += texture(t, uv + dir * x) * w; ws += w;
+  }
+  o = acc / ws;
+}`;
+
+// Highlights only, downsampled with four taps; this feeds the halation glow.
+const BRIGHT = `#version 300 es
+precision highp float;
+in vec2 uv; out vec4 o;
+uniform sampler2D t; uniform vec2 texel;
+void main() {
+  vec3 c = (texture(t, uv + texel * vec2(-1, -1)).rgb + texture(t, uv + texel * vec2(1, -1)).rgb
+          + texture(t, uv + texel * vec2(-1, 1)).rgb + texture(t, uv + texel * vec2(1, 1)).rgb) * .25;
+  float l = dot(c, vec3(.2126, .7152, .0722));
+  o = vec4(vec3(smoothstep(.5, 1., l)), 1);
+}`;
+
+const FINAL = `#version 300 es
+precision highp float;
+in vec2 uv; out vec4 o;
+uniform sampler2D img, glow, orig;
+uniform vec2 res;
+uniform float seed, bypass;
+uniform vec3 mixw;
+uniform float exposure, contrast, blackPt, whitePt, warmth, cool, glowAmt, grain, grainSize, wear, vignette, dust;
+
+uint pcg(uint v) { uint s = v * 747796405u + 2891336453u; uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return (w >> 22u) ^ w; }
+float rnd(vec2 p) { uvec2 q = uvec2(ivec2(floor(p)) + 65536); return float(pcg(q.x + pcg(q.y + uint(seed)))) / 4294967295.; }
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p), u = f * f * (3. - 2. * f);
+  return mix(mix(rnd(i), rnd(i + vec2(1, 0)), u.x), mix(rnd(i + vec2(0, 1)), rnd(i + vec2(1, 1)), u.x), u.y);
+}
+float fbm(vec2 p) { float s = 0., a = .5; for (int k = 0; k < 5; k++) { s += a * vnoise(p); p = p * 2.03 + 17.1; a *= .5; } return s; }
+
+void main() {
+  if (bypass > .5) { o = vec4(texture(orig, uv).rgb, 1); return; }
+  vec2 px = uv * res;
+  float sh = min(res.x, res.y);
+  vec2 q = px / sh; // aspect-correct, short side = 1
+
+  // Black and white through a color filter, then exposure.
+  float l = dot(texture(img, uv).rgb, mixw) * exp2(exposure);
+
+  // Halation: highlights bleed softly into their surroundings (screen blend).
+  l = 1. - (1. - l) * (1. - texture(glow, uv).r * glowAmt * .8);
+
+  // Uneven development: large soft blotches plus finer mottling.
+  float blot = fbm(q * 2.2 + 3.7) - .48, mottle = fbm(q * 9. + 11.) - .48;
+  l *= 1. + (blot * .55 + mottle * .2) * wear;
+  l = clamp(l, 0., 1.);
+
+  // Contrast: positive pulls toward an S-curve, negative flattens toward gray.
+  float sc = l * l * (3. - 2. * l);
+  l = contrast >= 0. ? mix(l, sc, contrast) : mix(l, .5 + (l - .5) * .4, -contrast);
+
+  // Vignette with a wobbly falloff, and burnt, irregular edges.
+  vec2 half_ = res / sh * .5;
+  float r = length(q - half_) / length(half_);
+  l *= 1. - vignette * .6 * smoothstep(.3, 1.05, r + (fbm(q * 3. + 5.) - .5) * .3 * wear);
+  float edge = min(min(q.x, res.x / sh - q.x), min(q.y, res.y / sh - q.y)) + (fbm(q * 7. + 2.) - .5) * .025;
+  l *= mix(1., .45 + .55 * smoothstep(0., .045, edge), wear * .8);
+
+  // Flat tonal range: lifted blacks, dulled whites.
+  l = mix(blackPt, whitePt, l);
+
+  // Film grain, two scales, strongest in the midtones.
+  float gs = grainSize * sh / 1100.;
+  float n = (vnoise(px / gs + 13.) + .7 * vnoise(px / (gs * .55) + 71.)) / 1.7 - .5;
+  l += n * grain * .34 * (1. - .55 * pow(abs(2. * l - 1.), 2.));
+
+  // Dust specks (mostly light) and the odd hairline scratch.
+  vec2 cp = q * 55., ci = floor(cp);
+  vec2 cc = ci + .2 + .6 * vec2(rnd(ci + 3.), rnd(ci + 7.));
+  float speck = step(rnd(ci + 11.), dust * .08) * (1. - smoothstep(.2, 1., length(cp - cc) / (.04 + .1 * rnd(ci + 19.))));
+  l += (rnd(ci + 23.) < .8 ? .28 : -.2) * (.5 + .5 * rnd(ci + 29.)) * speck;
+  float band = floor(q.x * 4.);
+  float sx = (band + .2 + .6 * rnd(vec2(band, 91.))) / 4. + (vnoise(vec2(q.y * 3., band * 7.)) - .5) * .03;
+  float line = step(rnd(vec2(band, 97.)), dust * .3) * (1. - smoothstep(.3, 2.2, abs(q.x - sx) * sh / max(1., sh / 1500.)))
+             * smoothstep(.35, .7, vnoise(vec2(q.y * 2.5, band * 5. + 1.)));
+  l += line * .14;
+  l = clamp(l, 0., 1.);
+
+  // Tone: whites lean warm, shadows and mids lean green-gray.
+  vec3 col = vec3(l);
+  col *= mix(vec3(1), vec3(1., .95, .8), warmth * smoothstep(.2, .9, l));
+  col = mix(col, col * vec3(.88, 1., .95), cool * (1. - smoothstep(.1, .75, l)));
+  o = vec4(col, 1);
+}`;
+
+function program(fs) {
+  const p = gl.createProgram();
+  for (const [type, src] of [[gl.VERTEX_SHADER, VS], [gl.FRAGMENT_SHADER, fs]]) {
+    const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
+    gl.attachShader(p, sh);
+  }
+  gl.bindAttribLocation(p, 0, 'p'); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}; const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const name = gl.getActiveUniform(p, i).name; u[name] = gl.getUniformLocation(p, name); }
+  return { p, u };
+}
+function texture(w, h, source) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  if (source) { gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source); }
+  else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  return t;
+}
+function target(w, h) {
+  const tex = texture(w, h), fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return { tex, fb, w, h };
+}
+
+let P = null;
+if (gl) {
+  P = { blur: program(BLUR), bright: program(BRIGHT), final: program(FINAL) };
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+}
+function pass(prog, out, w, h, setup) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, out ? out.fb : null);
+  gl.viewport(0, 0, w, h); gl.useProgram(prog.p); setup(prog.u);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+function bind(unit, tex, loc) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(loc, unit); }
+
+// ---------- Pipeline ----------
+// The blur and glow textures only change with the photo or the blur amount; everything else is one final pass.
+let img = null, softKey = '';
+function setPhoto(source) {
+  const iw = source.naturalWidth || source.width, ih = source.naturalHeight || source.height;
+  const cap = Math.min(MAX_SIDE, gl.getParameter(gl.MAX_TEXTURE_SIZE)), k = Math.min(1, cap / Math.max(iw, ih));
+  const w = Math.round(iw * k), h = Math.round(ih * k);
+  // Through a 2D canvas so EXIF orientation is applied and big photos are scaled to the working size.
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(source, 0, 0, w, h);
+  if (img) for (const t of [img.src, img.a, img.b, img.ga, img.gb]) { gl.deleteTexture(t.tex || t); if (t.fb) gl.deleteFramebuffer(t.fb); }
+  const gw = Math.max(1, Math.round(w / 4)), gh = Math.max(1, Math.round(h / 4));
+  img = { w, h, src: texture(w, h, c), a: target(w, h), b: target(w, h), ga: target(gw, gh), gb: target(gw, gh) };
+  cv.width = w; cv.height = h; softKey = '';
+}
+function render(bypass = false) {
+  if (!img) return;
+  const { w, h } = img, sh = Math.min(w, h);
+  const key = [img.src, S.blur].join();
+  if (key !== softKey) {
+    const sigma = S.blur * sh / 250;
+    pass(P.blur, img.a, w, h, u => { bind(0, img.src, u.t); gl.uniform2f(u.dir, 1 / w, 0); gl.uniform1f(u.sigma, sigma); });
+    pass(P.blur, img.b, w, h, u => { bind(0, img.a.tex, u.t); gl.uniform2f(u.dir, 0, 1 / h); gl.uniform1f(u.sigma, sigma); });
+    const g = img.ga, gs = Math.min(g.w, g.h) * .03;
+    pass(P.bright, img.ga, g.w, g.h, u => { bind(0, img.b.tex, u.t); gl.uniform2f(u.texel, 1 / w, 1 / h); });
+    pass(P.blur, img.gb, g.w, g.h, u => { bind(0, img.ga.tex, u.t); gl.uniform2f(u.dir, 1 / g.w, 0); gl.uniform1f(u.sigma, gs); });
+    pass(P.blur, img.ga, g.w, g.h, u => { bind(0, img.gb.tex, u.t); gl.uniform2f(u.dir, 0, 1 / g.h); gl.uniform1f(u.sigma, gs); });
+    softKey = key;
+  }
+  pass(P.final, null, w, h, u => {
+    bind(0, img.b.tex, u.img); bind(1, img.ga.tex, u.glow); bind(2, img.src, u.orig);
+    gl.uniform2f(u.res, w, h); gl.uniform1f(u.seed, S.seed); gl.uniform1f(u.bypass, bypass ? 1 : 0);
+    gl.uniform3fv(u.mixw, FILTERS[S.filter]);
+    gl.uniform1f(u.exposure, S.exposure); gl.uniform1f(u.contrast, S.contrast);
+    gl.uniform1f(u.blackPt, S.black); gl.uniform1f(u.whitePt, S.white);
+    gl.uniform1f(u.warmth, S.warmth); gl.uniform1f(u.cool, S.cool); gl.uniform1f(u.glowAmt, S.glow);
+    gl.uniform1f(u.grain, S.grain); gl.uniform1f(u.grainSize, S.grainSize);
+    gl.uniform1f(u.wear, S.wear); gl.uniform1f(u.vignette, S.vignette); gl.uniform1f(u.dust, S.dust);
+  });
+}
+
+// A stand-in photo until one is uploaded: blossoms against the sky, crossed by a trunk.
+function samplePhoto() {
+  const c = document.createElement('canvas'); c.width = 1200; c.height = 1250;
+  const x = c.getContext('2d');
+  let g = x.createLinearGradient(0, 0, 0, 1250); g.addColorStop(0, '#dfe6ee'); g.addColorStop(1, '#b9c4cc');
+  x.fillStyle = g; x.fillRect(0, 0, 1200, 1250);
+  let a = 7; const r = () => (a = (a * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 900; i++) {
+    const px = r() * 1200, py = r() * 1250, s = 6 + r() * 28;
+    x.fillStyle = r() < .45 ? `rgba(70,80,72,${.25 + r() * .4})` : `rgba(250,240,242,${.35 + r() * .5})`;
+    x.beginPath(); x.arc(px, py, s, 0, Math.PI * 2); x.fill();
+  }
+  x.strokeStyle = 'rgba(40,40,36,.7)'; x.lineCap = 'round';
+  for (let i = 0; i < 40; i++) { x.lineWidth = 1 + r() * 4; x.beginPath(); const sx = r() * 1200, sy = r() * 1250; x.moveTo(sx, sy); x.lineTo(sx + (r() - .5) * 400, sy + (r() - .5) * 300); x.stroke(); }
+  x.fillStyle = '#2a2b27';
+  x.beginPath(); x.moveTo(-50, 1150); x.lineTo(950, 0); x.lineTo(1250, 0); x.lineTo(1250, 150); x.lineTo(250, 1300); x.lineTo(-50, 1300); x.fill();
+  x.beginPath(); x.moveTo(980, 1300); x.lineTo(1250, 800); x.lineTo(1250, 1000); x.lineTo(1080, 1300); x.fill();
+  for (let i = 0; i < 26; i++) { x.fillStyle = `rgba(252,248,240,${.75 + r() * .25})`; x.beginPath(); x.arc(470 + r() * 260, 520 + r() * 300, 28 + r() * 26, 0, Math.PI * 2); x.fill(); }
+  return c;
+}
+
+// ---------- UI ----------
+const pct = v => Math.round(v * 100) + '%';
+const signed = v => (v > 0 ? '+' : '') + v.toFixed(2);
+const SLIDERS = {
+  exposure: { label: 'Exposición', min: -1.5, max: 1.5, step: .05, fmt: signed },
+  contrast: { label: 'Contraste', min: -1, max: 1, step: .01, fmt: signed },
+  black: { label: 'Negro (levantar)', min: 0, max: .5, step: .01, fmt: pct, emph: true },
+  white: { label: 'Blanco (apagar)', min: .5, max: 1, step: .01, fmt: pct, emph: true },
+  warmth: { label: 'Calidez en las luces', min: 0, max: 1, step: .01, fmt: pct },
+  cool: { label: 'Verde en las sombras', min: 0, max: 1, step: .01, fmt: pct },
+  blur: { label: 'Desenfoque', min: 0, max: 1.5, step: .01, fmt: pct },
+  glow: { label: 'Halo en las luces', min: 0, max: 1, step: .01, fmt: pct },
+  grain: { label: 'Grano', min: 0, max: 1.5, step: .01, fmt: pct, emph: true },
+  grainSize: { label: 'Tamaño del grano', min: .4, max: 4, step: .05, fmt: v => '×' + v.toFixed(2) },
+  wear: { label: 'Desgaste (revelado desparejo)', min: 0, max: 1, step: .01, fmt: pct },
+  vignette: { label: 'Viñeta', min: 0, max: 1, step: .01, fmt: pct },
+  dust: { label: 'Polvo y rayas', min: 0, max: 1, step: .01, fmt: pct },
+};
+for (const [key, d] of Object.entries(SLIDERS)) {
+  const host = $('#sl-' + key);
+  host.className = 'slider' + (d.emph ? ' emph' : '');
+  host.innerHTML = `<label for="in-${key}">${d.label}</label><output id="out-${key}"></output><input type="range" id="in-${key}" min="${d.min}" max="${d.max}" step="${d.step}" title="Doble clic para restablecer">`;
+  const input = host.querySelector('input');
+  input.addEventListener('input', () => { S[key] = +input.value; sync(); });
+  input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
+}
+document.querySelectorAll('.seg[data-key]').forEach(seg => seg.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  S[seg.dataset.key] = b.dataset.v; sync();
+}));
+$('#presets').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  Object.assign(S, PRESETS[b.dataset.preset]); sync();
+});
+$('#seed').addEventListener('input', e => { S.seed = Math.min(999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
+const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
+$('#reseed').addEventListener('click', reseed);
+
+// Before/after: hold the button or the space bar.
+let comparing = false;
+const compare = on => { if (comparing === on) return; comparing = on; schedule(); };
+$('#compare').addEventListener('pointerdown', () => compare(true));
+addEventListener('pointerup', () => compare(false));
+addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
+  if (e.code === 'Space') { e.preventDefault(); compare(true); }
+  else if (e.key.toLowerCase() === 'r') reseed();
+});
+addEventListener('keyup', e => { if (e.code === 'Space') compare(false); });
+
+// Click the photo to toggle between fit and 100%.
+frame.addEventListener('click', () => { stage.classList.toggle('zoom'); layout(); });
+
+function sync() {
+  for (const key of Object.keys(SLIDERS)) {
+    const input = $('#in-' + key), d = SLIDERS[key];
+    if (+input.value !== S[key]) input.value = S[key];
+    input.style.setProperty('--p', ((S[key] - d.min) / (d.max - d.min) * 100) + '%');
+    $('#out-' + key).textContent = d.fmt(S[key]);
+  }
+  document.querySelectorAll('.seg[data-key]').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
+  document.querySelectorAll('#presets button').forEach(b => {
+    const p = PRESETS[b.dataset.preset];
+    b.setAttribute('aria-pressed', Object.keys(p).every(k => p[k] === S[k]));
+  });
+  const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
+  schedule();
+}
+function layout() {
+  if (!img) return;
+  const r = stage.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  const k = stage.classList.contains('zoom') ? 1 / dpr : Math.max(0, Math.min((r.width - 64) / img.w, (r.height - 96) / img.h, 1 / dpr));
+  frame.style.width = Math.round(img.w * k) + 'px'; frame.style.height = Math.round(img.h * k) + 'px';
+}
+let raf = 0;
+function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { layout(); render(comparing); }); }
+new ResizeObserver(layout).observe(stage);
+
+// ---------- Input ----------
+async function openFile(file) {
+  if (!file || !file.type.startsWith('image/')) return toast('Eso no parece una imagen.');
+  const url = URL.createObjectURL(file);
+  try {
+    const im = new Image(); im.src = url; await im.decode();
+    setPhoto(im); name = file.name.replace(/\.[^.]+$/, '') || 'foto';
+    $('#stats').textContent = `${img.w} × ${img.h} px`;
+    schedule();
+  } catch { toast('No se pudo leer la imagen.'); }
+  finally { URL.revokeObjectURL(url); }
+}
+let name = 'foto';
+$('#upload').addEventListener('click', () => $('#file').click());
+$('#file').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
+let dragDepth = 0;
+stage.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; $('#drop').hidden = false; });
+stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#drop').hidden = true; } });
+stage.addEventListener('dragover', e => e.preventDefault());
+stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; openFile(e.dataTransfer.files[0]); });
+addEventListener('paste', e => {
+  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+  if (item) openFile(item.getAsFile());
+});
+
+// ---------- Export ----------
+let toastT = 0;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2400); }
+function download(file, blob) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast(file + ' descargado');
+}
+function exportAs(type, ext, quality) {
+  if (!img) return;
+  render(false);
+  cv.toBlob(b => b ? download(`${name}-registro.${ext}`, b) : toast('No se pudo exportar.'), type, quality);
+  if (comparing) render(true);
+}
+$('#jpg').addEventListener('click', () => exportAs('image/jpeg', 'jpg', .92));
+$('#png').addEventListener('click', () => exportAs('image/png', 'png'));
+
+if (!gl) toast('Este navegador no soporta WebGL2.');
+else {
+  setPhoto(samplePhoto());
+  $('#stats').textContent = 'Foto de ejemplo · subí la tuya';
+  sync();
+}
+</script>
+</body>
+</html>
