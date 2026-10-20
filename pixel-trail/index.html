@@ -106,7 +106,10 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
   .controls { overflow: visible; }
   .hud .dim { display: none; }
 }
-.frame { cursor: crosshair; }
+.frame { cursor: crosshair; touch-action: none; }
+.palette { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.palette label { position: relative; height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); cursor: pointer; }
+.palette input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -114,14 +117,14 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <div class="app">
   <main id="stage">
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Rastro de cubos que deja el puntero"></canvas></div>
-    <div class="hud"><span id="stats">Pasá el mouse por la mesa</span><span class="dim"><kbd>C</kbd> limpiar · <kbd>P</kbd> permanente</span></div>
+    <div class="hud"><span id="stats">Hacé clic y arrastrá sobre la mesa</span><span class="dim"><kbd>C</kbd> limpiar · <kbd>P</kbd> permanente</span></div>
   </main>
 
   <aside>
     <div class="controls">
       <section>
         <h2>Trazo</h2>
-        <p class="hint">Lento deja muchos cubos juntos; rápido los separa.</p>
+        <p class="hint">Hacé clic y arrastrá. Lento deja muchos cubos juntos; rápido los separa.</p>
         <div id="sl-response"></div>
         <div id="sl-gap"></div>
         <div id="sl-maxGap"></div>
@@ -148,7 +151,11 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
       <section>
         <h2>Color</h2>
-        <div class="row" style="grid-template-columns:56px 1fr">
+        <div class="seg" data-key="colorMode" aria-label="Color de los cubos">
+          <button data-v="ink">Tinta</button><button data-v="palette">Paleta alternada</button>
+        </div>
+        <div class="palette" id="palette-row" aria-label="Paleta, en orden"></div>
+        <div class="row" id="ink-row" style="grid-template-columns:56px 1fr">
           <span>Tinta</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="ink" aria-label="Tinta"></label>
         </div>
         <div id="sl-grain"></div>
@@ -175,6 +182,7 @@ const DEFAULTS = {
   response: .5, gap: .7, maxGap: 220, scatter: .25, snap: false,
   shape: 'flat', size: 16, variation: .3, speedSize: 0,
   life: 2.5, permanent: false,
+  colorMode: 'ink', palette: ['#FFE293', '#F79FFF', '#B1FFEF', '#A9EFFF', '#FFBDA9'],
   ink: '#1a1714', grain: .05, paper: '#ede6da', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -196,22 +204,25 @@ function labToHex([L, a, b]) {
 }
 // One ink split into a few shades: each cube takes a random one, ±grain in lightness.
 const SHADES = 9;
-function buildLut(st) {
-  const [L, a, b] = rgbToLab(hexToRgb(st.ink));
+function shadesOf(hex, grain) {
+  const [L, a, b] = rgbToLab(hexToRgb(hex));
   const base = [], top = [], right = [];
   for (let i = 0; i < SHADES; i++) {
-    const l = L + (i / (SHADES - 1) * 2 - 1) * st.grain;
+    const l = L + (i / (SHADES - 1) * 2 - 1) * grain;
     base.push(labToHex([l, a, b]));
     top.push(labToHex([l + .14, a, b]));
     right.push(labToHex([l - .14, a * .9, b * .9]));
   }
   return { base, top, right };
 }
+function buildLut(st) { return { ink: shadesOf(st.ink, st.grain), palette: st.palette.map(h => shadesOf(h, st.grain)) }; }
+// Palette mode cycles through the colors in drop order.
+const shadesFor = (c, st, lut) => st.colorMode === 'palette' ? lut.palette[c.n % lut.palette.length] : lut.ink;
 
 // ---------- Trail ----------
 // Cubes are dropped every `gap` units along the pointer path. The gap grows with pointer speed,
 // so a slow pass lays them densely and a fast one spaces them out.
-let cubes = [], last = null, carry = 0, speed = 0;
+let cubes = [], last = null, carry = 0, speed = 0, dropped = 0;
 function addPoint(p, t) {
   if (!last) { last = { p, t }; carry = 0; return; }
   const dx = p[0] - last.p[0], dy = p[1] - last.p[1], d = Math.hypot(dx, dy);
@@ -232,7 +243,7 @@ function drop(x, y, t) {
   let s = S.size * Math.max(.2, 1 + S.variation * (Math.random() * 2 - 1) * .7);
   s *= clamp(1 + S.speedSize * Math.min(speed, 8) * .12, .15, 3);
   if (S.snap) { x = (Math.floor(x / S.size) + .5) * S.size; y = (Math.floor(y / S.size) + .5) * S.size; }
-  cubes.push({ x, y, s, k: Math.floor(Math.random() * SHADES), t });
+  cubes.push({ x, y, s, k: Math.floor(Math.random() * SHADES), n: dropped++, t });
   if (cubes.length > MAX) cubes.splice(0, cubes.length - MAX);
   wake();
 }
@@ -255,17 +266,22 @@ function isoFaces(x, y, e) {
 }
 function squareOf(x, y, s) { const h = s / 2; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }
 function poly(ctx, p) { ctx.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]); ctx.closePath(); }
-// Flat squares are grouped per shade (one fill each); iso cubes paint in drop order so newer ones sit on top.
+// Flat squares are grouped per color (one fill each); iso cubes paint in drop order so newer ones sit on top.
 function eachRun(now, st, lut, fn) {
   if (st.shape === 'flat') {
-    const groups = Array.from({ length: SHADES }, () => []);
-    for (const c of cubes) { const k = lifeScale(c, now); if (k > 0) groups[c.k].push(squareOf(c.x, c.y, c.s * k)); }
-    groups.forEach((polys, k) => polys.length && fn(lut.base[k], polys));
+    const groups = new Map();
+    for (const c of cubes) {
+      const k = lifeScale(c, now); if (k <= 0) continue;
+      const color = shadesFor(c, st, lut).base[c.k];
+      let g = groups.get(color); if (!g) groups.set(color, g = []);
+      g.push(squareOf(c.x, c.y, c.s * k));
+    }
+    groups.forEach((polys, color) => fn(color, polys));
   } else {
     for (const c of cubes) {
       const k = lifeScale(c, now); if (k <= 0) continue;
-      const f = isoFaces(c.x, c.y, c.s * k / SQ3);
-      fn(lut.top[c.k], [f.top]); fn(lut.base[c.k], [f.left]); fn(lut.right[c.k], [f.right]);
+      const f = isoFaces(c.x, c.y, c.s * k / SQ3), sh = shadesFor(c, st, lut);
+      fn(sh.top[c.k], [f.top]); fn(sh.base[c.k], [f.left]); fn(sh.right[c.k], [f.right]);
     }
   }
 }
@@ -316,6 +332,8 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
   S[seg.dataset.key] = b.dataset.v; sync();
 }));
 document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
+$('#palette-row').innerHTML = S.palette.map((_, i) => `<label title="Color ${i + 1}"><input type="color" data-pal="${i}" aria-label="Color ${i + 1}"></label>`).join('');
+document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('input', () => { S.palette[+inp.dataset.pal] = inp.value; sync(); }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
 const clear = () => { cubes = []; wake(); };
 $('#clear').addEventListener('click', clear);
@@ -345,6 +363,9 @@ function sync() {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   $('#sl-life').hidden = S.permanent;
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
+  const pal = S.colorMode === 'palette';
+  $('#palette-row').hidden = !pal; $('#ink-row').hidden = pal;
+  document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal].toLowerCase(); if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
   lut = buildLut(S);
   wake();
 }
@@ -368,7 +389,7 @@ function render(now) {
   ctx.setTransform(pw / AW, 0, 0, ph / AH, 0, 0);
   ctx.clearRect(0, 0, AW, AH);
   draw(ctx, now, S, lut);
-  $('#stats').textContent = cubes.length ? `${cubes.length.toLocaleString('es')} cubos · ${AW} × ${AH} · exporta a ${AW * RES} × ${AH * RES} px` : 'Pasá el mouse por la mesa';
+  $('#stats').textContent = cubes.length ? `${cubes.length.toLocaleString('es')} cubos · ${AW} × ${AH} · exporta a ${AW * RES} × ${AH * RES} px` : 'Hacé clic y arrastrá sobre la mesa';
   if (!S.permanent && cubes.length) raf = requestAnimationFrame(render);
 }
 new ResizeObserver(wake).observe(stage);
@@ -378,13 +399,24 @@ function toArt(e) {
   const r = frame.getBoundingClientRect();
   return [(e.clientX - r.left) / r.width * AW, (e.clientY - r.top) / r.height * AH];
 }
+// Cubes only drop while the button is held: a click lays one, dragging lays the trail.
+let pressed = false;
+frame.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  frame.setPointerCapture(e.pointerId);
+  pressed = true; speed = 0;
+  const p = toArt(e);
+  drop(p[0], p[1], e.timeStamp);
+  last = { p, t: e.timeStamp }; carry = 0;
+});
 frame.addEventListener('pointermove', e => {
-  if (e.pointerType === 'touch' && !e.buttons) return;
+  if (!pressed) return;
   const evs = e.getCoalescedEvents?.() || [];
   for (const ev of evs.length ? evs : [e]) addPoint(toArt(ev), ev.timeStamp);
 });
-frame.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') { last = null; addPoint(toArt(e), e.timeStamp); } });
-frame.addEventListener('pointerleave', () => { last = null; speed = 0; });
+const release = () => { pressed = false; last = null; speed = 0; };
+frame.addEventListener('pointerup', release);
+frame.addEventListener('pointercancel', release);
 
 // ---------- Export ----------
 let toastT = 0;
