@@ -41,9 +41,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
 main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding-bottom: 32px; }
 .frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); touch-action: none; cursor: none; }
 .frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity .15s ease-out; }
-.frame.busy #cv { opacity: .6; }
-.frame #ov { pointer-events: none; opacity: 0; transition: opacity .2s ease-out; }
-.frame.show-mask #ov { opacity: 1; }
+
 .cursor { position: absolute; left: 0; top: 0; pointer-events: none; border-radius: 50%; border: 1px solid #fff; mix-blend-mode: difference; transform: translate(-50%, -50%); }
 .cursor.erase { border-style: dashed; }
 .drop { position: absolute; inset: 12px; display: grid; place-items: center; border-radius: 12px; border: 1.5px dashed var(--text-2); background: color-mix(in srgb, var(--stage) 85%, transparent); color: var(--text); font-weight: 500; pointer-events: none; z-index: 2; }
@@ -118,12 +116,11 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
   <main id="stage">
     <div class="frame" id="frame">
       <canvas id="cv" role="img" aria-label="SVG desintegrándose en partículas"></canvas>
-      <canvas id="ov" aria-hidden="true"></canvas>
       <svg class="guide" id="guide" hidden aria-hidden="true"><line id="guide-line"/><circle id="guide-a" r="4"/><circle id="guide-b" r="4"/></svg>
       <div class="cursor" id="cursor" hidden></div>
     </div>
     <div class="drop" id="drop" hidden>Soltá el SVG</div>
-    <div class="hud"><span id="stats">—</span><span class="dim"><kbd>B</kbd> pincel · <kbd>E</kbd> borrar · <kbd>G</kbd> degradado · <kbd>⌘Z</kbd> deshacer</span></div>
+    <div class="hud"><span id="stats">—</span><span class="dim"><kbd>B</kbd> pincel · <kbd>E</kbd> restaurar · <kbd>G</kbd> degradado · <kbd>⌘Z</kbd> deshacer</span></div>
   </main>
 
   <aside>
@@ -142,20 +139,18 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       </section>
 
       <section>
-        <h2>Selección</h2>
-        <p class="hint">Las partículas salen hacia donde arrastrás el pincel. Cada pasada suma: más se desintegra, más se fragmenta y más lejos llega.</p>
+        <h2>Pincel</h2>
+        <p class="hint">Cada trazo es una pasada nueva sobre el resultado: suelta más piezas y empuja más lejos las que ya están sueltas, hacia donde arrastrás.</p>
         <div class="seg" data-key="tool" aria-label="Herramienta">
-          <button data-v="paint">Pincel</button><button data-v="erase">Borrar</button><button data-v="gradient">Degradado</button>
+          <button data-v="paint">Dispersar</button><button data-v="erase">Restaurar</button><button data-v="gradient">Degradado</button>
         </div>
         <div id="sl-brush"></div>
         <div id="sl-soft"></div>
-        <div id="sl-flow"></div>
+        <div id="sl-strength"></div>
         <div class="btns">
           <button class="btn" id="undo">Deshacer</button>
-          <button class="btn" id="mask-invert">Invertir</button>
-          <button class="btn" id="mask-clear">Limpiar</button>
+          <button class="btn" id="reset">Volver al original</button>
         </div>
-        <label class="check"><input type="checkbox" data-check="showMask"> Mostrar selección</label>
       </section>
 
       <section>
@@ -203,14 +198,14 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 // ---------- State ----------
 const AW = 1920, AH = 1080; // fixed artboard, in units
 const RES = 2;              // the source raster and the exports render at 2x
-const MASK = 320;           // selection mask, long side
+const FIELD = 320;          // brush field resolution, long side
 const SVGNS = 'http://www.w3.org/2000/svg';
 const DEFAULTS = {
   seed: 1,
-  tool: 'paint', brush: 120, soft: .6, flow: .15, showMask: false,
+  tool: 'paint', brush: 120, soft: .6, strength: .7,
   scale: .6, offX: -.12, offY: 0,
-  dot: 'square', amount: .9, cell: 8, frag: .55,
-  dist: .22, spread: .25, turb: .4, irreg: .5,
+  dot: 'square', amount: .9, cell: 6, frag: .5,
+  dist: .12, spread: .2, turb: .35, irreg: .5,
   paper: '#ede6da', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -254,11 +249,6 @@ const lerp = (a, b, t) => a + (b - a) * t;
 // ---------- Source ----------
 // The SVG sits on the artboard and is kept as a crisp 2x raster; only the cut squares turn into particles.
 let src = null, srcId = 0, raster = null, rasterKey = '';
-const MW = AW >= AH ? MASK : Math.round(MASK * AW / AH), MH = AH >= AW ? MASK : Math.round(MASK * AH / AW);
-// The selection is an intensity that keeps accumulating (no ceiling) plus the brush direction that put it there.
-let mask = new Float32Array(MW * MH), dirX = new Float32Array(MW * MH), dirY = new Float32Array(MW * MH), maskVer = 0;
-const MAX_INTENSITY = 8;
-const undoStack = [];
 
 async function loadSvgText(text) {
   if (!/xmlns\s*=\s*["']http:\/\/www\.w3\.org\/2000\/svg/.test(text)) text = text.replace(/<svg\b/, `<svg xmlns="${SVGNS}"`);
@@ -310,109 +300,173 @@ const SAMPLE_SVG = `<svg xmlns="${SVGNS}" viewBox="0 0 1200 800" width="1200" he
   <rect x="160" y="700" width="880" height="24" fill="#1a1714"/>
 </svg>`;
 
-// ---------- Selection mask ----------
-function maskChanged() { maskVer++; }
-function sampleField(f, x, y) {
-  const fx = x / AW * MW - .5, fy = y / AH * MH - .5;
-  const i = Math.floor(fx), j = Math.floor(fy), u = fx - i, v = fy - j;
-  const i0 = clamp(i, 0, MW - 1), i1 = clamp(i + 1, 0, MW - 1), j0 = clamp(j, 0, MH - 1), j1 = clamp(j + 1, 0, MH - 1);
-  return (f[j0 * MW + i0] * (1 - u) + f[j0 * MW + i1] * u) * (1 - v) + (f[j1 * MW + i0] * (1 - u) + f[j1 * MW + i1] * u) * v;
+// ---------- Passes ----------
+// Each stroke is one pass over the current result: it frees new pieces from the SVG and pushes the particles
+// that are already loose further (sometimes splitting them into four equal quarters). Pieces only ever move
+// or split, so what disperses is always exactly what disappeared. Strokes are kept as geometry and replayed
+// when a setting changes; nothing of the brush itself stays on the artboard.
+const FW = AW >= AH ? FIELD : Math.round(FIELD * AW / AH), FH = AH >= AW ? FIELD : Math.round(FIELD * AH / AW);
+let strokes = [], live = null, histVer = 0;
+
+function newField() {
+  return { m: new Float32Array(FW * FH), dx: new Float32Array(FW * FH), dy: new Float32Array(FW * FH), x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
 }
-const maskAt = (x, y) => sampleField(mask, x, y);
-// Paint adds intensity and the stroke direction (ux, uy); erase scales both down.
-function stamp(x, y, r, soft, erase, ux, uy, flow) {
-  const sx = MW / AW, sy = MH / AH, cx = x * sx, cy = y * sy, rx = r * sx, ry = r * sy, hard = 1 - soft;
-  for (let j = Math.max(0, Math.floor(cy - ry)); j <= Math.min(MH - 1, Math.ceil(cy + ry)); j++) {
-    for (let i = Math.max(0, Math.floor(cx - rx)); i <= Math.min(MW - 1, Math.ceil(cx + rx)); i++) {
+function sampleField(a, x, y) {
+  const fx = x / AW * FW - .5, fy = y / AH * FH - .5;
+  const i = Math.floor(fx), j = Math.floor(fy), u = fx - i, v = fy - j;
+  const i0 = clamp(i, 0, FW - 1), i1 = clamp(i + 1, 0, FW - 1), j0 = clamp(j, 0, FH - 1), j1 = clamp(j + 1, 0, FH - 1);
+  return (a[j0 * FW + i0] * (1 - u) + a[j0 * FW + i1] * u) * (1 - v) + (a[j1 * FW + i0] * (1 - u) + a[j1 * FW + i1] * u) * v;
+}
+// Strength within one stroke is the max of its dabs (overlap doesn't stack); direction sums the drag.
+function stampField(f, x, y, r, soft, ux, uy) {
+  const sx = FW / AW, sy = FH / AH, cx = x * sx, cy = y * sy, rx = r * sx, ry = r * sy, hard = 1 - soft;
+  for (let j = Math.max(0, Math.floor(cy - ry)); j <= Math.min(FH - 1, Math.ceil(cy + ry)); j++) {
+    for (let i = Math.max(0, Math.floor(cx - rx)); i <= Math.min(FW - 1, Math.ceil(cx + rx)); i++) {
       const d = Math.hypot((i + .5 - cx) / rx, (j + .5 - cy) / ry);
       if (d >= 1) continue;
       let v = 1;
       if (d > hard) { const t = (d - hard) / (1 - hard); v = 1 - t * t * (3 - 2 * t); }
-      const k = j * MW + i;
-      if (erase) { const f = 1 - v * Math.min(1, flow * 4); mask[k] *= f; dirX[k] *= f; dirY[k] *= f; }
-      else { const a = v * flow; mask[k] = Math.min(MAX_INTENSITY, mask[k] + a); dirX[k] += ux * a; dirY[k] += uy * a; }
+      const k = j * FW + i;
+      if (v > f.m[k]) f.m[k] = v;
+      f.dx[k] += ux * v; f.dy[k] += uy * v;
     }
   }
+  f.x0 = Math.min(f.x0, x - r); f.y0 = Math.min(f.y0, y - r); f.x1 = Math.max(f.x1, x + r); f.y1 = Math.max(f.y1, y + r);
 }
-// Replaces the selection with a ramp: 0 at a, 1 at b, moving from a towards b.
-function gradient(a, b) {
-  const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1, l = Math.sqrt(l2);
-  for (let j = 0; j < MH; j++) for (let i = 0; i < MW; i++) {
-    const x = (i + .5) / MW * AW, y = (j + .5) / MH * AH, k = j * MW + i;
+function addSegment(f, s, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy);
+  if (!d) return;
+  const n = Math.max(1, Math.ceil(d / (s.brush * .2)));
+  for (let k = 1; k <= n; k++) stampField(f, lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n), s.brush, s.soft, dx / d, dy / d);
+}
+// A ramp from 0 at a to 1 at b, pushing from a towards b.
+function gradientField(f, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy, l = Math.sqrt(l2);
+  if (!l) return;
+  for (let j = 0; j < FH; j++) for (let i = 0; i < FW; i++) {
+    const x = (i + .5) / FW * AW, y = (j + .5) / FH * AH, k = j * FW + i;
     const t = clamp(((x - a[0]) * dx + (y - a[1]) * dy) / l2);
-    mask[k] = t * t * (3 - 2 * t); dirX[k] = dx / l; dirY[k] = dy / l;
+    f.m[k] = t * t * (3 - 2 * t); f.dx[k] = dx / l; f.dy[k] = dy / l;
   }
+  f.x0 = 0; f.y0 = 0; f.x1 = AW; f.y1 = AH;
 }
-function pushUndo() { undoStack.push([mask.slice(), dirX.slice(), dirY.slice()]); if (undoStack.length > 40) undoStack.shift(); }
-function undo() { if (!undoStack.length) return; [mask, dirX, dirY] = undoStack.pop(); maskChanged(); schedule(); }
+function fieldOf(s) {
+  const f = newField();
+  if (s.tool === 'gradient') gradientField(f, s.a, s.b);
+  else {
+    stampField(f, s.pts[0][0], s.pts[0][1], s.brush, s.soft, 0, 0);
+    for (let i = 1; i < s.pts.length; i++) addSegment(f, s, s.pts[i - 1], s.pts[i]);
+  }
+  return f;
+}
 
-// ---------- Generation ----------
-const STRIDE = 5; // x, y, size, rgb, alpha
-const SAMPLES = [[.5, .5], [.2, .2], [.8, .2], [.2, .8], [.8, .8]];
+// ---------- State ----------
+// cut marks grid cells that have left the SVG; items are the loose particles.
+const STRIDE = 6; // x, y, size, rgb, alpha, origin cell
 function buffer(n) { return { a: new Float32Array(Math.max(64, n) * STRIDE), n: 0 }; }
-function push(b, x, y, s, c, al) {
+function push(b, x, y, s, c, al, o) {
   if ((b.n + 1) * STRIDE > b.a.length) { const a = new Float32Array(b.a.length * 2); a.set(b.a); b.a = a; }
-  const o = b.n++ * STRIDE;
-  b.a[o] = x; b.a[o + 1] = y; b.a[o + 2] = s; b.a[o + 3] = c; b.a[o + 4] = al;
+  const k = b.n++ * STRIDE;
+  b.a[k] = x; b.a[k + 1] = y; b.a[k + 2] = s; b.a[k + 3] = c; b.a[k + 4] = al; b.a[k + 5] = o;
+}
+function cleanState() {
+  const cell = S.cell, cols = Math.ceil(AW / cell), rows = Math.ceil(AH / cell);
+  return { cols, rows, cell, cut: new Uint8Array(cols * rows), items: new Float32Array(0) };
 }
 
-// Selected cells split into k×k squares (k grows with the selection). Each square that lets go is cut out
-// of the SVG and travels as one particle of the same size carrying the average color it covered,
-// so what disappears is exactly what disperses.
-function disintegrate(st) {
-  const { data, rect } = raster, cell = st.cell, PW = AW * RES, PH = AH * RES;
-  const cols = Math.ceil(AW / cell);
-  const i0 = Math.max(0, Math.floor(rect.x / cell)), i1 = Math.min(cols, Math.ceil((rect.x + rect.w) / cell));
-  const j0 = Math.max(0, Math.floor(rect.y / cell)), j1 = Math.min(Math.ceil(AH / cell), Math.ceil((rect.y + rect.h) / cell));
-  const noise = noiseKit(st.seed), unit = Math.min(AW, AH), tf = 2.4 / unit, sf = 7 / unit;
-  const N = 10, px = new Float32Array(N + 1), py = new Float32Array(N + 1);
-  const sb = st.seed * 64;
-  const cuts = [], parts = buffer(4096);
+function applyPass(state, s, f, idx) {
+  const { cols, rows, cell } = state, cut = state.cut.slice(), it = state.items;
+  const out = buffer(it.length / STRIDE + 1024);
+  const i0 = clamp(Math.floor(f.x0 / cell), 0, cols), i1 = clamp(Math.ceil(f.x1 / cell), 0, cols);
+  const j0 = clamp(Math.floor(f.y0 / cell), 0, rows), j1 = clamp(Math.ceil(f.y1 / cell), 0, rows);
+
+  if (s.tool === 'erase') {
+    // Restore: cells under the brush go back into the SVG and take their particles with them.
+    const back = new Uint8Array(cols * rows);
+    for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) {
+      const c = j * cols + i;
+      if (cut[c] && sampleField(f.m, (i + .5) * cell, (j + .5) * cell) > .3) { cut[c] = 0; back[c] = 1; }
+    }
+    for (let o = 0; o < it.length; o += STRIDE) if (!back[it[o + 5]]) push(out, it[o], it[o + 1], it[o + 2], it[o + 3], it[o + 4], it[o + 5]);
+    return { cols, rows, cell, cut, items: out.a.subarray(0, out.n * STRIDE) };
+  }
+
+  const { data } = raster, PW = AW * RES, PH = AH * RES;
+  const noise = noiseKit(S.seed), unit = Math.min(AW, AH), far = Math.max(AW, AH), tf = 2.4 / unit, sf = 7 / unit;
+  const sb = S.seed * 977 + idx * 7919;
+  const N = 8, px = new Float32Array(N + 1), py = new Float32Array(N + 1);
   const pixel = (x, y) => (clamp(Math.floor(y * RES), 0, PH - 1) * PW + clamp(Math.floor(x * RES), 0, PW - 1)) * 4;
+  // Low-frequency streaks make neighbours come loose (and travel) together.
+  const streakAt = (x, y) => clamp(.55 + noise(x * sf, y * sf, 2) * 1.8, .05, 1.3);
+  const move = (x, y, sz, col, al, origin, m, id, salt) => {
+    let dx = sampleField(f.dx, x, y), dy = sampleField(f.dy, x, y);
+    const dl = Math.hypot(dx, dy), aimed = dl > 1e-3;
+    if (aimed) { dx /= dl; dy /= dl; } else dx = dy = 0;
+    const turb = aimed ? S.turb * 1.6 : 1;
+    const rot = (hash(id, salt + 3) - .5) * S.spread * Math.PI, rc = Math.cos(rot), rs = Math.sin(rot);
+    // sqrt: the soft edge of the brush still sends pieces clear of it instead of piling them up there.
+    const L = S.dist * far * Math.sqrt(m) * lerp(1, .25 + .75 * hash(id, salt + 4), S.irreg * .8) * lerp(1, streakAt(x, y), S.irreg), step = L / N;
+    px[0] = x; py[0] = y;
+    for (let n = 1; n <= N; n++) {
+      const r = noise(px[n - 1] * tf, py[n - 1] * tf, 0) * Math.PI * 3;
+      let vx = dx + turb * Math.cos(r), vy = dy + turb * Math.sin(r);
+      const l = Math.hypot(vx, vy) || 1; vx /= l; vy /= l;
+      px[n] = px[n - 1] + (vx * rc - vy * rs) * step;
+      py[n] = py[n - 1] + (vx * rs + vy * rc) * step;
+    }
+    push(out, px[N], py[N], sz, col, al, origin);
+  };
+
+  // 1. Loose particles under the brush travel further; some split into four equal quarters.
+  for (let o = 0, pid = 0; o < it.length; o += STRIDE, pid++) {
+    const x = it[o], y = it[o + 1], sz = it[o + 2], col = it[o + 3], al = it[o + 4], origin = it[o + 5];
+    const m = sampleField(f.m, x, y) * S.strength;
+    if (m <= .002) { push(out, x, y, sz, col, al, origin); continue; }
+    if (sz >= 1.5 && hash(pid, sb + 1) < S.frag * Math.min(1, m) * .6) {
+      const q = sz / 2;
+      for (let k = 0; k < 4; k++) move(x + ((k & 1) - .5) * q, y + ((k >> 1) - .5) * q, q, col, al, origin, m, pid * 8 + k, sb);
+    } else move(x, y, sz, col, al, origin, m, pid * 8 + 4, sb);
+  }
+
+  // 2. Cells still in the SVG may come loose: the square is cut out and becomes k×k particles,
+  //    each carrying the premultiplied average color of the area it covered.
   for (let j = j0; j < j1; j++) for (let i = i0; i < i1; i++) {
-    const cx = (i + .5) * cell, cy = (j + .5) * cell, m = maskAt(cx, cy);
-    if (m <= .002) continue;
-    const id = j * cols + i;
-    // Low-frequency streaks make neighbouring cells crumble (and travel) together.
-    const streak = clamp(.55 + noise(cx * sf, cy * sf, 2) * 1.8, .05, 1.3);
-    // Intensity keeps working past 1: detachment saturates, but pieces get finer and travel further.
-    const chance = st.amount * Math.min(1, m) * lerp(1, streak, st.irreg);
-    const k = Math.min(6, 1 + Math.floor(st.frag * m * 3 + hash(id, sb + 1)));
-    const sub = cell / k;
+    const c = j * cols + i;
+    if (cut[c]) continue;
+    const cx = (i + .5) * cell, cy = (j + .5) * cell, m = sampleField(f.m, cx, cy) * S.strength;
+    if (m <= .002 || hash(c, sb + 100) >= S.amount * Math.min(1, m) * lerp(1, streakAt(cx, cy), S.irreg)) continue;
+    const k = Math.min(4, 1 + Math.floor(S.frag * m * 2 + hash(c, sb + 101)));
+    const sub = cell / k, pieces = [];
     for (let b = 0; b < k; b++) for (let a = 0; a < k; a++) {
-      const sid = id * 64 + b * 8 + a;
-      if (hash(sid, sb) >= chance) continue;
       const x0 = i * cell + a * sub, y0 = j * cell + b * sub;
-      // Premultiplied average over a 4×4 sample of the square, so color and coverage are conserved.
       let sA = 0, sR = 0, sG = 0, sB = 0;
-      for (let v = 0; v < 4; v++) for (let u = 0; u < 4; u++) {
-        const q = pixel(x0 + (u + .5) / 4 * sub, y0 + (v + .5) / 4 * sub), al = data[q + 3];
+      for (let v = 0; v < 3; v++) for (let u = 0; u < 3; u++) {
+        const q = pixel(x0 + (u + .5) / 3 * sub, y0 + (v + .5) / 3 * sub), al = data[q + 3];
         sA += al; sR += data[q] * al; sG += data[q + 1] * al; sB += data[q + 2] * al;
       }
-      if (sA < 16 * 8) continue;
-      const col = Math.round(sR / sA) << 16 | Math.round(sG / sA) << 8 | Math.round(sB / sA);
-      cuts.push(x0, y0, sub);
-      const x = x0 + sub / 2, y = y0 + sub / 2;
-      // Direction comes from the brush strokes; a plain click has none and just drifts with the noise.
-      let dx = sampleField(dirX, x, y), dy = sampleField(dirY, x, y);
-      const dl = Math.hypot(dx, dy), aimed = dl > 1e-4 * m;
-      if (aimed) { dx /= dl; dy /= dl; } else dx = dy = 0;
-      const turb = aimed ? st.turb * 1.6 : 1;
-      const rot = (hash(sid, sb + 3) - .5) * st.spread * Math.PI, rc = Math.cos(rot), rs = Math.sin(rot);
-      const L = st.dist * Math.max(AW, AH) * (m < 1 ? m ** 1.4 : m) * lerp(1, .2 + .8 * hash(sid, sb + 4), st.irreg * .8) * lerp(1, streak, st.irreg), step = L / N;
-      px[0] = x; py[0] = y;
-      for (let n = 1; n <= N; n++) {
-        const r = noise(px[n - 1] * tf, py[n - 1] * tf, 0) * Math.PI * 3;
-        let vx = dx + turb * Math.cos(r), vy = dy + turb * Math.sin(r);
-        const l = Math.hypot(vx, vy) || 1; vx /= l; vy /= l;
-        px[n] = px[n - 1] + (vx * rc - vy * rs) * step;
-        py[n] = py[n - 1] + (vx * rs + vy * rc) * step;
-      }
-      push(parts, px[N], py[N], sub, col, sA / 16);
+      if (sA < 9 * 8) continue;
+      pieces.push([x0 + sub / 2, y0 + sub / 2, Math.round(sR / sA) << 16 | Math.round(sG / sA) << 8 | Math.round(sB / sA), sA / 9, b * 4 + a]);
     }
+    if (!pieces.length) continue;
+    cut[c] = 1;
+    for (const [x, y, col, al, n] of pieces) move(x, y, sub, col, al, c, m, c * 16 + n, sb + 200);
   }
-  return { cuts, items: parts.a.subarray(0, parts.n * STRIDE) };
+  return { cols, rows, cell, cut, items: out.a.subarray(0, out.n * STRIDE) };
 }
+
+let base = null, baseKey = '';
+const settingsKey = () => JSON.stringify([rasterKey, S.seed, S.amount, S.cell, S.frag, S.strength, S.dist, S.spread, S.turb, S.irreg]);
+function committed() {
+  const key = settingsKey() + '|' + histVer;
+  if (key !== baseKey) {
+    let st = cleanState();
+    strokes.forEach((s, i) => { st = applyPass(st, s, fieldOf(s), i); });
+    base = st; baseKey = key;
+  }
+  return base;
+}
+function undo() { if (!strokes.length) return; strokes.pop(); histVer++; schedule(); }
+function resetPasses() { strokes = []; live = null; histVer++; schedule(); }
 
 // ---------- Rendering ----------
 // Particles batched per color (5 bits per channel, 8 alpha steps).
@@ -425,20 +479,26 @@ function groups(it) {
   }
   return [...g].map(([key, idx]) => ({ hex: '#' + Math.floor(key / 16).toString(16).padStart(6, '0'), alpha: (key % 16) / 8, idx }));
 }
+// Cut cells merged into horizontal runs, so the holes have no seams.
+function eachRun(state, fn) {
+  const { cols, rows, cell, cut } = state;
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols;) {
+    if (!cut[j * cols + i]) { i++; continue; }
+    let e = i; while (e < cols && cut[j * cols + e]) e++;
+    fn(i * cell, j * cell, (e - i) * cell, cell); i = e;
+  }
+}
 // A dot keeps the area of the square it was cut from.
 const DOT = 1 / Math.sqrt(Math.PI);
-function draw(ctx, gen, st) {
+function draw(ctx, state, st) {
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(raster.canvas, 0, 0, AW, AH);
-  const c = gen.cuts;
-  if (c.length) {
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.beginPath();
-    for (let i = 0; i < c.length; i += 3) ctx.rect(c[i], c[i + 1], c[i + 2], c[i + 2]);
-    ctx.fill();
-    ctx.globalCompositeOperation = 'source-over';
-  }
-  const it = gen.items, round = st.dot === 'circle';
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.beginPath();
+  eachRun(state, (x, y, w, h) => ctx.rect(x, y, w, h));
+  ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  const it = state.items, round = st.dot === 'circle';
   for (const g of groups(it)) {
     ctx.fillStyle = g.hex; ctx.globalAlpha = g.alpha; ctx.beginPath();
     for (const i of g.idx) {
@@ -450,7 +510,7 @@ function draw(ctx, gen, st) {
   }
   ctx.globalAlpha = 1;
 }
-function toSvg(gen, st) {
+function toSvg(state, st) {
   const r = v => Math.round(v * 100) / 100, out = [];
   out.push(`<svg xmlns="${SVGNS}" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW} ${AH}">`);
   if (st.bgExport) out.push(`<rect width="100%" height="100%" fill="${st.paper}"/>`);
@@ -461,14 +521,13 @@ function toSvg(gen, st) {
     el.setAttribute('x', r(x)); el.setAttribute('y', r(y)); el.setAttribute('width', r(w)); el.setAttribute('height', r(h));
     original = new XMLSerializer().serializeToString(el);
   } else original = `<image href="${src.href}" x="${r(x)}" y="${r(y)}" width="${r(w)}" height="${r(h)}" preserveAspectRatio="none"/>`;
-  const c = gen.cuts;
-  if (c.length) {
-    let d = '';
-    for (let i = 0; i < c.length; i += 3) d += `M${r(c[i])} ${r(c[i + 1])}h${r(c[i + 2])}v${r(c[i + 2])}h${r(-c[i + 2])}Z`;
+  let d = '';
+  eachRun(state, (x, y, w, h) => { d += `M${r(x)} ${r(y)}h${r(w)}v${r(h)}h${r(-w)}Z`; });
+  if (d) {
     out.push(`<defs><mask id="dispersion-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="${AW}" height="${AH}"><rect width="${AW}" height="${AH}" fill="#fff"/><path fill="#000" d="${d}"/></mask></defs>`);
     out.push(`<g mask="url(#dispersion-cut)">${original}</g>`);
   } else out.push(original);
-  const it = gen.items, round = st.dot === 'circle';
+  const it = state.items, round = st.dot === 'circle';
   for (const g of groups(it)) {
     let d = '';
     for (const i of g.idx) {
@@ -484,8 +543,8 @@ function toSvg(gen, st) {
 
 // ---------- UI ----------
 const $ = s => document.querySelector(s);
-const cv = $('#cv'), ov = $('#ov'), frame = $('#frame'), stage = $('#stage'), cursor = $('#cursor');
-let gen = null, genKey = '', raf = 0, ovVer = -1, painting = false;
+const cv = $('#cv'), frame = $('#frame'), stage = $('#stage'), cursor = $('#cursor');
+let view = null, raf = 0;
 
 const pct = v => Math.round(v * 100) + '%';
 const SLIDERS = {
@@ -494,11 +553,11 @@ const SLIDERS = {
   offY: { label: 'Posición vertical', min: -.5, max: .5, step: .005, fmt: pct },
   brush: { label: 'Tamaño del pincel', min: 10, max: 500, step: 5, fmt: v => v + ' px' },
   soft: { label: 'Suavidad', min: 0, max: 1, step: .01, fmt: pct },
-  flow: { label: 'Intensidad por pasada', min: .02, max: 1, step: .01, fmt: pct },
-  amount: { label: 'Desintegración', min: 0, max: 1, step: .01, fmt: pct, emph: true },
+  strength: { label: 'Fuerza por pasada', min: .05, max: 1.5, step: .01, fmt: pct, emph: true },
+  amount: { label: 'Desprendimiento', min: 0, max: 1, step: .01, fmt: pct },
   cell: { label: 'Tamaño de partícula', min: 2, max: 40, step: 1, fmt: v => v + ' px' },
   frag: { label: 'Fragmentación', min: 0, max: 1, step: .01, fmt: pct },
-  dist: { label: 'Distancia', min: 0, max: 1, step: .01, fmt: pct, emph: true },
+  dist: { label: 'Distancia por pasada', min: 0, max: .6, step: .005, fmt: pct, emph: true },
   spread: { label: 'Apertura', min: 0, max: 1, step: .01, fmt: pct },
   turb: { label: 'Turbulencia', min: 0, max: 1, step: .01, fmt: pct },
   irreg: { label: 'Irregularidad', min: 0, max: 1, step: .01, fmt: pct },
@@ -521,8 +580,7 @@ $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseIn
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('#reseed').addEventListener('click', reseed);
 $('#undo').addEventListener('click', undo);
-$('#mask-invert').addEventListener('click', () => { pushUndo(); for (let k = 0; k < mask.length; k++) mask[k] = Math.max(0, 1 - mask[k]); maskChanged(); schedule(); });
-$('#mask-clear').addEventListener('click', () => { pushUndo(); mask.fill(0); dirX.fill(0); dirY.fill(0); maskChanged(); schedule(); });
+$('#reset').addEventListener('click', resetPasses);
 addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
   if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
@@ -539,7 +597,6 @@ function paintSwatch(el, hex) {
   el.querySelector('[data-hex]').textContent = hex.toUpperCase();
   const inp = el.querySelector('input'); if (inp.value !== hex) inp.value = hex;
 }
-
 function sync() {
   for (const key of Object.keys(SLIDERS)) {
     const input = $('#in-' + key), d = SLIDERS[key];
@@ -551,7 +608,7 @@ function sync() {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   const grad = S.tool === 'gradient';
-  $('#sl-brush').hidden = $('#sl-soft').hidden = $('#sl-flow').hidden = grad;
+  $('#sl-brush').hidden = $('#sl-soft').hidden = grad;
   frame.classList.toggle('gradient', grad);
   if (grad) cursor.hidden = true;
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
@@ -568,8 +625,8 @@ function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(ren
 function render() {
   if (!src) return;
   rasterize();
-  const gk = JSON.stringify([rasterKey, maskVer, S.seed, S.amount, S.cell, S.frag, S.dist, S.spread, S.turb, S.irreg]);
-  if (gk !== genKey) { gen = disintegrate(S); genKey = gk; }
+  view = committed();
+  if (live) view = applyPass(view, live.s, live.f, strokes.length);
   const { w, h } = fit();
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.paper;
   const dpr = devicePixelRatio || 1;
@@ -577,22 +634,13 @@ function render() {
   const ctx = cv.getContext('2d');
   ctx.setTransform(cv.width / AW, 0, 0, cv.height / AH, 0, 0);
   ctx.clearRect(0, 0, AW, AH);
-  draw(ctx, gen, S);
-  if (ovVer !== maskVer) paintOverlay();
-  frame.classList.toggle('show-mask', S.showMask || painting);
-  $('#stats').textContent = `${(gen.items.length / STRIDE).toLocaleString('es')} partículas · ${AW} × ${AH} · exporta a ${AW * RES} × ${AH * RES} px`;
-}
-function paintOverlay() {
-  ov.width = MW; ov.height = MH;
-  const ctx = ov.getContext('2d'), img = ctx.createImageData(MW, MH), d = img.data;
-  for (let k = 0; k < mask.length; k++) { d[k * 4] = 255; d[k * 4 + 1] = 90; d[k * 4 + 2] = 31; d[k * 4 + 3] = (1 - Math.exp(-mask[k] * 1.2)) * 150; }
-  ctx.putImageData(img, 0, 0);
-  ovVer = maskVer;
+  draw(ctx, view, S);
+  const n = strokes.length;
+  $('#stats').textContent = `${(view.items.length / STRIDE).toLocaleString('es')} partículas · ${n} ${n === 1 ? 'pasada' : 'pasadas'} · ${AW} × ${AH} · exporta a ${AW * RES} × ${AH * RES} px`;
 }
 new ResizeObserver(schedule).observe(stage);
 
 // ---------- Painting ----------
-let last = null, gradFrom = null, stroked = false;
 function toImage(e) {
   const r = frame.getBoundingClientRect();
   return [(e.clientX - r.left) / r.width * AW, (e.clientY - r.top) / r.height * AH];
@@ -603,13 +651,6 @@ function moveCursor(e) {
   cursor.hidden = false;
   cursor.style.width = cursor.style.height = d + 'px';
   cursor.style.left = (e.clientX - r.left) + 'px'; cursor.style.top = (e.clientY - r.top) + 'px';
-}
-function strokeTo(p) {
-  const dx = p[0] - last[0], dy = p[1] - last[1], dist = Math.hypot(dx, dy);
-  if (dist < S.brush * .05) return;
-  const ux = dx / dist, uy = dy / dist, n = Math.max(1, Math.ceil(dist / (S.brush * .2)));
-  for (let k = 1; k <= n; k++) stamp(lerp(last[0], p[0], k / n), lerp(last[1], p[1], k / n), S.brush, S.soft, S.tool === 'erase', ux, uy, S.flow);
-  last = p; stroked = true; maskChanged(); schedule();
 }
 function showGuide(a, b) {
   const r = frame.getBoundingClientRect(), k = r.width / AW, g = $('#guide');
@@ -622,24 +663,42 @@ function showGuide(a, b) {
 frame.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !src) return;
   frame.setPointerCapture(e.pointerId);
-  painting = true; pushUndo();
-  if (S.tool === 'gradient') { gradFrom = toImage(e); showGuide(gradFrom, gradFrom); schedule(); }
-  else { last = toImage(e); stroked = false; moveCursor(e); schedule(); }
+  const p = toImage(e);
+  if (S.tool === 'gradient') { live = { s: { tool: 'gradient', a: p, b: p }, f: newField() }; showGuide(p, p); }
+  else {
+    const s = { tool: S.tool, brush: S.brush, soft: S.soft, pts: [p] };
+    live = { s, f: fieldOf(s) };
+    moveCursor(e);
+  }
+  schedule();
 });
 frame.addEventListener('pointermove', e => {
   moveCursor(e);
-  if (!painting) return;
-  if (gradFrom) { const p = toImage(e); showGuide(gradFrom, p); gradient(gradFrom, p); maskChanged(); schedule(); }
-  else strokeTo(toImage(e));
+  if (!live) return;
+  const p = toImage(e), s = live.s;
+  if (s.tool === 'gradient') { s.b = p; live.f = fieldOf(s); showGuide(s.a, p); }
+  else {
+    const prev = s.pts[s.pts.length - 1];
+    if (Math.hypot(p[0] - prev[0], p[1] - prev[1]) < s.brush * .05) return;
+    addSegment(live.f, s, prev, p); s.pts.push(p);
+  }
+  schedule();
 });
+// Releasing commits the pass: the result becomes the new starting point.
 const endStroke = () => {
-  if (!painting) return;
-  if (last && !stroked) { stamp(last[0], last[1], S.brush, S.soft, S.tool === 'erase', 0, 0, S.flow); maskChanged(); }
-  painting = false; last = gradFrom = null; $('#guide').hidden = true; schedule();
+  if (!live) return;
+  const { s, f } = live;
+  live = null; $('#guide').hidden = true;
+  if (s.tool !== 'gradient' || s.a[0] !== s.b[0] || s.a[1] !== s.b[1]) {
+    const next = applyPass(committed(), s, f, strokes.length);
+    strokes.push(s); histVer++;
+    base = next; baseKey = settingsKey() + '|' + histVer;
+  }
+  schedule();
 };
 frame.addEventListener('pointerup', endStroke);
 frame.addEventListener('pointercancel', endStroke);
-frame.addEventListener('pointerleave', () => { if (!painting) cursor.hidden = true; });
+frame.addEventListener('pointerleave', () => { if (!live) cursor.hidden = true; });
 
 // ---------- Input ----------
 async function openFile(file) {
@@ -648,7 +707,7 @@ async function openFile(file) {
   if (!isSvg && !file.type.startsWith('image/')) return toast('Eso no parece un SVG.');
   try {
     if (isSvg) await loadSvgText(await file.text()); else await loadRaster(file);
-    schedule(); toast('Cargado. Pintá la zona a desintegrar.');
+    resetPasses(); toast('Cargado. Pintá para dispersar.');
   } catch { toast('No se pudo leer el archivo.'); }
 }
 $('#upload').addEventListener('click', () => $('#file').click());
@@ -664,7 +723,7 @@ addEventListener('paste', async e => {
   if (item) return openFile(item.getAsFile());
   const text = e.clipboardData?.getData('text/plain')?.trim();
   if (text && /^(<\?xml[^>]*>\s*)?<svg\b/i.test(text)) {
-    try { await loadSvgText(text); schedule(); toast('SVG pegado. Pintá la zona a desintegrar.'); }
+    try { await loadSvgText(text); resetPasses(); toast('SVG pegado. Pintá para dispersar.'); }
     catch { toast('No se pudo leer el SVG.'); }
   }
 });
@@ -681,18 +740,15 @@ $('#png').addEventListener('click', () => {
   const c = document.createElement('canvas'); c.width = AW * RES; c.height = AH * RES;
   const ctx = c.getContext('2d');
   ctx.setTransform(RES, 0, 0, RES, 0, 0);
-  draw(ctx, gen, S);
+  draw(ctx, view, S);
   if (S.bgExport) { ctx.globalCompositeOperation = 'destination-over'; ctx.fillStyle = S.paper; ctx.fillRect(0, 0, AW, AH); }
   c.toBlob(b => b ? download(`dispersion-v2-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
 });
-$('#svg').addEventListener('click', () => download(`dispersion-v2-${S.seed}.svg`, new Blob([toSvg(gen, S)], { type: 'image/svg+xml' })));
+$('#svg').addEventListener('click', () => download(`dispersion-v2-${S.seed}.svg`, new Blob([toSvg(view, S)], { type: 'image/svg+xml' })));
 
-// Start with the sample and a left-to-right ramp, so it reads as a progressive dissolve to the right.
+// Start with the sample, untouched.
 sync();
-loadSvgText(SAMPLE_SVG).then(() => {
-  const r = placement();
-  gradient([r.x + r.w * .3, 0], [r.x + r.w, 0]); maskChanged(); schedule();
-});
+loadSvgText(SAMPLE_SVG).then(resetPasses);
 </script>
 </body>
 </html>
