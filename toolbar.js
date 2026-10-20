@@ -4,6 +4,7 @@
   const EXPLORATIONS = [
     { name: 'Cube Noise', path: '' },
     { name: 'Cube Dispersion', path: 'cube-dispersion/' },
+    { name: 'Dispersion v2', path: 'dispersion-v2/' },
   ];
 
   const script = document.currentScript;

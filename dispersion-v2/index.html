@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dispersion v2</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --page: #f4f2ee;
+  --stage: #e9e6e0;
+  --surface: #fbfaf8;
+  --fill: #efece7;
+  --line: #dcd7cf;
+  --text: #1a1714;
+  --text-2: #5e5850;
+  --text-3: #8f887e;
+  --accent: #1a1714;
+  --accent-text: #fbfaf8;
+  --font: Inter, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+    --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+  --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; background: var(--page); color: var(--text); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
+
+.app { display: grid; flex: 1; min-height: 0; grid-template-columns: 1fr 280px; }
+main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding-bottom: 32px; }
+.frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); touch-action: none; cursor: none; }
+.frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity .15s ease-out; }
+.frame.busy #cv { opacity: .6; }
+.frame #ov { pointer-events: none; opacity: 0; transition: opacity .2s ease-out; }
+.frame.show-mask #ov { opacity: 1; }
+.cursor { position: absolute; left: 0; top: 0; pointer-events: none; border-radius: 50%; border: 1px solid #fff; mix-blend-mode: difference; transform: translate(-50%, -50%); }
+.cursor.erase { border-style: dashed; }
+.drop { position: absolute; inset: 12px; display: grid; place-items: center; border-radius: 12px; border: 1.5px dashed var(--text-2); background: color-mix(in srgb, var(--stage) 85%, transparent); color: var(--text); font-weight: 500; pointer-events: none; z-index: 2; }
+.hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; white-space: nowrap;
+  background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
+.hud kbd { font: 500 11px var(--mono); color: var(--text); }
+.hud .dim { color: var(--text-3); }
+
+aside { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-left: 1px solid var(--line); }
+.controls { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 24px; }
+section { display: flex; flex-direction: column; gap: 10px; }
+h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.hint { margin: 0; color: var(--text-3); font-size: 12px; }
+
+.seg { display: flex; background: var(--fill); border-radius: 8px; padding: 2px; gap: 2px; }
+.seg button { flex: 1; border: 0; background: transparent; color: var(--text-2); font: 500 12px var(--font); height: 26px; border-radius: 6px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .08), 0 0 0 1px var(--line); }
+.seg button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.slider { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; }
+.slider label { color: var(--text-2); font-size: 12px; }
+.slider output { font: 12px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.slider input { grid-column: 1 / -1; }
+.slider.emph label { color: var(--text); font-weight: 500; }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; margin: 0; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(var(--text), var(--text)) 0 / var(--p, 50%) 100% no-repeat, var(--line); }
+input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line); }
+input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--text); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text); }
+input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text); }
+
+.row { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; align-items: center; }
+.row > span { color: var(--text-2); font-size: 12px; }
+.btns { display: flex; gap: 6px; }
+.btns .btn { flex: 1; }
+.text { font: 12px var(--mono); height: 28px; min-width: 0; border-radius: 8px; border: 0; background: var(--fill); color: var(--text); padding: 0 8px; box-shadow: inset 0 0 0 1px var(--line); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 0; background: var(--fill);
+  color: var(--text); font: 500 12px var(--font); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); }
+.btn:hover { background: var(--line); }
+.btn.icon { width: 28px; padding: 0; }
+.btn.primary { background: var(--accent); color: var(--accent-text); box-shadow: none; }
+.btn.primary:hover { opacity: .9; }
+.btn.big { height: 40px; width: 100%; border-radius: 12px; }
+.btn:disabled { opacity: .5; cursor: default; }
+
+.swatch { position: relative; display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px 0 4px; border-radius: 8px; background: var(--fill); box-shadow: inset 0 0 0 1px var(--line); font: 12px var(--mono); min-width: 0; }
+.swatch i { width: 20px; height: 20px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); flex: none; }
+.swatch input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.check { display: flex; gap: 8px; align-items: center; color: var(--text-2); font-size: 12px; cursor: pointer; }
+.check input { accent-color: var(--text); margin: 0; }
+
+footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--surface); color: var(--text); padding: 6px 12px; border-radius: 8px; box-shadow: 0 0 0 1px var(--line); font-size: 12px; z-index: 5; }
+[hidden] { display: none !important; }
+
+@media (max-width: 767px) {
+  html, body { height: auto; min-height: 100%; }
+  .app { flex: none; grid-template-columns: 1fr; grid-template-rows: minmax(300px, 55vh) auto; }
+  aside { border-left: 0; border-top: 1px solid var(--line); }
+  .controls { overflow: visible; }
+  .hud .dim { display: none; }
+}
+.frame.gradient { cursor: crosshair; }
+.guide { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.guide line { stroke: #fff; stroke-width: 1.5; stroke-dasharray: 4 3; mix-blend-mode: difference; }
+.guide circle { fill: #fff; mix-blend-mode: difference; }
+</style>
+</head>
+<body>
+<script src="../toolbar.js"></script>
+<div class="app">
+  <main id="stage">
+    <div class="frame" id="frame">
+      <canvas id="cv" role="img" aria-label="SVG desintegrándose en partículas"></canvas>
+      <canvas id="ov" aria-hidden="true"></canvas>
+      <svg class="guide" id="guide" hidden aria-hidden="true"><line id="guide-line"/><circle id="guide-a" r="4"/><circle id="guide-b" r="4"/></svg>
+      <div class="cursor" id="cursor" hidden></div>
+    </div>
+    <div class="drop" id="drop" hidden>Soltá el SVG</div>
+    <div class="hud"><span id="stats">—</span><span class="dim"><kbd>B</kbd> pincel · <kbd>E</kbd> borrar · <kbd>G</kbd> degradado · <kbd>⌘Z</kbd> deshacer</span></div>
+  </main>
+
+  <aside>
+    <div class="controls">
+      <section>
+        <h2>SVG</h2>
+        <button class="btn" id="upload">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10.5V2.5M4.5 6 8 2.5 11.5 6"/><path d="M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2"/></svg>
+          Subir SVG
+        </button>
+        <input type="file" id="file" accept=".svg,image/svg+xml,image/*" hidden>
+        <p class="hint">También podés arrastrarlo o pegar el código del SVG (por ejemplo, “Copiar como SVG” en Figma).</p>
+      </section>
+
+      <section>
+        <h2>Selección</h2>
+        <p class="hint">Pintá o arrastrá un degradado: cuanto más fuerte la selección, más se desintegra.</p>
+        <div class="seg" data-key="tool" aria-label="Herramienta">
+          <button data-v="paint">Pincel</button><button data-v="erase">Borrar</button><button data-v="gradient">Degradado</button>
+        </div>
+        <div id="sl-brush"></div>
+        <div id="sl-soft"></div>
+        <div class="btns">
+          <button class="btn" id="undo">Deshacer</button>
+          <button class="btn" id="mask-invert">Invertir</button>
+          <button class="btn" id="mask-clear">Limpiar</button>
+        </div>
+        <label class="check"><input type="checkbox" data-check="showMask"> Mostrar selección</label>
+      </section>
+
+      <section>
+        <h2>Desintegración</h2>
+        <div class="seg" data-key="dot" aria-label="Forma de las partículas">
+          <button data-v="square">Píxel</button><button data-v="circle">Punto</button>
+        </div>
+        <div id="sl-amount"></div>
+        <div id="sl-cell"></div>
+        <div id="sl-frag"></div>
+        <div id="sl-endScale"></div>
+        <div id="sl-trail"></div>
+      </section>
+
+      <section>
+        <h2>Movimiento</h2>
+        <div class="seg" data-key="mode" aria-label="Modo de dispersión">
+          <button data-v="dir">Dirección</button><button data-v="radial">Radial</button><button data-v="flow">Flujo</button>
+        </div>
+        <div id="sl-angle"></div>
+        <div id="sl-dist"></div>
+        <div id="sl-spread"></div>
+        <div id="sl-turb"></div>
+        <div id="sl-irreg"></div>
+        <div class="row">
+          <span>Semilla</span>
+          <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
+          <button class="btn icon" id="reseed" title="Nueva semilla (R)" aria-label="Nueva semilla">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg>
+          </button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Fondo</h2>
+        <div class="row" style="grid-template-columns:56px 1fr">
+          <span>Color</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="paper" aria-label="Fondo"></label>
+        </div>
+        <label class="check"><input type="checkbox" data-check="bgExport"> Incluir fondo al exportar</label>
+      </section>
+    </div>
+    <footer>
+      <button class="btn primary big" id="png">Exportar PNG</button>
+      <button class="btn big" id="svg">Exportar SVG</button>
+    </footer>
+  </aside>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+// ---------- State ----------
+const LONG = 3000;   // export size of the long side
+const MASK = 320;    // selection mask, long side
+const SVGNS = 'http://www.w3.org/2000/svg';
+const DEFAULTS = {
+  seed: 1,
+  tool: 'paint', brush: 260, soft: .6, showMask: false,
+  dot: 'square', amount: .9, cell: 10, frag: .55, endScale: .5, trail: .15,
+  mode: 'dir', angle: 0, dist: .22, spread: .25, turb: .4, irreg: .5,
+  paper: '#ede6da', bgExport: false,
+};
+const S = structuredClone(DEFAULTS);
+
+// ---------- Noise ----------
+function rng(seed) {
+  let a = seed >>> 0 || 1;
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+function perlin(rand) {
+  const p = new Uint8Array(512);
+  for (let i = 0; i < 256; i++) p[i] = i;
+  for (let i = 255; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
+  for (let i = 0; i < 256; i++) p[i + 256] = p[i];
+  const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
+  const g = (h, x, y) => { switch (h & 7) { case 0: return x + y; case 1: return -x + y; case 2: return x - y; case 3: return -x - y; case 4: return x; case 5: return -x; case 6: return y; default: return -y; } };
+  return (x, y) => {
+    const X = Math.floor(x), Y = Math.floor(y), xf = x - X, yf = y - Y, xi = X & 255, yi = Y & 255;
+    const u = fade(xf), v = fade(yf);
+    const aa = p[p[xi] + yi], ab = p[p[xi] + yi + 1], ba = p[p[xi + 1] + yi], bb = p[p[xi + 1] + yi + 1];
+    const x1 = g(aa, xf, yf) + u * (g(ba, xf - 1, yf) - g(aa, xf, yf));
+    const x2 = g(ab, xf, yf - 1) + u * (g(bb, xf - 1, yf - 1) - g(ab, xf, yf - 1));
+    return x1 + v * (x2 - x1);
+  };
+}
+// Two-octave noise with a few independent offsets (o picks the channel).
+function noiseKit(seed) {
+  const rand = rng(seed * 7919 + 13), n = perlin(rand);
+  const off = Array.from({ length: 6 }, () => rand() * 200);
+  return (x, y, o) => n(x + off[o], y + off[o + 1]) * .67 + n(x * 2.03 + off[o], y * 2.03 + off[o + 1]) * .33;
+}
+// Stateless per-cell random, so painting one area never reshuffles the rest.
+function hash(a, b) {
+  let t = Math.imul(a ^ 0x9E3779B9, 0x85EBCA6B) ^ Math.imul(b + 0x632BE5AB, 0xC2B2AE35);
+  t ^= t >>> 15; t = Math.imul(t, 0x2C1B3C6D); t ^= t >>> 12; t = Math.imul(t, 0x297A2D39); t ^= t >>> 15;
+  return (t >>> 0) / 4294967296;
+}
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+
+// ---------- Source ----------
+// The source stays a crisp raster of the SVG at export size; only the cut cells are replaced by particles.
+let src = null, srcId = 0;
+let mask = null, MW = 0, MH = 0, maskVer = 0, centroid = [0, 0];
+const undoStack = [];
+
+function fitSize(w, h) { return w >= h ? [LONG, Math.round(LONG * h / w)] : [Math.round(LONG * w / h), LONG]; }
+async function loadSvgText(text) {
+  if (!/xmlns\s*=\s*["']http:\/\/www\.w3\.org\/2000\/svg/.test(text)) text = text.replace(/<svg\b/, `<svg xmlns="${SVGNS}"`);
+  const doc = new DOMParser().parseFromString(text, 'image/svg+xml'), root = doc.documentElement;
+  if (doc.querySelector('parsererror') || root.localName !== 'svg') throw new Error('svg inválido');
+  const num = a => { const v = root.getAttribute(a); return v && !v.trim().endsWith('%') ? parseFloat(v) : NaN; };
+  let w = num('width'), h = num('height');
+  let vb = (root.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+  if (vb.length !== 4 || vb.some(isNaN) || vb[2] <= 0 || vb[3] <= 0) {
+    vb = [0, 0, w > 0 ? w : 300, h > 0 ? h : 150];
+    root.setAttribute('viewBox', vb.join(' '));
+  }
+  const [W, H] = w > 0 && h > 0 ? fitSize(w, h) : fitSize(vb[2], vb[3]);
+  root.setAttribute('width', W); root.setAttribute('height', H);
+  const svg = new XMLSerializer().serializeToString(root);
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  try {
+    const img = new Image(); img.src = url; await img.decode();
+    setSource(img, W, H, { svg });
+  } finally { URL.revokeObjectURL(url); }
+}
+async function loadRaster(file) {
+  const href = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+  const img = new Image(); img.src = href; await img.decode();
+  const [W, H] = fitSize(img.naturalWidth, img.naturalHeight);
+  setSource(img, W, H, { href });
+}
+function setSource(img, W, H, extra) {
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(img, 0, 0, W, H);
+  src = { W, H, canvas: c, data: ctx.getImageData(0, 0, W, H).data, svg: null, href: null, ...extra };
+  srcId++;
+  MW = Math.max(2, Math.round(MASK * W / LONG)); MH = Math.max(2, Math.round(MASK * H / LONG));
+  mask = new Float32Array(MW * MH); undoStack.length = 0;
+}
+
+const SAMPLE_SVG = `<svg xmlns="${SVGNS}" viewBox="0 0 1200 800" width="1200" height="800">
+  <circle cx="830" cy="330" r="210" fill="#e4572e"/>
+  <g transform="translate(470 420)">
+    <path d="M0 -260 L225 -130 L0 0 L-225 -130Z" fill="#8a8278"/>
+    <path d="M-225 -130 L0 0 L0 260 L-225 130Z" fill="#1a1714"/>
+    <path d="M0 0 L225 -130 L225 130 L0 260Z" fill="#4a443d"/>
+  </g>
+  <rect x="160" y="700" width="880" height="24" fill="#1a1714"/>
+</svg>`;
+
+// ---------- Selection mask ----------
+function maskChanged() {
+  maskVer++;
+  let sw = 0, sx = 0, sy = 0;
+  for (let j = 0; j < MH; j++) for (let i = 0; i < MW; i++) { const m = mask[j * MW + i]; sw += m; sx += m * (i + .5); sy += m * (j + .5); }
+  centroid = sw > 0 ? [sx / sw / MW * src.W, sy / sw / MH * src.H] : [src.W / 2, src.H / 2];
+}
+function maskAt(x, y) {
+  const fx = x / src.W * MW - .5, fy = y / src.H * MH - .5;
+  const i = Math.floor(fx), j = Math.floor(fy), u = fx - i, v = fy - j;
+  const i0 = clamp(i, 0, MW - 1), i1 = clamp(i + 1, 0, MW - 1), j0 = clamp(j, 0, MH - 1), j1 = clamp(j + 1, 0, MH - 1);
+  return (mask[j0 * MW + i0] * (1 - u) + mask[j0 * MW + i1] * u) * (1 - v) + (mask[j1 * MW + i0] * (1 - u) + mask[j1 * MW + i1] * u) * v;
+}
+function stamp(x, y, r, soft, erase) {
+  const sx = MW / src.W, sy = MH / src.H, cx = x * sx, cy = y * sy, rx = r * sx, ry = r * sy, hard = 1 - soft;
+  for (let j = Math.max(0, Math.floor(cy - ry)); j <= Math.min(MH - 1, Math.ceil(cy + ry)); j++) {
+    for (let i = Math.max(0, Math.floor(cx - rx)); i <= Math.min(MW - 1, Math.ceil(cx + rx)); i++) {
+      const d = Math.hypot((i + .5 - cx) / rx, (j + .5 - cy) / ry);
+      if (d >= 1) continue;
+      let v = 1;
+      if (d > hard) { const t = (d - hard) / (1 - hard); v = 1 - t * t * (3 - 2 * t); }
+      const k = j * MW + i;
+      mask[k] = erase ? Math.min(mask[k], 1 - v) : Math.max(mask[k], v);
+    }
+  }
+}
+// Replaces the selection with a ramp: 0 at a, 1 at b.
+function gradient(a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1;
+  for (let j = 0; j < MH; j++) for (let i = 0; i < MW; i++) {
+    const x = (i + .5) / MW * src.W, y = (j + .5) / MH * src.H;
+    const t = clamp(((x - a[0]) * dx + (y - a[1]) * dy) / l2);
+    mask[j * MW + i] = t * t * (3 - 2 * t);
+  }
+}
+function pushUndo() { undoStack.push(mask.slice()); if (undoStack.length > 40) undoStack.shift(); }
+function undo() { if (!undoStack.length) return; mask = undoStack.pop(); maskChanged(); schedule(); }
+
+// ---------- Generation ----------
+const STRIDE = 5; // x, y, size, rgb, alpha
+const SAMPLES = [[.5, .5], [.2, .2], [.8, .2], [.2, .8], [.8, .8]];
+function buffer(n) { return { a: new Float32Array(Math.max(64, n) * STRIDE), n: 0 }; }
+function push(b, x, y, s, c, al) {
+  if ((b.n + 1) * STRIDE > b.a.length) { const a = new Float32Array(b.a.length * 2); a.set(b.a); b.a = a; }
+  const o = b.n++ * STRIDE;
+  b.a[o] = x; b.a[o + 1] = y; b.a[o + 2] = s; b.a[o + 3] = c; b.a[o + 4] = al;
+}
+
+// Selected cells are cut out of the SVG and break into k×k particles (k grows with the selection),
+// each taking the color underneath and drifting along a path whose length also grows with the selection.
+function disintegrate(st) {
+  const { W, H, data } = src, cell = st.cell;
+  const cols = Math.ceil(W / cell), rows = Math.ceil(H / cell);
+  const unit = Math.min(W, H), far = Math.max(W, H);
+  const noise = noiseKit(st.seed), tf = 2.4 / unit, sf = 7 / unit;
+  const ang = st.angle * Math.PI / 180, ca = Math.cos(ang), sa = Math.sin(ang);
+  const turb = st.mode === 'flow' ? 1 : st.turb * 1.6;
+  const N = 10, px = new Float32Array(N + 1), py = new Float32Array(N + 1);
+  const sb = st.seed * 64;
+  const cuts = [], parts = buffer(4096);
+  const pixel = (x, y) => (clamp(y | 0, 0, H - 1) * W + clamp(x | 0, 0, W - 1)) * 4;
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const cx = (i + .5) * cell, cy = (j + .5) * cell, m = maskAt(cx, cy);
+    if (m <= .002) continue;
+    const id = j * cols + i;
+    // Low-frequency streaks make neighbouring cells crumble (and travel) together.
+    const streak = clamp(.55 + noise(cx * sf, cy * sf, 2) * 1.8, .05, 1.3);
+    if (hash(id, sb) >= st.amount * m * lerp(1, streak, st.irreg)) continue;
+    cuts.push(i * cell, j * cell);
+    const k = Math.min(4, 1 + Math.floor(st.frag * m * 3 + hash(id, sb + 1)));
+    const sub = cell / k;
+    for (let b = 0; b < k; b++) for (let a = 0; a < k; a++) {
+      const sid = id * 16 + b * 4 + a, x0 = i * cell + a * sub, y0 = j * cell + b * sub;
+      // Keep the most opaque of a few samples so thin strokes don't vanish.
+      let q = -1, al = 0;
+      for (const [u, v] of SAMPLES) { const p = pixel(x0 + u * sub, y0 + v * sub); if (data[p + 3] > al) { al = data[p + 3]; q = p; } }
+      if (al < 24) continue;
+      const col = data[q] << 16 | data[q + 1] << 8 | data[q + 2];
+      const x = x0 + sub / 2, y = y0 + sub / 2;
+      let dx = 0, dy = 0;
+      if (st.mode === 'dir') { dx = ca; dy = sa; }
+      else if (st.mode === 'radial') {
+        dx = x - centroid[0]; dy = y - centroid[1];
+        const l = Math.hypot(dx, dy);
+        if (l < 1e-3) { const r = hash(sid, sb + 2) * Math.PI * 2; dx = Math.cos(r); dy = Math.sin(r); } else { dx /= l; dy /= l; }
+      }
+      const rot = (hash(sid, sb + 3) - .5) * st.spread * Math.PI, rc = Math.cos(rot), rs = Math.sin(rot);
+      const L = st.dist * far * m ** 1.4 * lerp(1, .2 + .8 * hash(sid, sb + 4), st.irreg * .8) * lerp(1, streak, st.irreg), step = L / N;
+      px[0] = x; py[0] = y;
+      for (let n = 1; n <= N; n++) {
+        const r = noise(px[n - 1] * tf, py[n - 1] * tf, 0) * Math.PI * 3;
+        let vx = dx + turb * Math.cos(r), vy = dy + turb * Math.sin(r);
+        const l = Math.hypot(vx, vy) || 1; vx /= l; vy /= l;
+        px[n] = px[n - 1] + (vx * rc - vy * rs) * step;
+        py[n] = py[n - 1] + (vx * rs + vy * rc) * step;
+      }
+      const end = sub * lerp(1, st.endScale, m);
+      const echoes = Math.floor(st.trail * 6 * m * (.35 + .65 * hash(sid, sb + 5)) + hash(sid, sb + 6));
+      for (let e = 1; e <= echoes; e++) {
+        const t = clamp((e + (hash(sid, sb + 10 + e) - .5) * .8) / (echoes + 1), 0, 1);
+        const f = t * N, n0 = Math.min(N - 1, f | 0), u = f - n0;
+        push(parts, px[n0] + (px[n0 + 1] - px[n0]) * u, py[n0] + (py[n0 + 1] - py[n0]) * u,
+          lerp(sub, end, t) * (.45 + .4 * hash(sid, sb + 30 + e)), col, al);
+      }
+      push(parts, px[N], py[N], end, col, al);
+    }
+  }
+  return { W, H, cuts, items: parts.a.subarray(0, parts.n * STRIDE), cell };
+}
+
+// ---------- Rendering ----------
+// Particles batched per color (5 bits per channel, 4 alpha steps).
+function groups(it) {
+  const g = new Map();
+  for (let i = 0; i < it.length; i += STRIDE) {
+    const c = it[i + 3] & 0xF8F8F8, a = Math.max(1, Math.round(it[i + 4] / 255 * 4)), key = c * 8 + a;
+    let list = g.get(key); if (!list) g.set(key, list = []);
+    list.push(i);
+  }
+  return [...g].map(([key, idx]) => ({ hex: '#' + Math.floor(key / 8).toString(16).padStart(6, '0'), alpha: (key % 8) / 4, idx }));
+}
+function draw(ctx, gen, st) {
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src.canvas, 0, 0, gen.W, gen.H);
+  if (gen.cuts.length) {
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    for (let i = 0; i < gen.cuts.length; i += 2) ctx.rect(gen.cuts[i], gen.cuts[i + 1], gen.cell, gen.cell);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  const it = gen.items, round = st.dot === 'circle';
+  for (const g of groups(it)) {
+    ctx.fillStyle = g.hex; ctx.globalAlpha = g.alpha; ctx.beginPath();
+    for (const i of g.idx) {
+      const x = it[i], y = it[i + 1], s = it[i + 2];
+      if (round) { ctx.moveTo(x + s / 2, y); ctx.arc(x, y, s / 2, 0, Math.PI * 2); }
+      else ctx.rect(x - s / 2, y - s / 2, s, s);
+    }
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+function toSvg(gen, st) {
+  const r = v => Math.round(v * 10) / 10, { W, H } = gen, out = [];
+  out.push(`<svg xmlns="${SVGNS}" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`);
+  if (st.bgExport) out.push(`<rect width="100%" height="100%" fill="${st.paper}"/>`);
+  const c = gen.cell, original = src.svg || `<image href="${src.href}" width="${W}" height="${H}"/>`;
+  if (gen.cuts.length) {
+    let d = '';
+    for (let i = 0; i < gen.cuts.length; i += 2) d += `M${gen.cuts[i]} ${gen.cuts[i + 1]}h${c}v${c}h-${c}Z`;
+    out.push(`<defs><mask id="dispersion-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#fff"/><path fill="#000" shape-rendering="crispEdges" d="${d}"/></mask></defs>`);
+    out.push(`<g mask="url(#dispersion-cut)">${original}</g>`);
+  } else out.push(original);
+  const it = gen.items, round = st.dot === 'circle';
+  for (const g of groups(it)) {
+    let d = '';
+    for (const i of g.idx) {
+      const x = it[i], y = it[i + 1], s = it[i + 2];
+      d += round ? `M${r(x - s / 2)} ${r(y)}a${r(s / 2)} ${r(s / 2)} 0 1 0 ${r(s)} 0a${r(s / 2)} ${r(s / 2)} 0 1 0 ${r(-s)} 0Z`
+        : `M${r(x - s / 2)} ${r(y - s / 2)}h${r(s)}v${r(s)}h${r(-s)}Z`;
+    }
+    out.push(`<path fill="${g.hex}"${g.alpha < 1 ? ` fill-opacity="${g.alpha}"` : ''} d="${d}"/>`);
+  }
+  out.push('</svg>');
+  return out.join('');
+}
+
+// ---------- UI ----------
+const $ = s => document.querySelector(s);
+const cv = $('#cv'), ov = $('#ov'), frame = $('#frame'), stage = $('#stage'), cursor = $('#cursor');
+let gen = null, genKey = '', raf = 0, ovVer = -1, painting = false;
+
+const pct = v => Math.round(v * 100) + '%';
+const SLIDERS = {
+  brush: { label: 'Tamaño del pincel', min: 20, max: 900, step: 5, fmt: v => v + ' px' },
+  soft: { label: 'Suavidad', min: 0, max: 1, step: .01, fmt: pct },
+  amount: { label: 'Desintegración', min: 0, max: 1, step: .01, fmt: pct, emph: true },
+  cell: { label: 'Tamaño de partícula', min: 3, max: 60, step: 1, fmt: v => v + ' px' },
+  frag: { label: 'Fragmentación', min: 0, max: 1, step: .01, fmt: pct },
+  endScale: { label: 'Escala al dispersarse', min: .1, max: 1.5, step: .01, fmt: pct },
+  trail: { label: 'Estela', min: 0, max: 1, step: .01, fmt: pct },
+  angle: { label: 'Ángulo', min: 0, max: 360, step: 1, fmt: v => v + '°' },
+  dist: { label: 'Distancia', min: 0, max: 1, step: .01, fmt: pct, emph: true },
+  spread: { label: 'Apertura', min: 0, max: 1, step: .01, fmt: pct },
+  turb: { label: 'Turbulencia', min: 0, max: 1, step: .01, fmt: pct },
+  irreg: { label: 'Irregularidad', min: 0, max: 1, step: .01, fmt: pct },
+};
+for (const [key, d] of Object.entries(SLIDERS)) {
+  const host = $('#sl-' + key);
+  host.className = 'slider' + (d.emph ? ' emph' : '');
+  host.innerHTML = `<label for="in-${key}">${d.label}</label><output id="out-${key}"></output><input type="range" id="in-${key}" min="${d.min}" max="${d.max}" step="${d.step}" title="Doble clic para restablecer">`;
+  const input = host.querySelector('input');
+  input.addEventListener('input', () => { S[key] = +input.value; sync(); });
+  input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
+}
+document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  S[seg.dataset.key] = b.dataset.v; sync();
+}));
+document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
+document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
+$('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
+const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
+$('#reseed').addEventListener('click', reseed);
+$('#undo').addEventListener('click', undo);
+$('#mask-invert').addEventListener('click', () => { pushUndo(); for (let k = 0; k < mask.length; k++) mask[k] = 1 - mask[k]; maskChanged(); schedule(); });
+$('#mask-clear').addEventListener('click', () => { pushUndo(); mask.fill(0); maskChanged(); schedule(); });
+addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'r') reseed();
+  else if (k === 'b') { S.tool = 'paint'; sync(); }
+  else if (k === 'e') { S.tool = 'erase'; sync(); }
+  else if (k === 'g') { S.tool = 'gradient'; sync(); }
+  else if (k === '[' || k === ']') { const d = SLIDERS.brush; S.brush = clamp(Math.round(S.brush * (k === ']' ? 1.15 : 1 / 1.15) / 5) * 5, d.min, d.max); sync(); }
+});
+
+function paintSwatch(el, hex) {
+  el.querySelector('i').style.background = hex;
+  el.querySelector('[data-hex]').textContent = hex.toUpperCase();
+  const inp = el.querySelector('input'); if (inp.value !== hex) inp.value = hex;
+}
+
+function sync() {
+  for (const key of Object.keys(SLIDERS)) {
+    const input = $('#in-' + key), d = SLIDERS[key];
+    if (+input.value !== S[key]) input.value = S[key];
+    input.style.setProperty('--p', ((S[key] - d.min) / (d.max - d.min) * 100) + '%');
+    $('#out-' + key).textContent = d.fmt(S[key]);
+  }
+  document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
+  document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
+  const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
+  const grad = S.tool === 'gradient';
+  $('#sl-brush').hidden = $('#sl-soft').hidden = grad;
+  $('#sl-angle').hidden = S.mode !== 'dir';
+  $('#sl-turb').hidden = S.mode === 'flow';
+  frame.classList.toggle('gradient', grad);
+  if (grad) cursor.hidden = true;
+  document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
+  cursor.classList.toggle('erase', S.tool === 'erase');
+  schedule();
+}
+
+function fit() {
+  const { W, H } = src, r = stage.getBoundingClientRect();
+  const k = Math.max(0, Math.min((r.width - 64) / W, (r.height - 96) / H));
+  return { w: Math.round(W * k), h: Math.round(H * k), W, H };
+}
+function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
+function render() {
+  if (!src) return;
+  const gk = JSON.stringify([srcId, maskVer, S.seed, S.amount, S.cell, S.frag, S.endScale, S.trail, S.mode, S.angle, S.dist, S.spread, S.turb, S.irreg]);
+  if (gk !== genKey) { gen = disintegrate(S); genKey = gk; }
+  const { w, h, W, H } = fit();
+  frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.paper;
+  const dpr = devicePixelRatio || 1;
+  cv.width = Math.max(1, Math.round(w * dpr)); cv.height = Math.max(1, Math.round(h * dpr));
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  draw(ctx, gen, S);
+  if (ovVer !== maskVer) paintOverlay();
+  frame.classList.toggle('show-mask', S.showMask || painting);
+  $('#stats').textContent = `${(gen.items.length / STRIDE).toLocaleString('es')} partículas · ${W} × ${H} px`;
+}
+function paintOverlay() {
+  ov.width = MW; ov.height = MH;
+  const ctx = ov.getContext('2d'), img = ctx.createImageData(MW, MH), d = img.data;
+  for (let k = 0; k < mask.length; k++) { d[k * 4] = 255; d[k * 4 + 1] = 90; d[k * 4 + 2] = 31; d[k * 4 + 3] = mask[k] * 110; }
+  ctx.putImageData(img, 0, 0);
+  ovVer = maskVer;
+}
+new ResizeObserver(schedule).observe(stage);
+
+// ---------- Painting ----------
+let last = null, gradFrom = null;
+function toImage(e) {
+  const r = frame.getBoundingClientRect();
+  return [(e.clientX - r.left) / r.width * src.W, (e.clientY - r.top) / r.height * src.H];
+}
+function moveCursor(e) {
+  if (S.tool === 'gradient') return;
+  const r = frame.getBoundingClientRect(), d = 2 * S.brush * r.width / src.W;
+  cursor.hidden = false;
+  cursor.style.width = cursor.style.height = d + 'px';
+  cursor.style.left = (e.clientX - r.left) + 'px'; cursor.style.top = (e.clientY - r.top) + 'px';
+}
+function strokeTo(p) {
+  const erase = S.tool === 'erase';
+  if (!last) stamp(p[0], p[1], S.brush, S.soft, erase);
+  else {
+    const dist = Math.hypot(p[0] - last[0], p[1] - last[1]), n = Math.max(1, Math.ceil(dist / (S.brush * .2)));
+    for (let k = 1; k <= n; k++) stamp(lerp(last[0], p[0], k / n), lerp(last[1], p[1], k / n), S.brush, S.soft, erase);
+  }
+  last = p; maskChanged(); schedule();
+}
+function showGuide(a, b) {
+  const r = frame.getBoundingClientRect(), k = r.width / src.W, g = $('#guide');
+  g.hidden = false;
+  $('#guide-line').setAttribute('x1', a[0] * k); $('#guide-line').setAttribute('y1', a[1] * k);
+  $('#guide-line').setAttribute('x2', b[0] * k); $('#guide-line').setAttribute('y2', b[1] * k);
+  $('#guide-a').setAttribute('cx', a[0] * k); $('#guide-a').setAttribute('cy', a[1] * k);
+  $('#guide-b').setAttribute('cx', b[0] * k); $('#guide-b').setAttribute('cy', b[1] * k);
+}
+frame.addEventListener('pointerdown', e => {
+  if (e.button !== 0 || !src) return;
+  frame.setPointerCapture(e.pointerId);
+  painting = true; pushUndo();
+  if (S.tool === 'gradient') { gradFrom = toImage(e); showGuide(gradFrom, gradFrom); schedule(); }
+  else { last = null; strokeTo(toImage(e)); moveCursor(e); }
+});
+frame.addEventListener('pointermove', e => {
+  moveCursor(e);
+  if (!painting) return;
+  if (gradFrom) { const p = toImage(e); showGuide(gradFrom, p); gradient(gradFrom, p); maskChanged(); schedule(); }
+  else strokeTo(toImage(e));
+});
+const endStroke = () => { if (!painting) return; painting = false; last = gradFrom = null; $('#guide').hidden = true; schedule(); };
+frame.addEventListener('pointerup', endStroke);
+frame.addEventListener('pointercancel', endStroke);
+frame.addEventListener('pointerleave', () => { if (!painting) cursor.hidden = true; });
+
+// ---------- Input ----------
+async function openFile(file) {
+  if (!file) return;
+  const isSvg = file.type === 'image/svg+xml' || /\.svg$/i.test(file.name);
+  if (!isSvg && !file.type.startsWith('image/')) return toast('Eso no parece un SVG.');
+  try {
+    if (isSvg) await loadSvgText(await file.text()); else await loadRaster(file);
+    maskChanged(); schedule(); toast('Cargado. Pintá la zona a desintegrar.');
+  } catch { toast('No se pudo leer el archivo.'); }
+}
+$('#upload').addEventListener('click', () => $('#file').click());
+$('#file').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
+let dragDepth = 0;
+stage.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; $('#drop').hidden = false; });
+stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#drop').hidden = true; } });
+stage.addEventListener('dragover', e => e.preventDefault());
+stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; openFile(e.dataTransfer.files[0]); });
+addEventListener('paste', async e => {
+  if (e.target.closest('input, textarea')) return;
+  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+  if (item) return openFile(item.getAsFile());
+  const text = e.clipboardData?.getData('text/plain')?.trim();
+  if (text && /^(<\?xml[^>]*>\s*)?<svg\b/i.test(text)) {
+    try { await loadSvgText(text); maskChanged(); schedule(); toast('SVG pegado. Pintá la zona a desintegrar.'); }
+    catch { toast('No se pudo leer el SVG.'); }
+  }
+});
+
+// ---------- Export ----------
+let toastT = 0;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2400); }
+function download(name, blob) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast(name + ' descargado');
+}
+$('#png').addEventListener('click', () => {
+  const c = document.createElement('canvas'); c.width = gen.W; c.height = gen.H;
+  const ctx = c.getContext('2d');
+  draw(ctx, gen, S);
+  if (S.bgExport) { ctx.globalCompositeOperation = 'destination-over'; ctx.fillStyle = S.paper; ctx.fillRect(0, 0, gen.W, gen.H); }
+  c.toBlob(b => b ? download(`dispersion-v2-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
+});
+$('#svg').addEventListener('click', () => download(`dispersion-v2-${S.seed}.svg`, new Blob([toSvg(gen, S)], { type: 'image/svg+xml' })));
+
+// Start with the sample and a left-to-right ramp, so it reads as a progressive dissolve.
+sync();
+loadSvgText(SAMPLE_SVG).then(() => {
+  gradient([src.W * .35, 0], [src.W * .85, 0]); maskChanged(); schedule();
+});
+</script>
+</body>
+</html>
