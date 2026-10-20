@@ -222,7 +222,7 @@ const shadesFor = (c, st, lut) => st.colorMode === 'palette' ? lut.palette[c.n %
 // ---------- Trail ----------
 // Cubes are dropped every `gap` units along the pointer path. The gap grows with pointer speed,
 // so a slow pass lays them densely and a fast one spaces them out.
-let cubes = [], last = null, carry = 0, speed = 0, dropped = 0;
+let cubes = [], last = null, carry = 0, speed = 0, dropped = 0, strokes = 0;
 function addPoint(p, t) {
   if (!last) { last = { p, t }; carry = 0; return; }
   const dx = p[0] - last.p[0], dy = p[1] - last.p[1], d = Math.hypot(dx, dy);
@@ -243,7 +243,7 @@ function drop(x, y, t) {
   let s = S.size * Math.max(.2, 1 + S.variation * (Math.random() * 2 - 1) * .7);
   s *= clamp(1 + S.speedSize * Math.min(speed, 8) * .12, .15, 3);
   if (S.snap) { x = (Math.floor(x / S.size) + .5) * S.size; y = (Math.floor(y / S.size) + .5) * S.size; }
-  cubes.push({ x, y, s, k: Math.floor(Math.random() * SHADES), n: dropped++, t });
+  cubes.push({ x, y, s, k: Math.floor(Math.random() * SHADES), n: dropped++, g: strokes, t });
   if (cubes.length > MAX) cubes.splice(0, cubes.length - MAX);
   wake();
 }
@@ -297,7 +297,19 @@ function toSvg(now, st, lut) {
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW} ${AH}">`);
   if (st.bgExport) out.push(`<rect width="100%" height="100%" fill="${st.paper}"/>`);
   const pd = p => { let s = `M${r(p[0])} ${r(p[1])}`; for (let i = 2; i < p.length; i += 2) s += `L${r(p[i])} ${r(p[i + 1])}`; return s + 'Z'; };
-  eachRun(now, st, lut, (color, polys) => out.push(`<path fill="${color}" d="${polys.map(pd).join('')}"/>`));
+  // One group per stroke (click to release), one element per cube, so ungrouping leaves loose cubes.
+  let stroke = null, nStroke = 0, nCube = 0;
+  for (const c of cubes) {
+    const k = lifeScale(c, now); if (k <= 0) continue;
+    if (c.g !== stroke) { if (stroke !== null) out.push('</g>'); out.push(`<g id="trazo-${++nStroke}">`); stroke = c.g; }
+    const sh = shadesFor(c, st, lut), s = c.s * k, id = `cubo-${++nCube}`;
+    if (st.shape === 'flat') out.push(`<rect id="${id}" x="${r(c.x - s / 2)}" y="${r(c.y - s / 2)}" width="${r(s)}" height="${r(s)}" fill="${sh.base[c.k]}"/>`);
+    else {
+      const f = isoFaces(c.x, c.y, s / SQ3);
+      out.push(`<g id="${id}"><path fill="${sh.top[c.k]}" d="${pd(f.top)}"/><path fill="${sh.base[c.k]}" d="${pd(f.left)}"/><path fill="${sh.right[c.k]}" d="${pd(f.right)}"/></g>`);
+    }
+  }
+  if (stroke !== null) out.push('</g>');
   out.push('</svg>');
   return out.join('');
 }
@@ -404,7 +416,7 @@ let pressed = false;
 frame.addEventListener('pointerdown', e => {
   if (e.button !== 0) return;
   frame.setPointerCapture(e.pointerId);
-  pressed = true; speed = 0;
+  pressed = true; speed = 0; strokes++;
   const p = toArt(e);
   drop(p[0], p[1], e.timeStamp);
   last = { p, t: e.timeStamp }; carry = 0;
