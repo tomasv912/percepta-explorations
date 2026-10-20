@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cubos de ruido</title>
+<title>Cube Noise</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
 :root {
@@ -35,9 +35,9 @@
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { background: var(--page); color: var(--text); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
+body { display: flex; flex-direction: column; background: var(--page); color: var(--text); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
 
-.app { display: grid; height: 100%; grid-template-columns: 1fr 280px; }
+.app { display: grid; flex: 1; min-height: 0; grid-template-columns: 1fr 280px; }
 main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding-bottom: 32px; }
 .frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); }
 .frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity .15s ease-out; }
@@ -93,7 +93,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 [hidden] { display: none !important; }
 
 @media (max-width: 767px) {
-  .app { grid-template-columns: 1fr; grid-template-rows: minmax(300px, 55vh) auto; height: auto; min-height: 100%; }
+  html, body { height: auto; min-height: 100%; }
+  .app { flex: none; grid-template-columns: 1fr; grid-template-rows: minmax(300px, 55vh) auto; }
   aside { border-left: 0; border-top: 1px solid var(--line); }
   .controls { overflow: visible; }
   .hud .dim { display: none; }
@@ -101,6 +102,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 </style>
 </head>
 <body>
+<script src="toolbar.js"></script>
 <div class="app">
   <main id="stage">
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Cubos generados a partir de ruido"></canvas></div>
