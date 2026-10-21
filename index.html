@@ -247,11 +247,14 @@ function generate(st) {
     shade[got] = mono ? MONO_SHADE : Math.floor(r() * SHADES);
     got++;
   }
-  // Fit the projection to the frame: full width (bleeding a little), a generous band vertically.
-  const sx = [...px.subarray(0, got)].sort((a, b) => a - b), sy = [...py.subarray(0, got)].sort((a, b) => a - b);
-  const q = (s, t) => s[Math.floor(t * (s.length - 1))];
-  const x0 = q(sx, .005), x1 = q(sx, .995), y0 = q(sy, .01), y1 = q(sy, .99);
-  const X0 = -.02 * W, X1 = 1.02 * W, Y0 = .14 * H, Y1 = .86 * H;
+  // Fit the whole projection inside the frame, every pixel included: its exact extent (plus the largest
+  // pixel) is scaled into a box with a margin, so the waves shrink rather than get cut.
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, half = 0;
+  for (let i = 0; i < got; i++) {
+    x0 = Math.min(x0, px[i]); x1 = Math.max(x1, px[i]); y0 = Math.min(y0, py[i]); y1 = Math.max(y1, py[i]);
+    half = Math.max(half, size[i] / 2);
+  }
+  const mx = .05 * W + half, X0 = mx, X1 = W - mx, Y0 = .14 * H + half, Y1 = .86 * H - half;
   for (let i = 0; i < got; i++) { px[i] = X0 + (px[i] - x0) / (x1 - x0) * (X1 - X0); py[i] = Y0 + (py[i] - y0) / (y1 - y0) * (Y1 - Y0); }
   return { W, H, n: got, hx: px.slice(0, got), hy: py.slice(0, got), size: size.slice(0, got), shade: shade.slice(0, got) };
 }
@@ -293,6 +296,10 @@ function step(dt) {
     VX[i] += (Math.cos(ang) * sp - VX[i]) * steer; VY[i] += (Math.sin(ang) * sp - VY[i]) * steer;
     VX[i] *= damp; VY[i] *= damp;
     X[i] += VX[i] * dt; Y[i] += VY[i] * dt;
+    // Dispersed pixels stay inside the frame too: they stop softly at the edge.
+    const h = gen.size[i] / 2;
+    if (X[i] < h) { X[i] = h; VX[i] *= -.2; } else if (X[i] > gen.W - h) { X[i] = gen.W - h; VX[i] *= -.2; }
+    if (Y[i] < h) { Y[i] = h; VY[i] *= -.2; } else if (Y[i] > gen.H - h) { Y[i] = gen.H - h; VY[i] *= -.2; }
     if (Math.abs(VX[i]) + Math.abs(VY[i]) < 3) { VX[i] = VY[i] = 0; active.delete(i); }
   }
   if (reform) {
