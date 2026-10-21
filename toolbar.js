@@ -8,6 +8,7 @@
     { name: 'Pixel Trail', path: 'pixel-trail/' },
     { name: 'Photo Preset', path: 'photo-preset/' },
     { name: 'Text Dissolve', path: 'text-dissolve/' },
+    { name: 'Neural Pixel', path: 'neural-pixel/' },
   ];
 
   const script = document.currentScript;

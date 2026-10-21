@@ -1,0 +1,19 @@
+{
+  "name": "neural-pixel",
+  "private": true,
+  "description": "Neural Pixel texture generator. Source in src/, bundled to app.js (committed so the static site needs no build).",
+  "scripts": {
+    "build": "esbuild src/main.tsx --bundle --minify --target=es2020 --outfile=app.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "esbuild": "0.24.0",
+    "typescript": "5.6.3"
+  }
+}
