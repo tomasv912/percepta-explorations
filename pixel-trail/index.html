@@ -117,18 +117,19 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <div class="app">
   <main id="stage">
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Rastro de cubos que deja el puntero"></canvas></div>
-    <div class="hud"><span id="stats">Hacé clic y arrastrá sobre la mesa</span><span class="dim"><kbd>C</kbd> limpiar · <kbd>P</kbd> permanente</span></div>
+    <div class="hud"><span id="stats">Hacé clic y arrastrá sobre la mesa</span><span class="dim"><kbd>Shift</kbd> línea · <kbd>C</kbd> limpiar · <kbd>P</kbd> permanente</span></div>
   </main>
 
   <aside>
     <div class="controls">
       <section>
         <h2>Trazo</h2>
-        <p class="hint">Hacé clic y arrastrá. Lento deja muchos cubos juntos; rápido los separa.</p>
+        <p class="hint">Hacé clic y arrastrá. Lento deja muchos cubos juntos; rápido los separa. Con <kbd>Shift</kbd>, una línea recta de cubos equidistantes.</p>
         <div id="sl-response"></div>
         <div id="sl-gap"></div>
         <div id="sl-maxGap"></div>
         <div id="sl-scatter"></div>
+        <div id="sl-lineGap"></div>
         <label class="check"><input type="checkbox" data-check="snap"> Ajustar a rejilla</label>
       </section>
 
@@ -179,7 +180,7 @@ const AW = 1920, AH = 1080; // fixed artboard, in units
 const RES = 2;              // exports render at 2x
 const MAX = 30000;          // oldest cubes drop off past this
 const DEFAULTS = {
-  response: .5, gap: .7, maxGap: 220, scatter: .25, snap: false,
+  response: .5, gap: .7, maxGap: 220, scatter: .25, lineGap: 2, snap: false,
   style: 'mono', size: 16, variation: .3, speedSize: 0,
   life: 2.5, permanent: false,
   colorMode: 'ink', palette: ['#FFE293', '#F79FFF', '#B1FFEF', '#A9EFFF', '#FFBDA9'],
@@ -299,6 +300,7 @@ const SLIDERS = {
   response: { label: 'Respuesta a la velocidad', min: 0, max: 1, step: .01, fmt: pct, emph: true },
   gap: { label: 'Separación en lento', min: .05, max: 2, step: .05, fmt: v => '×' + v.toFixed(2) },
   maxGap: { label: 'Separación máxima', min: 20, max: 600, step: 10, fmt: v => v + ' px' },
+  lineGap: { label: 'Separación en línea (Shift)', min: .5, max: 10, step: .05, fmt: v => '×' + v.toFixed(2) },
   scatter: { label: 'Dispersión', min: 0, max: 1, step: .01, fmt: pct },
   size: { label: 'Tamaño', min: 2, max: 80, step: 1, fmt: v => v + ' px' },
   variation: { label: 'Variación', min: 0, max: 1, step: .01, fmt: pct },
@@ -387,6 +389,26 @@ function toArt(e) {
   const r = frame.getBoundingClientRect();
   return [(e.clientX - r.left) / r.width * AW, (e.clientY - r.top) / r.height * AH];
 }
+// Shift-drag lays a straight line instead: cubes at equal steps from the press point to the pointer,
+// no jitter and no speed, redrawn as the line moves until release.
+let line = null;
+function layLine(to, t) {
+  cubes.splice(cubes.length - line.count);
+  dropped = line.n0;
+  const [x0, y0] = line.from, len = Math.hypot(to[0] - x0, to[1] - y0);
+  const steps = Math.max(0, Math.round(len / Math.max(1, S.size * S.lineGap)));
+  for (let i = 0; i <= steps; i++) {
+    const u = steps ? i / steps : 0;
+    let x = x0 + (to[0] - x0) * u, y = y0 + (to[1] - y0) * u;
+    if (S.snap) { x = (Math.floor(x / S.size) + .5) * S.size; y = (Math.floor(y / S.size) + .5) * S.size; }
+    cubes.push({ x, y, s: S.size, k: Math.floor(hashUnit(line.n0 + i) * SHADES), n: dropped++, g: strokes, t });
+  }
+  line.count = steps + 1;
+  wake();
+}
+// Stable shade per position in the line, so it doesn't flicker while dragging.
+const hashUnit = i => { let t = Math.imul(i ^ 0x9E3779B9, 0x85EBCA6B); t ^= t >>> 15; t = Math.imul(t, 0x2C1B3C6D); t ^= t >>> 12; return (t >>> 0) / 4294967296; };
+
 // Cubes only drop while the button is held: a click lays one, dragging lays the trail.
 let pressed = false;
 frame.addEventListener('pointerdown', e => {
@@ -394,15 +416,17 @@ frame.addEventListener('pointerdown', e => {
   frame.setPointerCapture(e.pointerId);
   pressed = true; speed = 0; strokes++;
   const p = toArt(e);
+  if (e.shiftKey) { line = { from: p, n0: dropped, count: 0 }; layLine(p, e.timeStamp); return; }
   drop(p[0], p[1], e.timeStamp);
   last = { p, t: e.timeStamp }; carry = 0;
 });
 frame.addEventListener('pointermove', e => {
   if (!pressed) return;
+  if (line) { layLine(toArt(e), e.timeStamp); return; }
   const evs = e.getCoalescedEvents?.() || [];
   for (const ev of evs.length ? evs : [e]) addPoint(toArt(ev), ev.timeStamp);
 });
-const release = () => { pressed = false; last = null; speed = 0; };
+const release = () => { pressed = false; last = line = null; speed = 0; };
 frame.addEventListener('pointerup', release);
 frame.addEventListener('pointercancel', release);
 
