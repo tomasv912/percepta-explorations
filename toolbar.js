@@ -7,6 +7,7 @@
     { name: 'Dispersion v2', path: 'dispersion-v2/' },
     { name: 'Pixel Trail', path: 'pixel-trail/' },
     { name: 'Photo Preset', path: 'photo-preset/' },
+    { name: 'Text Dissolve', path: 'text-dissolve/' },
   ];
 
   const script = document.currentScript;

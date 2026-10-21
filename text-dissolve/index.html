@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Text Dissolve</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Untitled Serif is read from the computer; it can also be loaded from .otf files in the page. */
+@font-face { font-family: 'Untitled Serif'; font-weight: 400; src: local('Test Untitled Serif'), local('TestUntitledSerif-Regular'); }
+@font-face { font-family: 'Untitled Serif'; font-weight: 500; src: local('Test Untitled Serif Medium'), local('TestUntitledSerif-Medium'); }
+@font-face { font-family: 'Untitled Serif'; font-weight: 700; src: local('Test Untitled Serif Bold'), local('TestUntitledSerif-Bold'); }
+@font-face { font-family: 'Untitled Serif'; font-weight: 500; font-style: italic; src: local('T Untitled Sf Medium Italic'), local('TUntitledSf-MediumItalic'); }
+
+:root {
+  --page: #f4f2ee;
+  --stage: #e9e6e0;
+  --surface: #fbfaf8;
+  --fill: #efece7;
+  --line: #dcd7cf;
+  --text: #1a1714;
+  --text-2: #5e5850;
+  --text-3: #8f887e;
+  --accent: #1a1714;
+  --accent-text: #fbfaf8;
+  --font: Inter, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+    --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+  --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; background: var(--page); color: var(--text); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
+
+.app { display: grid; flex: 1; min-height: 0; grid-template-columns: 1fr 280px; }
+main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding-bottom: 32px; }
+.frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); touch-action: none; cursor: none; }
+.frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity .15s ease-out; }
+
+.cursor { position: absolute; left: 0; top: 0; pointer-events: none; border-radius: 50%; border: 1px solid #fff; mix-blend-mode: difference; transform: translate(-50%, -50%); }
+.cursor.erase { border-style: dashed; }
+.drop { position: absolute; inset: 12px; display: grid; place-items: center; border-radius: 12px; border: 1.5px dashed var(--text-2); background: color-mix(in srgb, var(--stage) 85%, transparent); color: var(--text); font-weight: 500; pointer-events: none; z-index: 2; }
+.hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; white-space: nowrap;
+  background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
+.hud kbd { font: 500 11px var(--mono); color: var(--text); }
+.hud .dim { color: var(--text-3); }
+
+aside { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-left: 1px solid var(--line); }
+.controls { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 24px; }
+section { display: flex; flex-direction: column; gap: 10px; }
+h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.hint { margin: 0; color: var(--text-3); font-size: 12px; }
+
+.seg { display: flex; background: var(--fill); border-radius: 8px; padding: 2px; gap: 2px; }
+.seg button { flex: 1; border: 0; background: transparent; color: var(--text-2); font: 500 12px var(--font); height: 26px; border-radius: 6px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .08), 0 0 0 1px var(--line); }
+.seg button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.slider { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; }
+.slider label { color: var(--text-2); font-size: 12px; }
+.slider output { font: 12px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.slider input { grid-column: 1 / -1; }
+.slider.emph label { color: var(--text); font-weight: 500; }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; margin: 0; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(var(--text), var(--text)) 0 / var(--p, 50%) 100% no-repeat, var(--line); }
+input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line); }
+input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--text); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text); }
+input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text); }
+
+.row { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; align-items: center; }
+.row > span { color: var(--text-2); font-size: 12px; }
+.btns { display: flex; gap: 6px; }
+.btns .btn { flex: 1; }
+.text { font: 12px var(--mono); height: 28px; min-width: 0; border-radius: 8px; border: 0; background: var(--fill); color: var(--text); padding: 0 8px; box-shadow: inset 0 0 0 1px var(--line); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 0; background: var(--fill);
+  color: var(--text); font: 500 12px var(--font); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); }
+.btn:hover { background: var(--line); }
+.btn.icon { width: 28px; padding: 0; }
+.btn.primary { background: var(--accent); color: var(--accent-text); box-shadow: none; }
+.btn.primary:hover { opacity: .9; }
+.btn.big { height: 40px; width: 100%; border-radius: 12px; }
+.btn:disabled { opacity: .5; cursor: default; }
+
+.swatch { position: relative; display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px 0 4px; border-radius: 8px; background: var(--fill); box-shadow: inset 0 0 0 1px var(--line); font: 12px var(--mono); min-width: 0; }
+.swatch i { width: 20px; height: 20px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); flex: none; }
+.swatch input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.check { display: flex; gap: 8px; align-items: center; color: var(--text-2); font-size: 12px; cursor: pointer; }
+.check input { accent-color: var(--text); margin: 0; }
+
+footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--surface); color: var(--text); padding: 6px 12px; border-radius: 8px; box-shadow: 0 0 0 1px var(--line); font-size: 12px; z-index: 5; }
+[hidden] { display: none !important; }
+
+@media (max-width: 767px) {
+  html, body { height: auto; min-height: 100%; }
+  .app { flex: none; grid-template-columns: 1fr; grid-template-rows: minmax(300px, 55vh) auto; }
+  aside { border-left: 0; border-top: 1px solid var(--line); }
+  .controls { overflow: visible; }
+  .hud .dim { display: none; }
+}
+.frame.gradient { cursor: crosshair; }
+.guide { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.guide line { stroke: #fff; stroke-width: 1.5; stroke-dasharray: 4 3; mix-blend-mode: difference; }
+.guide circle { fill: #fff; mix-blend-mode: difference; }
+.text.area { height: auto; padding: 8px; resize: vertical; font: 13px/1.45 var(--font); }
+.frame { cursor: default; }
+</style>
+</head>
+<body>
+<script src="../toolbar.js"></script>
+<div class="app">
+  <main id="stage">
+    <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Texto que se disuelve en puntos"></canvas></div>
+    <div class="hud"><span id="stats">—</span><span class="dim"><kbd>R</kbd> nueva semilla</span></div>
+  </main>
+
+  <aside>
+    <div class="controls">
+      <section>
+        <h2>Texto</h2>
+        <textarea class="text area" id="text" rows="6" aria-label="Texto" spellcheck="false"></textarea>
+        <div class="seg" data-key="weight" aria-label="Peso">
+          <button data-v="400">Regular</button><button data-v="500">Medium</button><button data-v="700">Bold</button><button data-v="500i">Itálica</button>
+        </div>
+        <div class="seg" data-key="align" aria-label="Alineación">
+          <button data-v="left">Izquierda</button><button data-v="center">Centro</button>
+        </div>
+        <div id="sl-fontSize"></div>
+        <div id="sl-lineHeight"></div>
+        <div id="sl-tracking"></div>
+        <div id="sl-margin"></div>
+        <p class="hint" id="font-status"></p>
+        <button class="btn" id="font-btn">Cargar Untitled Serif (.otf)</button>
+        <input type="file" id="font-file" accept=".otf,.ttf,.woff,.woff2" multiple hidden>
+      </section>
+
+      <section>
+        <h2>Desenfoque</h2>
+        <p class="hint">Un ruido fractal decide dónde se desenfoca. Lo desenfocado se deshace en puntos.</p>
+        <div id="sl-level"></div>
+        <div id="sl-threshold"></div>
+        <div id="sl-transition"></div>
+        <div id="sl-scale"></div>
+        <div id="sl-octaves"></div>
+        <div id="sl-contrast"></div>
+        <div id="sl-ramp"></div>
+        <div class="row">
+          <span>Semilla</span>
+          <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
+          <button class="btn icon" id="reseed" title="Nueva semilla (R)" aria-label="Nueva semilla">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg>
+          </button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Puntos</h2>
+        <div class="seg" data-key="dot" aria-label="Forma de los puntos">
+          <button data-v="square">Píxel</button><button data-v="circle">Punto</button>
+        </div>
+        <div id="sl-dotSize"></div>
+        <label class="check"><input type="checkbox" data-check="snap"> Ajustar a rejilla</label>
+      </section>
+
+      <section>
+        <h2>Formato y color</h2>
+        <div class="seg" data-key="aspect" aria-label="Formato">
+          <button data-v="4:5">4:5</button><button data-v="1:1">1:1</button><button data-v="16:9">16:9</button><button data-v="9:16">9:16</button>
+        </div>
+        <div class="row" style="grid-template-columns:56px 1fr">
+          <span>Texto</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="ink" aria-label="Color del texto"></label>
+        </div>
+        <div class="row" style="grid-template-columns:56px 1fr">
+          <span>Fondo</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="paper" aria-label="Fondo"></label>
+        </div>
+        <label class="check"><input type="checkbox" data-check="bgExport"> Incluir fondo al exportar</label>
+      </section>
+    </div>
+    <footer>
+      <button class="btn primary big" id="png">Exportar PNG</button>
+      <button class="btn big" id="svg">Exportar SVG</button>
+    </footer>
+  </aside>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+// ---------- State ----------
+const SIZES = { '4:5': [1080, 1350], '1:1': [1080, 1080], '16:9': [1920, 1080], '9:16': [1080, 1920] };
+const RES = 2; // the text raster and the exports render at 2x
+const FAMILY = '"Untitled Serif", "EB Garamond", serif';
+const SVG_FAMILY = "'Test Untitled Serif', 'Untitled Serif', 'EB Garamond', serif";
+const DEFAULTS = {
+  text: 'This graffiti shall serve—through its removal at the owner’s cost—as a tariff on Real Estate investments.',
+  weight: '400', align: 'left', fontSize: 92, lineHeight: 1.22, tracking: 0, margin: 200,
+  level: 20, threshold: .45, transition: .35, scale: .35, octaves: 4, contrast: 1.6, ramp: 0, seed: 1,
+  dot: 'square', dotSize: 2.5, snap: true,
+  aspect: '4:5', ink: '#1a1714', paper: '#e9e7e2', bgExport: true,
+};
+const S = structuredClone(DEFAULTS);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+
+// ---------- Noise ----------
+function rng(seed) {
+  let a = seed >>> 0 || 1;
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+function perlin(rand) {
+  const p = new Uint8Array(512);
+  for (let i = 0; i < 256; i++) p[i] = i;
+  for (let i = 255; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
+  for (let i = 0; i < 256; i++) p[i + 256] = p[i];
+  const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
+  const g = (h, x, y) => { switch (h & 7) { case 0: return x + y; case 1: return -x + y; case 2: return x - y; case 3: return -x - y; case 4: return x; case 5: return -x; case 6: return y; default: return -y; } };
+  return (x, y) => {
+    const X = Math.floor(x), Y = Math.floor(y), xf = x - X, yf = y - Y, xi = X & 255, yi = Y & 255;
+    const u = fade(xf), v = fade(yf);
+    const aa = p[p[xi] + yi], ab = p[p[xi] + yi + 1], ba = p[p[xi + 1] + yi], bb = p[p[xi + 1] + yi + 1];
+    const x1 = g(aa, xf, yf) + u * (g(ba, xf - 1, yf) - g(aa, xf, yf));
+    const x2 = g(ab, xf, yf - 1) + u * (g(bb, xf - 1, yf - 1) - g(ab, xf, yf - 1));
+    return x1 + v * (x2 - x1);
+  };
+}
+// Stateless per-cell random, so typing or moving a slider never reshuffles unrelated cells.
+function hash(a, b) {
+  let t = Math.imul(a ^ 0x9E3779B9, 0x85EBCA6B) ^ Math.imul(b + 0x632BE5AB, 0xC2B2AE35);
+  t ^= t >>> 15; t = Math.imul(t, 0x2C1B3C6D); t ^= t >>> 12; t = Math.imul(t, 0x297A2D39); t ^= t >>> 15;
+  return (t >>> 0) / 4294967296;
+}
+
+// ---------- Text ----------
+const fontOf = (st, px) => `${st.weight === '500i' ? 'italic 500' : st.weight} ${px}px ${FAMILY}`;
+// Wraps words to the column, keeping the line breaks typed in the text box.
+function layout(st, W, H, ctx) {
+  ctx.font = fontOf(st, st.fontSize);
+  if ('letterSpacing' in ctx) ctx.letterSpacing = st.tracking + 'px';
+  const max = Math.max(st.fontSize, W - 2 * st.margin), lines = [];
+  for (const para of st.text.split('\n')) {
+    let line = '';
+    for (const word of para.split(/\s+/).filter(Boolean)) {
+      const next = line ? line + ' ' + word : word;
+      if (line && ctx.measureText(next).width > max) { lines.push(line); line = word; } else line = next;
+    }
+    lines.push(line);
+  }
+  const lh = st.fontSize * st.lineHeight, top = (H - lh * lines.length) / 2 + st.fontSize * .8;
+  const x = st.align === 'center' ? W / 2 : st.margin;
+  return lines.map((t, i) => ({ t, x, y: top + i * lh }));
+}
+function rasterText(st, W, H) {
+  const c = document.createElement('canvas'); c.width = W * RES; c.height = H * RES;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.scale(RES, RES);
+  const lines = layout(st, W, H, ctx);
+  ctx.fillStyle = '#000'; ctx.textAlign = st.align === 'center' ? 'center' : 'left'; ctx.textBaseline = 'alphabetic';
+  for (const l of lines) ctx.fillText(l.t, l.x, l.y);
+  return { canvas: c, data: ctx.getImageData(0, 0, c.width, c.height).data, lines };
+}
+
+// ---------- Dissolve ----------
+// The text is cut into dot-sized cells. A fractal noise field sets a blur amount per place; a blurred cell
+// leaves the text and lands as one dot (with probability = its ink coverage) scattered by a gaussian whose
+// radius is the local blur. So the blur is made of the text's own pixels, not added ink.
+function dissolve(st, W, H, rast) {
+  const { data } = rast, d = st.dotSize, PW = W * RES, PH = H * RES;
+  const cols = Math.ceil(W / d), rows = Math.ceil(H / d), cut = new Uint8Array(cols * rows), dots = [];
+  const n = perlin(rng(st.seed * 7919 + 13)), freq = .6 + (1 - st.scale) ** 2 * 14, unit = Math.min(W, H);
+  const fbm = (x, y) => { let s = 0, a = .5, f = 1, norm = 0; for (let o = 0; o < st.octaves; o++) { s += a * n(x * f + o * 31.7, y * f - o * 17.3); norm += a; f *= 2.03; a *= .5; } return s / norm; };
+  const alpha = (x, y) => data[(clamp(Math.floor(y * RES), 0, PH - 1) * PW + clamp(Math.floor(x * RES), 0, PW - 1)) * 4 + 3];
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const x0 = i * d, y0 = j * d;
+    let cov = 0;
+    for (let v = 0; v < 3; v++) for (let u = 0; u < 3; u++) cov += alpha(x0 + (u + .5) / 3 * d, y0 + (v + .5) / 3 * d);
+    cov /= 9 * 255;
+    if (cov < .02) continue;
+    const cx = x0 + d / 2, cy = y0 + d / 2;
+    const v = clamp(.5 + fbm(cx / unit * freq, cy / unit * freq) * st.contrast + st.ramp * (cy / H - .5));
+    const b = st.threshold >= 1 ? 0 : clamp((v - st.threshold) / (1 - st.threshold));
+    const id = j * cols + i, sb = st.seed * 131;
+    if (b <= 0 || hash(id, sb) >= clamp(b / st.transition)) continue;
+    cut[id] = 1;
+    if (hash(id, sb + 1) >= cov) continue;
+    // Box-Muller from two hashes: gaussian scatter, radius grows with the local blur.
+    const r = Math.sqrt(-2 * Math.log(1 - hash(id, sb + 2) * .999)) * st.level * b ** 1.3, a = hash(id, sb + 3) * Math.PI * 2;
+    let x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+    if (st.snap) { x = (Math.floor(x / d) + .5) * d; y = (Math.floor(y / d) + .5) * d; }
+    dots.push(x, y);
+  }
+  return { cols, rows, d, cut, dots };
+}
+
+// ---------- Rendering ----------
+function eachRun(g, fn) {
+  const { cols, rows, d, cut } = g;
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols;) {
+    if (!cut[j * cols + i]) { i++; continue; }
+    let e = i; while (e < cols && cut[j * cols + e]) e++;
+    fn(i * d, j * d, (e - i) * d, d); i = e;
+  }
+}
+// A round dot keeps the area of the square cell it came from.
+const DOT = 1 / Math.sqrt(Math.PI);
+function draw(ctx, g, rast, st, W, H) {
+  // The raster is black ink on transparent; tint it, then punch out the cells that left.
+  const layer = document.createElement('canvas'); layer.width = ctx.canvas.width; layer.height = ctx.canvas.height;
+  const lx = layer.getContext('2d');
+  lx.setTransform(ctx.getTransform());
+  lx.imageSmoothingQuality = 'high';
+  lx.drawImage(rast.canvas, 0, 0, W, H);
+  lx.globalCompositeOperation = 'source-in'; lx.fillStyle = st.ink; lx.fillRect(0, 0, W, H);
+  lx.globalCompositeOperation = 'destination-out'; lx.beginPath();
+  eachRun(g, (x, y, w, h) => lx.rect(x, y, w, h)); lx.fill();
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(layer, 0, 0); ctx.restore();
+  ctx.fillStyle = st.ink; ctx.beginPath();
+  const d = g.d, round = st.dot === 'circle', rr = d * DOT;
+  for (let i = 0; i < g.dots.length; i += 2) {
+    const x = g.dots[i], y = g.dots[i + 1];
+    if (round) { ctx.moveTo(x + rr, y); ctx.arc(x, y, rr, 0, Math.PI * 2); } else ctx.rect(x - d / 2, y - d / 2, d, d);
+  }
+  ctx.fill();
+}
+function toSvg(g, rast, st, W, H) {
+  const r = v => Math.round(v * 100) / 100, esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const out = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W * RES}" height="${H * RES}" viewBox="0 0 ${W} ${H}">`];
+  if (st.bgExport) out.push(`<rect width="100%" height="100%" fill="${st.paper}"/>`);
+  let cut = '';
+  eachRun(g, (x, y, w, h) => { cut += `M${r(x)} ${r(y)}h${r(w)}v${r(h)}h${r(-w)}Z`; });
+  out.push(`<defs><mask id="dissolve-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#fff"/><path fill="#000" d="${cut}"/></mask></defs>`);
+  const italic = st.weight === '500i', weight = italic ? 500 : +st.weight, anchor = st.align === 'center' ? 'middle' : 'start';
+  out.push(`<g mask="url(#dissolve-cut)"><text font-family="${SVG_FAMILY}" font-size="${st.fontSize}" font-weight="${weight}"${italic ? ' font-style="italic"' : ''} letter-spacing="${st.tracking}" text-anchor="${anchor}" fill="${st.ink}">`);
+  for (const l of rast.lines) out.push(`<tspan x="${r(l.x)}" y="${r(l.y)}">${esc(l.t)}</tspan>`);
+  out.push('</text></g>');
+  let d = '';
+  const s = g.d, rr = s * DOT;
+  for (let i = 0; i < g.dots.length; i += 2) {
+    const x = g.dots[i], y = g.dots[i + 1];
+    d += st.dot === 'circle' ? `M${r(x - rr)} ${r(y)}a${r(rr)} ${r(rr)} 0 1 0 ${r(2 * rr)} 0a${r(rr)} ${r(rr)} 0 1 0 ${r(-2 * rr)} 0Z`
+      : `M${r(x - s / 2)} ${r(y - s / 2)}h${r(s)}v${r(s)}h${r(-s)}Z`;
+  }
+  if (d) out.push(`<path fill="${st.ink}" d="${d}"/>`);
+  out.push('</svg>');
+  return out.join('');
+}
+
+// ---------- UI ----------
+const $ = s => document.querySelector(s);
+const cv = $('#cv'), frame = $('#frame'), stage = $('#stage');
+let rast = null, rastKey = '', gen = null, genKey = '', raf = 0;
+
+const pct = v => Math.round(v * 100) + '%';
+const px = v => v + ' px';
+const SLIDERS = {
+  fontSize: { label: 'Tamaño', min: 20, max: 300, step: 1, fmt: px },
+  lineHeight: { label: 'Interlineado', min: .8, max: 2, step: .01, fmt: v => v.toFixed(2) },
+  tracking: { label: 'Tracking', min: -10, max: 30, step: .5, fmt: px },
+  margin: { label: 'Margen', min: 0, max: 600, step: 5, fmt: px },
+  level: { label: 'Nivel de desenfoque', min: 0, max: 120, step: 1, fmt: px, emph: true },
+  threshold: { label: 'Umbral (cuánto queda nítido)', min: 0, max: .99, step: .01, fmt: pct, emph: true },
+  transition: { label: 'Transición', min: .02, max: 1, step: .01, fmt: pct },
+  scale: { label: 'Escala del ruido', min: 0, max: 1, step: .01, fmt: pct },
+  octaves: { label: 'Detalle (octavas)', min: 1, max: 6, step: 1, fmt: v => String(v) },
+  contrast: { label: 'Contraste del ruido', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
+  ramp: { label: 'Degradado vertical', min: -1.5, max: 1.5, step: .01, fmt: v => (v > 0 ? '+' : '') + v.toFixed(2) },
+  dotSize: { label: 'Tamaño del punto', min: 1, max: 12, step: .5, fmt: px, emph: true },
+};
+for (const [key, d] of Object.entries(SLIDERS)) {
+  const host = $('#sl-' + key);
+  host.className = 'slider' + (d.emph ? ' emph' : '');
+  host.innerHTML = `<label for="in-${key}">${d.label}</label><output id="out-${key}"></output><input type="range" id="in-${key}" min="${d.min}" max="${d.max}" step="${d.step}" title="Doble clic para restablecer">`;
+  const input = host.querySelector('input');
+  input.addEventListener('input', () => { S[key] = +input.value; sync(); });
+  input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
+}
+document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  S[seg.dataset.key] = b.dataset.v; sync();
+}));
+document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
+document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
+$('#text').addEventListener('input', e => { S.text = e.target.value; sync(); });
+$('#seed').addEventListener('input', e => { S.seed = Math.min(999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
+const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
+$('#reseed').addEventListener('click', reseed);
+addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
+  if (e.key.toLowerCase() === 'r') reseed();
+});
+
+function paintSwatch(el, hex) {
+  el.querySelector('i').style.background = hex;
+  el.querySelector('[data-hex]').textContent = hex.toUpperCase();
+  const inp = el.querySelector('input'); if (inp.value !== hex) inp.value = hex;
+}
+function sync() {
+  for (const key of Object.keys(SLIDERS)) {
+    const input = $('#in-' + key), d = SLIDERS[key];
+    if (+input.value !== S[key]) input.value = S[key];
+    input.style.setProperty('--p', ((S[key] - d.min) / (d.max - d.min) * 100) + '%');
+    $('#out-' + key).textContent = d.fmt(S[key]);
+  }
+  document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
+  document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
+  const t = $('#text'); if (t.value !== S.text) t.value = S.text;
+  const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
+  document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
+  schedule();
+}
+
+function fit(W, H) {
+  const r = stage.getBoundingClientRect();
+  const k = Math.max(0, Math.min((r.width - 64) / W, (r.height - 96) / H));
+  return { w: Math.round(W * k), h: Math.round(H * k) };
+}
+function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
+function render() {
+  const [W, H] = SIZES[S.aspect];
+  const rk = JSON.stringify([fontsVer, S.aspect, S.text, S.weight, S.align, S.fontSize, S.lineHeight, S.tracking, S.margin]);
+  if (rk !== rastKey) { rast = rasterText(S, W, H); rastKey = rk; }
+  const gk = JSON.stringify([rk, S.level, S.threshold, S.transition, S.scale, S.octaves, S.contrast, S.ramp, S.seed, S.dotSize, S.snap]);
+  if (gk !== genKey) { gen = dissolve(S, W, H, rast); genKey = gk; }
+  const { w, h } = fit(W, H);
+  frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.paper;
+  const dpr = devicePixelRatio || 1;
+  cv.width = Math.max(1, Math.round(w * dpr)); cv.height = Math.max(1, Math.round(h * dpr));
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  draw(ctx, gen, rast, S, W, H);
+  $('#stats').textContent = `${(gen.dots.length / 2).toLocaleString('es')} puntos · ${W} × ${H} · exporta a ${W * RES} × ${H * RES} px`;
+}
+new ResizeObserver(schedule).observe(stage);
+
+// ---------- Font ----------
+// Untitled Serif comes from the computer (local) or from .otf files loaded here; neither leaves the browser.
+let fontsVer = 0;
+async function checkFont() {
+  await Promise.allSettled(['400', '500', '700', 'italic 500'].map(w => document.fonts.load(`${w} 40px "EB Garamond"`)));
+  const faces = [...document.fonts].filter(f => f.family.replace(/"/g, '') === 'Untitled Serif');
+  await Promise.allSettled(faces.map(f => f.load()));
+  const ok = faces.some(f => f.status === 'loaded');
+  $('#font-status').textContent = ok
+    ? 'Usando Untitled Serif.'
+    : 'No encuentro Untitled Serif instalada. Cargá los .otf (quedan solo en tu navegador); mientras tanto se ve con EB Garamond.';
+  $('#font-btn').hidden = ok && faces.filter(f => f.status === 'loaded').length >= 4;
+  fontsVer++; schedule();
+}
+$('#font-btn').addEventListener('click', () => $('#font-file').click());
+$('#font-file').addEventListener('change', async e => {
+  for (const file of e.target.files) {
+    const n = file.name.toLowerCase();
+    const descriptors = { weight: /bold/.test(n) ? '700' : /medium/.test(n) ? '500' : '400', style: /italic/.test(n) ? 'italic' : 'normal' };
+    try { const face = new FontFace('Untitled Serif', await file.arrayBuffer(), descriptors); await face.load(); document.fonts.add(face); }
+    catch { toast(`No se pudo leer ${file.name}`); }
+  }
+  e.target.value = '';
+  checkFont();
+});
+
+// ---------- Export ----------
+let toastT = 0;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2400); }
+function download(name, blob) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast(name + ' descargado');
+}
+$('#png').addEventListener('click', () => {
+  const [W, H] = SIZES[S.aspect];
+  const c = document.createElement('canvas'); c.width = W * RES; c.height = H * RES;
+  const ctx = c.getContext('2d');
+  ctx.setTransform(RES, 0, 0, RES, 0, 0);
+  if (S.bgExport) { ctx.fillStyle = S.paper; ctx.fillRect(0, 0, W, H); }
+  draw(ctx, gen, rast, S, W, H);
+  c.toBlob(b => b ? download(`text-dissolve-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
+});
+$('#svg').addEventListener('click', () => {
+  const [W, H] = SIZES[S.aspect];
+  download(`text-dissolve-${S.seed}.svg`, new Blob([toSvg(gen, rast, S, W, H)], { type: 'image/svg+xml' }));
+});
+
+sync();
+document.fonts.ready.then(checkFont);
+</script>
+</body>
+</html>
