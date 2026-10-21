@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Descartes</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --page: #f4f2ee;
+  --stage: #e9e6e0;
+  --surface: #fbfaf8;
+  --fill: #efece7;
+  --line: #dcd7cf;
+  --text: #1a1714;
+  --text-2: #5e5850;
+  --text-3: #8f887e;
+  --accent: #1a1714;
+  --accent-text: #fbfaf8;
+  --font: Inter, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+    --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+  --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; background: var(--page); color: var(--text); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
+
+main { flex: 1; min-height: 0; overflow-y: auto; padding: 40px 32px 64px; }
+.wrap { max-width: 1120px; margin: 0 auto; }
+h1 { margin: 0 0 6px; font-size: 20px; font-weight: 600; }
+.lede { margin: 0 0 28px; color: var(--text-2); font-size: 13px; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.card { display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: var(--surface); color: inherit; text-decoration: none;
+  box-shadow: 0 0 0 1px var(--line); transition: box-shadow .15s ease-out, transform .15s ease-out; }
+.card:hover { box-shadow: 0 0 0 1px var(--text-3), 0 6px 20px rgb(0 0 0 / .06); transform: translateY(-1px); }
+.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--fill); border-bottom: 1px solid var(--line); }
+.card div { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 4px; }
+.card h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.card p { margin: 0; color: var(--text-2); font-size: 12px; line-height: 1.5; }
+@media (max-width: 767px) {
+  main { padding: 24px 16px 48px; }
+  .grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<script src="../toolbar.js"></script>
+<main>
+  <div class="wrap">
+    <h1>Descartes</h1>
+    <p class="lede">Exploraciones que quedaron afuera. Siguen funcionando.</p>
+    <div class="grid">
+      <a class="card" href="../cube-dispersion/">
+        <img src="cube-dispersion.jpg" alt="Una esfera hecha de cubos que se dispersan hacia la derecha" loading="lazy">
+        <div><h2>Cube Dispersion</h2><p>Una imagen convertida en cubos que el pincel va dispersando, pasada a pasada, en la dirección del trazo.</p></div>
+      </a>
+      <a class="card" href="../dispersion-v2/">
+        <img src="dispersion-v2.jpg" alt="Un círculo naranja que se desintegra en píxeles" loading="lazy">
+        <div><h2>Dispersion v2</h2><p>Un SVG que se desintegra en píxeles: lo que desaparece es exactamente lo que se dispersa.</p></div>
+      </a>
+      <a class="card" href="../text-dissolve/">
+        <img src="text-dissolve.jpg" alt="Texto con zonas que se deshacen en puntos" loading="lazy">
+        <div><h2>Text Dissolve</h2><p>Texto que un ruido fractal desenfoca y deshace en píxeles sueltos. Exporta PNG recortado y SVG en curvas.</p></div>
+      </a>
+      <a class="card" href="../neural-pixel/">
+        <img src="neural-pixel.jpg" alt="Una red ramificada dibujada con píxeles sueltos" loading="lazy">
+        <div><h2>Neural Pixel</h2><p>Una red generativa dibujada con píxeles sueltos, con pulsos de activación que la recorren.</p></div>
+      </a>
+    </div>
+  </div>
+</main>
+</body>
+</html>

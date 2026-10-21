@@ -100,6 +100,11 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
   .controls { overflow: visible; }
   .hud .dim { display: none; }
 }
+.drop { position: absolute; inset: 12px; display: grid; place-items: center; border-radius: 12px; border: 1.5px dashed var(--text-2); background: color-mix(in srgb, var(--stage) 85%, transparent); color: var(--text); font-weight: 500; pointer-events: none; z-index: 2; }
+.palette { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 8px; }
+.palette label { position: relative; height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); cursor: pointer; }
+.palette input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+#palette-box { display: flex; flex-direction: column; }
 </style>
 </head>
 <body>
@@ -107,23 +112,40 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <div class="app">
   <main id="stage">
     <div class="frame" id="frame">
-      <canvas id="cv" role="img" aria-label="Olas formadas por cubos"></canvas>
+      <canvas id="cv" role="img" aria-label="Olas o imagen formadas por cubos"></canvas>
       <div class="cursor" id="cursor" hidden></div>
     </div>
+    <div class="drop" id="drop" hidden>Soltá la imagen</div>
     <div class="hud"><span id="stats">—</span><span class="dim">Mantené el clic para dispersar · <kbd>R</kbd> nueva semilla</span></div>
   </main>
 
   <aside>
     <div class="controls">
       <section>
-        <h2>Olas</h2>
-        <div id="sl-layers"></div>
-        <div id="sl-amp"></div>
-        <div id="sl-freq"></div>
-        <div id="sl-complexity"></div>
-        <div id="sl-persp"></div>
-        <div id="sl-thickness"></div>
-        <div id="sl-fade"></div>
+        <h2>Fuente</h2>
+        <div class="seg" data-key="source" aria-label="Fuente">
+          <button data-v="waves">Olas</button><button data-v="image">Imagen</button>
+        </div>
+        <button class="btn" id="upload">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10.5V2.5M4.5 6 8 2.5 11.5 6"/><path d="M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2"/></svg>
+          Subir imagen
+        </button>
+        <input type="file" id="file" accept="image/*" hidden>
+        <p class="hint" id="source-hint"></p>
+        <div id="wave-controls">
+          <div id="sl-layers"></div>
+          <div id="sl-amp"></div>
+          <div id="sl-freq"></div>
+          <div id="sl-complexity"></div>
+          <div id="sl-persp"></div>
+          <div id="sl-thickness"></div>
+          <div id="sl-fade"></div>
+        </div>
+        <div id="image-controls">
+          <div id="sl-contrast"></div>
+          <div id="sl-threshold"></div>
+          <label class="check"><input type="checkbox" data-check="invert"> Invertir luces y sombras</label>
+        </div>
         <div class="row">
           <span>Semilla</span>
           <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
@@ -146,8 +168,30 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       </section>
 
       <section>
+        <h2>Color</h2>
+        <div class="seg" data-key="colorMode" aria-label="Color de los cubos">
+          <button data-v="single">Un color</button><button data-v="random">Al azar</button><button data-v="image" id="cm-image">Imagen</button>
+        </div>
+        <div class="row" id="ink-row" style="grid-template-columns:56px 1fr">
+          <span>Color</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="ink" aria-label="Color de los cubos"></label>
+        </div>
+        <div id="palette-box">
+          <div class="palette" id="palette"></div>
+          <button class="btn" id="shuffle">Nueva paleta</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Trail</h2>
+        <p class="hint">Cada cubo deja una estela que va de 100% a 0% de opacidad.</p>
+        <div id="sl-trail"></div>
+        <div id="sl-trailAngle"></div>
+        <div id="sl-trailJitter"></div>
+      </section>
+
+      <section>
         <h2>Dispersión</h2>
-        <p class="hint">Mantené el clic sobre la imagen: los píxeles de esa zona se dispersan y siguen derivando.</p>
+        <p class="hint">Mantené el clic sobre la imagen: los cubos de esa zona se dispersan y siguen derivando. Los que salen del cuadro desaparecen.</p>
         <div id="sl-radius"></div>
         <div id="sl-force"></div>
         <div id="sl-drift"></div>
@@ -155,14 +199,11 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       </section>
 
       <section>
-        <h2>Fondo y formato</h2>
-        <div class="row" style="grid-template-columns:56px 1fr">
-          <span>Fondo</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="paper" aria-label="Fondo"></label>
-        </div>
-        <label class="check"><input type="checkbox" id="bg-export"> Incluir fondo al exportar</label>
+        <h2>Formato</h2>
         <div class="seg" data-key="aspect" aria-label="Proporción">
           <button data-v="3:2">3:2</button><button data-v="4:3">4:3</button><button data-v="1:1">1:1</button><button data-v="4:5">4:5</button><button data-v="16:9">16:9</button>
         </div>
+        <label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo blanco al exportar</label>
       </section>
     </div>
     <footer>
@@ -176,13 +217,16 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <script>
 // ---------- State ----------
 const SIZES = { '3:2': [3000, 2000], '4:3': [3000, 2250], '1:1': [3000, 3000], '4:5': [2400, 3000], '16:9': [3200, 1800] };
-const INK = '#000000';
+const PAPER = '#FFFFFF';
 const DEFAULTS = {
-  seed: 1, aspect: '3:2',
+  seed: 1, aspect: '3:2', source: 'waves',
   layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5,
+  contrast: 1.2, threshold: .1, invert: false,
   style: 'mono', count: 45000, size: 3.5, mod: .6, variation: .35, grain: .12,
+  colorMode: 'single', ink: '#000000', palette: ['#111111', '#f15bb5', '#fee440', '#00bbf9', '#00f5d4'],
+  trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, force: .9, drift: .5,
-  paper: '#f6f5f2', bgExport: false,
+  bgExport: true,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -211,67 +255,140 @@ function perlin(rand) {
   };
 }
 
-// ---------- Waves ----------
-// Each layer is a 3D sheet: a height field made of a few long sine waves, seen in perspective from just
-// above. Pixels are spread evenly over the sheet, so they pile up by themselves where it folds or turns
-// edge-on (the bright crests in the references) and thin out where it faces the camera. The far edge and
-// the ends fade out, and a little thickness gives the sheet some volume.
-function generate(st) {
-  const [W, H] = SIZES[st.aspect], r = rng(st.seed);
-  const layers = Array.from({ length: st.layers }, (_, l) => {
-    const waves = Array.from({ length: st.complexity }, (_, k) => ({
-      f: st.freq * (k === 0 ? 1 : 1 + k * .7) * (.7 + r() * .6) * Math.PI * 2,
-      th: (r() - .5) * 1.1, ph: r() * Math.PI * 2, a: 1 / (1 + k * 1.1),
-    }));
-    return { waves, base: (l - (st.layers - 1) / 2) * .35 + (r() - .5) * .15, tilt: (r() - .5) * .3 };
-  });
-  const height = (L, u, v) => {
-    let h = 0, norm = 0;
-    for (const w of L.waves) { h += w.a * Math.sin(w.f * (u * Math.cos(w.th) + v * Math.sin(w.th)) + w.ph); norm += w.a; }
-    return L.base + L.tilt * (u - .5) + (h / norm) * st.amp;
-  };
-  const focal = .4 + st.persp * 1.4, zNear = 1, zFar = 1 + 1.5 + st.persp * 2.5;
-  const n = st.count, mono = st.style === 'mono';
-  const px = new Float32Array(n), py = new Float32Array(n), size = new Float32Array(n), shade = new Uint8Array(n);
-  let got = 0;
-  for (let tries = 0; got < n && tries < n * 6; tries++) {
-    const L = layers[Math.floor(r() * layers.length)], u = r(), v = r();
-    // Fade the far edge, the near edge a little, and both ends.
-    const keep = smooth(0, .12 + st.fade * .2, v) * (1 - smooth(1 - st.fade * .7, 1, v)) * smooth(0, .05 + st.fade * .12, u) * smooth(0, .05 + st.fade * .12, 1 - u);
-    if (r() > keep) continue;
-    const z = zNear + v * (zFar - zNear), x = (u - .5) * 2 * z / focal * 1.1;
-    const y = height(L, u, v) + gauss(r) * st.thickness * .06;
-    px[got] = x / z * focal; py[got] = (.9 - y) / z * focal;
-    const k = mono ? 1 : (1 - st.mod) + st.mod * clamp(1.6 / z);
-    size[got] = mono ? st.size : st.size * k * Math.max(.2, 1 + st.variation * (r() * 2 - 1) * .7);
-    shade[got] = mono ? MONO_SHADE : Math.floor(r() * SHADES);
-    got++;
+// ---------- Image source ----------
+// An uploaded image is read once into a darkness grid; dark areas get more cubes, white areas none.
+const GRID = 480;
+let img = null, imgId = 0;
+function loadImage(el) {
+  const iw = el.naturalWidth || el.width, ih = el.naturalHeight || el.height;
+  const gw = Math.max(2, Math.round(iw >= ih ? GRID : GRID * iw / ih)), gh = Math.max(2, Math.round(iw >= ih ? GRID * ih / iw : GRID));
+  let cur = el, cw = iw, ch = ih;
+  while (cw / 2 > gw && ch / 2 > gh) {
+    cw = Math.round(cw / 2); ch = Math.round(ch / 2);
+    const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+    const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(cur, 0, 0, cw, ch);
+    cur = c;
   }
-  // Fit the whole projection inside the frame, every pixel included: its exact extent (plus the largest
-  // pixel) is scaled into a box with a margin, so the waves shrink rather than get cut.
+  const c = document.createElement('canvas'); c.width = gw; c.height = gh;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, gw, gh);
+  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(cur, 0, 0, gw, gh);
+  const d = ctx.getImageData(0, 0, gw, gh).data, n = gw * gh, lum = new Float32Array(n), rgb = new Uint32Array(n);
+  for (let k = 0; k < n; k++) {
+    const r = d[k * 4], g = d[k * 4 + 1], b = d[k * 4 + 2];
+    lum[k] = (.2126 * r + .7152 * g + .0722 * b) / 255; rgb[k] = r << 16 | g << 8 | b;
+  }
+  img = { gw, gh, lum, rgb, ar: iw / ih }; imgId++;
+}
+
+// ---------- Generation ----------
+// Waves: each layer is a 3D sheet (a height field of a few long sine waves) seen in perspective from just
+// above. Cubes are spread evenly over the sheet, so they pile up where it folds or turns edge-on and thin
+// out where it faces the camera; the far edge and the ends fade. Image: cubes follow the darkness.
+// Either way the result is fitted inside the frame, every cube included, so nothing is ever cut.
+function generate(st) {
+  const [W, H] = SIZES[st.aspect], r = rng(st.seed), n = st.count, mono = st.style === 'mono';
+  const px = new Float32Array(n), py = new Float32Array(n), size = new Float32Array(n), shade = new Uint8Array(n);
+  const pal = new Uint8Array(n), rgb = new Uint32Array(n), tlen = new Float32Array(n);
+  let got = 0;
+  const add = (x, y, sizeK, color) => {
+    px[got] = x; py[got] = y;
+    size[got] = mono ? st.size : st.size * sizeK * Math.max(.2, 1 + st.variation * (r() * 2 - 1) * .7);
+    shade[got] = mono ? 0 : Math.floor(r() * SHADES);
+    pal[got] = Math.floor(r() * st.palette.length); rgb[got] = color;
+    tlen[got] = Math.max(0, 1 + st.trailJitter * (r() * 2 - 1));
+    got++;
+  };
+  if (st.source === 'image' && img) {
+    const { gw, gh, lum, rgb: col } = img, cells = gw * gh, t = st.threshold, M = new Float32Array(cells), cdf = new Float64Array(cells);
+    let sum = 0;
+    for (let k = 0; k < cells; k++) {
+      const v = clamp(((st.invert ? lum[k] : 1 - lum[k]) - .5) * st.contrast + .5);
+      M[k] = t >= 1 ? 0 : Math.max(0, (v - t) / (1 - t));
+      cdf[k] = sum += M[k] ** 1.2;
+    }
+    if (sum > 0) for (let c = 0; c < n; c++) {
+      const q = r() * sum; let lo = 0, hi = cells - 1;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < q) lo = mid + 1; else hi = mid; }
+      const i = lo % gw, j = (lo - i) / gw;
+      add((i + r()) / gw * img.ar, (j + r()) / gh, (1 - st.mod) + st.mod * Math.sqrt(Math.max(M[lo], .04)), col[lo]);
+    }
+  } else {
+    const layers = Array.from({ length: st.layers }, (_, l) => ({
+      waves: Array.from({ length: st.complexity }, (_, k) => ({
+        f: st.freq * (k === 0 ? 1 : 1 + k * .7) * (.7 + r() * .6) * Math.PI * 2,
+        th: (r() - .5) * 1.1, ph: r() * Math.PI * 2, a: 1 / (1 + k * 1.1),
+      })),
+      base: (l - (st.layers - 1) / 2) * .35 + (r() - .5) * .15, tilt: (r() - .5) * .3,
+    }));
+    const height = (L, u, v) => {
+      let h = 0, norm = 0;
+      for (const w of L.waves) { h += w.a * Math.sin(w.f * (u * Math.cos(w.th) + v * Math.sin(w.th)) + w.ph); norm += w.a; }
+      return L.base + L.tilt * (u - .5) + (h / norm) * st.amp;
+    };
+    const focal = .4 + st.persp * 1.4, zNear = 1, zFar = 1 + 1.5 + st.persp * 2.5;
+    for (let tries = 0; got < n && tries < n * 6; tries++) {
+      const L = layers[Math.floor(r() * layers.length)], u = r(), v = r();
+      const keep = smooth(0, .12 + st.fade * .2, v) * (1 - smooth(1 - st.fade * .7, 1, v)) * smooth(0, .05 + st.fade * .12, u) * smooth(0, .05 + st.fade * .12, 1 - u);
+      if (r() > keep) continue;
+      const z = zNear + v * (zFar - zNear), x = (u - .5) * 2 * z / focal * 1.1;
+      const y = height(L, u, v) + gauss(r) * st.thickness * .06;
+      add(x / z * focal, (.9 - y) / z * focal, (1 - st.mod) + st.mod * clamp(1.6 / z), 0);
+    }
+  }
+  // Fit the exact extent (plus the largest cube) into a margin box. Images keep their proportions;
+  // waves fill the width and a generous band vertically.
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, half = 0;
   for (let i = 0; i < got; i++) {
     x0 = Math.min(x0, px[i]); x1 = Math.max(x1, px[i]); y0 = Math.min(y0, py[i]); y1 = Math.max(y1, py[i]);
     half = Math.max(half, size[i] / 2);
   }
-  const mx = .05 * W + half, X0 = mx, X1 = W - mx, Y0 = .14 * H + half, Y1 = .86 * H - half;
-  for (let i = 0; i < got; i++) { px[i] = X0 + (px[i] - x0) / (x1 - x0) * (X1 - X0); py[i] = Y0 + (py[i] - y0) / (y1 - y0) * (Y1 - Y0); }
-  return { W, H, n: got, hx: px.slice(0, got), hy: py.slice(0, got), size: size.slice(0, got), shade: shade.slice(0, got) };
+  // Trails count too, on the side they point to.
+  const ta = st.trailAngle * Math.PI / 180, L = st.trail * (1 + st.trailJitter);
+  const tl = Math.max(0, -Math.cos(ta)) * L, tr = Math.max(0, Math.cos(ta)) * L, tt = Math.max(0, -Math.sin(ta)) * L, tb = Math.max(0, Math.sin(ta)) * L;
+  let X0, X1, Y0, Y1;
+  if (st.source === 'image' && img) {
+    const m = .06 * Math.min(W, H) + half, k = Math.min((W - 2 * m - tl - tr) / (x1 - x0 || 1), (H - 2 * m - tt - tb) / (y1 - y0 || 1));
+    const w = (x1 - x0) * k, h = (y1 - y0) * k;
+    X0 = (W - w - tl - tr) / 2 + tl; X1 = X0 + w; Y0 = (H - h - tt - tb) / 2 + tt; Y1 = Y0 + h;
+  } else { X0 = .05 * W + half + tl; X1 = W - .05 * W - half - tr; Y0 = .14 * H + half + tt; Y1 = .86 * H - half - tb; }
+  for (let i = 0; i < got; i++) { px[i] = X0 + (px[i] - x0) / (x1 - x0 || 1) * (X1 - X0); py[i] = Y0 + (py[i] - y0) / (y1 - y0 || 1) * (Y1 - Y0); }
+  const cut = a => a.slice(0, got);
+  return { W, H, n: got, hx: cut(px), hy: cut(py), size: cut(size), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen) };
 }
 
 // ---------- Color ----------
-// Black split into a few greys for Variación; Mono is pure black.
-const SHADES = 9, MONO_SHADE = 0;
-const shadeHex = (k, grain) => { const v = Math.round(255 * k / (SHADES - 1) * grain * 2.5); return '#' + v.toString(16).padStart(2, '0').repeat(3); };
+// Variación lightens each colour a little per cube; Mono keeps it exact.
+const SHADES = 9;
+const hexToRgb = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+const rgbHex = (r, g, b) => '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+function tint(hex, k, grain) {
+  const t = k / (SHADES - 1) * grain * 2.5, [r, g, b] = hexToRgb(hex);
+  return rgbHex(r + (255 - r) * t, g + (255 - g) * t, b + (255 - b) * t);
+}
+function colorOf(i, st) {
+  if (st.colorMode === 'image' && img && st.source === 'image') {
+    const c = gen.rgb[i] & 0xF8F8F8;
+    return rgbHex(c >> 16 & 255, c >> 8 & 255, c & 255);
+  }
+  const base = st.colorMode === 'random' ? st.palette[gen.pal[i] % st.palette.length] : st.ink;
+  return st.style === 'mono' ? base : tint(base, gen.shade[i], st.grain);
+}
+const randomPalette = () => Array.from({ length: 5 }, () => {
+  const h = Math.random() * 360, s = 55 + Math.random() * 40, l = 35 + Math.random() * 35;
+  const a = s / 100 * Math.min(l / 100, 1 - l / 100), f = n => { const k = (n + h / 30) % 12; return 255 * (l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))); };
+  return rgbHex(f(0), f(8), f(4));
+});
 
 // ---------- Dispersal ----------
-// Pixels have a home and an offset. While the pointer is held, each pixel that comes under it gets one kick
-// outwards with a random strength (so they open into a cloud instead of being shoved into a ring); once
-// moving, they drift along a slow noise flow and settle as friction takes over. "Recomponer" eases them home.
-let gen = null, genKey = '', X = null, Y = null, VX = null, VY = null, active = new Set(), kicked = new Set();
-let pointer = null, pressing = false, reform = null, flow = null;
+// Cubes have a home and a current position. While the pointer is held, each cube that comes under it gets
+// one kick outwards with a random strength, so they open into a cloud; once moving they drift along a slow
+// noise flow that only steers, and friction brings them to rest. Cubes that leave the frame are gone (they
+// never pile up on the border). "Recomponer" eases everything home.
+let gen = null, genKey = '', X = null, Y = null, VX = null, VY = null, gone = null;
+let active = new Set(), kicked = new Set(), pointer = null, pressing = false, reform = null, flow = null;
 function resetMotion() {
-  X = gen.hx.slice(); Y = gen.hy.slice(); VX = new Float32Array(gen.n); VY = new Float32Array(gen.n);
+  X = gen.hx.slice(); Y = gen.hy.slice(); VX = new Float32Array(gen.n); VY = new Float32Array(gen.n); gone = new Uint8Array(gen.n);
   active = new Set(); kicked = new Set(); reform = null; flow = perlin(rng(S.seed * 31 + 7));
 }
 function step(dt) {
@@ -279,7 +396,7 @@ function step(dt) {
   if (pressing && pointer) {
     const R = S.radius, R2 = R * R, kick = S.force * 1500;
     for (let i = 0; i < gen.n; i++) {
-      if (kicked.has(i)) continue;
+      if (gone[i] || kicked.has(i)) continue;
       const dx = X[i] - pointer[0], dy = Y[i] - pointer[1], d2 = dx * dx + dy * dy;
       if (d2 > R2) continue;
       const d = Math.sqrt(d2), u = Math.random(), f = kick * (1 - .5 * d / R) * (.08 + .92 * u * u);
@@ -288,18 +405,14 @@ function step(dt) {
       kicked.add(i); active.add(i);
     }
   }
-  // The flow only steers (turns the velocity towards the local flow direction), so it adds no energy and
-  // friction always brings the pixels to rest.
   const fs = 2.2 / unit, steer = Math.min(1, S.drift * dt * 2.5), damp = Math.pow(.18, dt);
   for (const i of active) {
     const ang = flow(X[i] * fs, Y[i] * fs) * Math.PI * 3, sp = Math.hypot(VX[i], VY[i]);
     VX[i] += (Math.cos(ang) * sp - VX[i]) * steer; VY[i] += (Math.sin(ang) * sp - VY[i]) * steer;
     VX[i] *= damp; VY[i] *= damp;
     X[i] += VX[i] * dt; Y[i] += VY[i] * dt;
-    // Dispersed pixels stay inside the frame too: they stop softly at the edge.
     const h = gen.size[i] / 2;
-    if (X[i] < h) { X[i] = h; VX[i] *= -.2; } else if (X[i] > gen.W - h) { X[i] = gen.W - h; VX[i] *= -.2; }
-    if (Y[i] < h) { Y[i] = h; VY[i] *= -.2; } else if (Y[i] > gen.H - h) { Y[i] = gen.H - h; VY[i] *= -.2; }
+    if (X[i] < -h || X[i] > gen.W + h || Y[i] < -h || Y[i] > gen.H + h) { gone[i] = 1; active.delete(i); continue; }
     if (Math.abs(VX[i]) + Math.abs(VY[i]) < 3) { VX[i] = VY[i] = 0; active.delete(i); }
   }
   if (reform) {
@@ -310,26 +423,57 @@ function step(dt) {
 }
 
 // ---------- Rendering ----------
-function eachRun(st, fn) {
-  const groups = Array.from({ length: SHADES }, () => []);
-  for (let i = 0; i < gen.n; i++) groups[gen.shade[i]].push(i);
-  groups.forEach((idx, k) => idx.length && fn(k === MONO_SHADE && st.style === 'mono' ? INK : shadeHex(k, st.grain), idx));
+// Cubes are batched per colour. A trail is drawn as TRAIL_BANDS segments behind each cube, from full
+// opacity next to it down to nothing at the end, in the chosen direction.
+const TRAIL_BANDS = 8;
+function groupsOf(st) {
+  const g = new Map();
+  for (let i = 0; i < gen.n; i++) {
+    if (gone[i]) continue;
+    const c = colorOf(i, st);
+    let l = g.get(c); if (!l) g.set(c, l = []); l.push(i);
+  }
+  return g;
 }
+function eachShape(st, fn) {
+  const a = st.trailAngle * Math.PI / 180, dx = Math.cos(a), dy = Math.sin(a);
+  for (const [color, idx] of groupsOf(st)) {
+    if (st.trail > 0) for (let b = TRAIL_BANDS; b >= 1; b--) {
+      const polys = [];
+      for (const i of idx) {
+        const L = st.trail * gen.tlen[i], s0 = (b - 1) / TRAIL_BANDS * L, s1 = b / TRAIL_BANDS * L, h = gen.size[i] / 2;
+        if (L <= 0) continue;
+        const cx = X[i], cy = Y[i], nx = -dy * h, ny = dx * h;
+        polys.push([cx + dx * s0 + nx, cy + dy * s0 + ny, cx + dx * s1 + nx, cy + dy * s1 + ny, cx + dx * s1 - nx, cy + dy * s1 - ny, cx + dx * s0 - nx, cy + dy * s0 - ny]);
+      }
+      if (polys.length) fn(color, 1 - (b - .5) / TRAIL_BANDS, polys);
+    }
+    fn(color, 1, idx.map(i => { const s = gen.size[i], h = s / 2, x = X[i], y = Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }));
+  }
+}
+// Filled in small batches: one huge path of overlapping polygons rasterizes far slower than many small ones.
+const BATCH = 256;
 function draw(ctx, st) {
-  eachRun(st, (color, idx) => {
-    ctx.fillStyle = color; ctx.beginPath();
-    for (const i of idx) { const s = gen.size[i], h = s / 2; ctx.rect(X[i] - h, Y[i] - h, s, s); }
-    ctx.fill();
+  eachShape(st, (color, alpha, polys) => {
+    ctx.globalAlpha = alpha; ctx.fillStyle = color;
+    for (let k = 0; k < polys.length; k += BATCH) {
+      ctx.beginPath();
+      for (let j = k; j < Math.min(polys.length, k + BATCH); j++) {
+        const p = polys[j];
+        ctx.moveTo(p[0], p[1]); ctx.lineTo(p[2], p[3]); ctx.lineTo(p[4], p[5]); ctx.lineTo(p[6], p[7]); ctx.closePath();
+      }
+      ctx.fill();
+    }
   });
+  ctx.globalAlpha = 1;
 }
 function toSvg(st) {
   const r = v => Math.round(v * 10) / 10, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${gen.W}" height="${gen.H}" viewBox="0 0 ${gen.W} ${gen.H}">`);
-  if (st.bgExport) out.push(`<rect width="100%" height="100%" fill="${st.paper}"/>`);
-  eachRun(st, (color, idx) => {
-    let d = '';
-    for (const i of idx) { const s = gen.size[i], h = s / 2; d += `M${r(X[i] - h)} ${r(Y[i] - h)}h${r(s)}v${r(s)}h${r(-s)}Z`; }
-    out.push(`<path fill="${color}" d="${d}"/>`);
+  if (st.bgExport) out.push(`<rect width="100%" height="100%" fill="${PAPER}"/>`);
+  eachShape(st, (color, alpha, polys) => {
+    const d = polys.map(p => `M${r(p[0])} ${r(p[1])}L${r(p[2])} ${r(p[3])}L${r(p[4])} ${r(p[5])}L${r(p[6])} ${r(p[7])}Z`).join('');
+    out.push(`<path fill="${color}"${alpha < 1 ? ` fill-opacity="${Math.round(alpha * 1000) / 1000}"` : ''} d="${d}"/>`);
   });
   out.push('</svg>');
   return out.join('');
@@ -349,11 +493,16 @@ const SLIDERS = {
   persp: { label: 'Perspectiva', min: 0, max: 1, step: .01, fmt: pct },
   thickness: { label: 'Grosor', min: 0, max: 1, step: .01, fmt: pct },
   fade: { label: 'Desvanecer bordes', min: 0, max: 1, step: .01, fmt: pct },
+  contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
+  threshold: { label: 'Umbral', min: 0, max: .99, step: .01, fmt: pct, emph: true },
   count: { label: 'Cubos', min: 2000, max: 150000, step: 1000, fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño', min: 1, max: 24, step: .5, fmt: v => v + ' px' },
-  mod: { label: 'Tamaño según profundidad', min: 0, max: 1, step: .01, fmt: pct },
+  mod: { label: 'Tamaño según profundidad o tono', min: 0, max: 1, step: .01, fmt: pct },
   variation: { label: 'Variación', min: 0, max: 1, step: .01, fmt: pct },
   grain: { label: 'Variación de tono', min: 0, max: .4, step: .01, fmt: pct },
+  trail: { label: 'Longitud del trail', min: 0, max: 400, step: 1, fmt: v => v ? v + ' px' : 'sin trail', emph: true },
+  trailAngle: { label: 'Dirección', min: 0, max: 360, step: 1, fmt: v => v + '°' },
+  trailJitter: { label: 'Variación de largo', min: 0, max: 1, step: .01, fmt: pct },
   radius: { label: 'Radio', min: 30, max: 900, step: 10, fmt: v => v + ' px' },
   force: { label: 'Fuerza', min: .05, max: 2, step: .01, fmt: pct },
   drift: { label: 'Deriva', min: 0, max: 2, step: .01, fmt: pct },
@@ -368,14 +517,22 @@ for (const [key, d] of Object.entries(SLIDERS)) {
 }
 document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
+  if (seg.dataset.key === 'source' && b.dataset.v === 'image' && !img) return $('#file').click();
   S[seg.dataset.key] = b.dataset.v; sync();
 }));
 document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
-$('#bg-export').addEventListener('change', e => { S.bgExport = e.target.checked; });
+document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
+$('#palette').innerHTML = S.palette.map((_, i) => `<label title="Color ${i + 1}"><input type="color" data-pal="${i}" aria-label="Color ${i + 1}"></label>`).join('');
+document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('input', () => { S.palette[+inp.dataset.pal] = inp.value; sync(); }));
+$('#shuffle').addEventListener('click', () => { S.palette = randomPalette(); sync(); });
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('#reseed').addEventListener('click', reseed);
-$('#reform').addEventListener('click', () => { if (!gen) return; active.clear(); VX.fill(0); VY.fill(0); reform = { t0: performance.now(), x: X.slice(), y: Y.slice() }; wake(); });
+$('#reform').addEventListener('click', () => {
+  if (!gen) return;
+  active.clear(); VX.fill(0); VY.fill(0); gone.fill(0);
+  reform = { t0: performance.now(), x: X.slice(), y: Y.slice() }; wake();
+});
 addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
   if (e.key === 'r' || e.key === 'R') reseed();
@@ -387,6 +544,8 @@ function paintSwatch(el, hex) {
   const inp = el.querySelector('input'); if (inp.value !== hex) inp.value = hex;
 }
 function sync() {
+  if (S.source === 'image' && !img) S.source = 'waves';
+  if (S.colorMode === 'image' && S.source !== 'image') S.colorMode = 'single';
   for (const key of Object.keys(SLIDERS)) {
     const input = $('#in-' + key), d = SLIDERS[key];
     if (+input.value !== S[key]) input.value = S[key];
@@ -394,10 +553,19 @@ function sync() {
     $('#out-' + key).textContent = d.fmt(S[key]);
   }
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
+  document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
-  $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = S.style === 'mono';
+  const waves = S.source === 'waves', mono = S.style === 'mono';
+  $('#wave-controls').hidden = !waves; $('#image-controls').hidden = waves;
+  $('#source-hint').textContent = waves ? 'También podés arrastrar o pegar una imagen: más cubos en lo oscuro, menos en lo claro.' : 'Más cubos en las zonas oscuras, menos en las claras.';
+  $('#cm-image').hidden = waves;
+  $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = mono;
+  $('#ink-row').hidden = S.colorMode !== 'single'; $('#palette-box').hidden = S.colorMode !== 'random';
+  $('#sl-trailAngle').hidden = $('#sl-trailJitter').hidden = !S.trail;
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
-  const key = JSON.stringify([S.seed, S.aspect, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.style, S.count, S.size, S.mod, S.variation]);
+  document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
+  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.contrast, S.threshold, S.invert,
+    S.style, S.count, S.size, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter]);
   if (key !== genKey) { gen = generate(S); genKey = key; resetMotion(); }
   wake();
 }
@@ -414,14 +582,15 @@ function frameLoop(now) {
   const dt = last ? Math.min(.05, (now - last) / 1000) : 1 / 60; last = now;
   step(dt);
   const { w, h } = fit();
-  frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.paper;
+  frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = PAPER;
   const dpr = devicePixelRatio || 1, pw = Math.max(1, Math.round(w * dpr)), ph = Math.max(1, Math.round(h * dpr));
   if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
   const ctx = cv.getContext('2d');
   ctx.setTransform(pw / gen.W, 0, 0, ph / gen.H, 0, 0);
   ctx.clearRect(0, 0, gen.W, gen.H);
   draw(ctx, S);
-  $('#stats').textContent = `${gen.n.toLocaleString('es')} cubos · ${active.size.toLocaleString('es')} en movimiento · ${gen.W} × ${gen.H} px`;
+  let out = 0; for (let i = 0; i < gen.n; i++) out += gone[i];
+  $('#stats').textContent = `${(gen.n - out).toLocaleString('es')} cubos · ${active.size.toLocaleString('es')} en movimiento${out ? ` · ${out.toLocaleString('es')} fuera` : ''} · ${gen.W} × ${gen.H} px`;
   if (pressing || active.size || reform) raf = requestAnimationFrame(frameLoop); else last = 0;
 }
 new ResizeObserver(wake).observe(stage);
@@ -448,6 +617,26 @@ frame.addEventListener('pointerup', release);
 frame.addEventListener('pointercancel', release);
 frame.addEventListener('pointerleave', () => { if (!pressing) cursor.hidden = true; });
 
+// ---------- Image input ----------
+function openFile(file) {
+  if (!file || !file.type.startsWith('image/')) return toast('Eso no parece una imagen.');
+  const el = new Image(), url = URL.createObjectURL(file);
+  el.onload = () => { URL.revokeObjectURL(url); loadImage(el); S.source = 'image'; sync(); toast('Imagen cargada.'); };
+  el.onerror = () => { URL.revokeObjectURL(url); toast('No se pudo leer la imagen.'); };
+  el.src = url;
+}
+$('#upload').addEventListener('click', () => $('#file').click());
+$('#file').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
+let dragDepth = 0;
+stage.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; $('#drop').hidden = false; });
+stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#drop').hidden = true; } });
+stage.addEventListener('dragover', e => e.preventDefault());
+stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; openFile(e.dataTransfer.files[0]); });
+addEventListener('paste', e => {
+  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+  if (item) openFile(item.getAsFile());
+});
+
 // ---------- Export ----------
 let toastT = 0;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2400); }
@@ -459,11 +648,11 @@ function download(name, blob) {
 $('#png').addEventListener('click', () => {
   const c = document.createElement('canvas'); c.width = gen.W; c.height = gen.H;
   const ctx = c.getContext('2d');
-  if (S.bgExport) { ctx.fillStyle = S.paper; ctx.fillRect(0, 0, gen.W, gen.H); }
+  if (S.bgExport) { ctx.fillStyle = PAPER; ctx.fillRect(0, 0, gen.W, gen.H); }
   draw(ctx, S);
-  c.toBlob(b => b ? download(`cube-waves-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
+  c.toBlob(b => b ? download(`cube-noise-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
 });
-$('#svg').addEventListener('click', () => download(`cube-waves-${S.seed}.svg`, new Blob([toSvg(S)], { type: 'image/svg+xml' })));
+$('#svg').addEventListener('click', () => download(`cube-noise-${S.seed}.svg`, new Blob([toSvg(S)], { type: 'image/svg+xml' })));
 
 sync();
 </script>
