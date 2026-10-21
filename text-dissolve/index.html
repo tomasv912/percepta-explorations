@@ -6,15 +6,12 @@
 <title>Text Dissolve</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
-/* Untitled Serif is read from the computer; it can also be loaded from .otf files in the page. */
+/* Trust 3A comes from an Adobe Fonts web project (loaded at runtime); this only catches a regular install. */
+@font-face { font-family: 'Trust 3A Local'; src: local('Trust 3A'), local('Trust3A-Regular'), local('Trust 3A Regular'); }
 @font-face { font-family: 'EB Garamond'; font-weight: 400; src: url('vendor/eb-garamond-latin-400-normal.woff') format('woff'); }
 @font-face { font-family: 'EB Garamond'; font-weight: 500; src: url('vendor/eb-garamond-latin-500-normal.woff') format('woff'); }
 @font-face { font-family: 'EB Garamond'; font-weight: 700; src: url('vendor/eb-garamond-latin-700-normal.woff') format('woff'); }
 @font-face { font-family: 'EB Garamond'; font-weight: 500; font-style: italic; src: url('vendor/eb-garamond-latin-500-italic.woff') format('woff'); }
-@font-face { font-family: 'Untitled Serif'; font-weight: 400; src: local('Test Untitled Serif'), local('TestUntitledSerif-Regular'); }
-@font-face { font-family: 'Untitled Serif'; font-weight: 500; src: local('Test Untitled Serif Medium'), local('TestUntitledSerif-Medium'); }
-@font-face { font-family: 'Untitled Serif'; font-weight: 700; src: local('Test Untitled Serif Bold'), local('TestUntitledSerif-Bold'); }
-@font-face { font-family: 'Untitled Serif'; font-weight: 500; font-style: italic; src: local('T Untitled Sf Medium Italic'), local('TUntitledSf-MediumItalic'); }
 
 :root {
   --page: #f4f2ee;
@@ -147,8 +144,10 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-tracking"></div>
         <div id="sl-margin"></div>
         <p class="hint" id="font-status"></p>
-        <button class="btn" id="font-btn">Cargar Untitled Serif (.otf)</button>
-        <input type="file" id="font-file" accept=".otf,.ttf,.woff,.woff2" multiple hidden>
+        <div class="row" style="grid-template-columns:1fr auto">
+          <input class="text" id="kit" placeholder="ID del proyecto web (ej. abc1def)" aria-label="ID del proyecto web de Adobe Fonts" spellcheck="false">
+          <button class="btn" id="kit-btn">Usar</button>
+        </div>
       </section>
 
       <section>
@@ -205,8 +204,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 // ---------- State ----------
 const SIZES = { '4:5': [1080, 1350], '1:1': [1080, 1080], '16:9': [1920, 1080], '9:16': [1080, 1920] };
 const RES = 2; // the text raster and the exports render at 2x
-const FAMILY = '"Untitled Serif", "EB Garamond", serif';
-const SVG_FAMILY = "'Test Untitled Serif', 'Untitled Serif', 'EB Garamond', serif";
+const FALLBACK_FAMILY = '"EB Garamond", serif';
 const DEFAULTS = {
   text: 'This graffiti shall serve—through its removal at the owner’s cost—as a tariff on Real Estate investments.',
   weight: '400', align: 'left', fontSize: 92, lineHeight: 1.22, tracking: 0, margin: 200,
@@ -246,24 +244,22 @@ function hash(a, b) {
 }
 
 // ---------- Text ----------
-// Glyphs come from opentype.js whenever the font file is at hand (loaded .otf, the installed font read
-// with permission, or the bundled EB Garamond): the preview, the cut and the SVG curves then share the
-// exact same outlines. Characters the trial font lacks (accents, ’, —) come from EB Garamond.
-// With only the installed font and no file, the browser draws it (preview only).
+// The text is set in Trust 3A when its Adobe Fonts kit is loaded (the browser draws it). Until then the
+// bundled EB Garamond stands in, set with opentype.js so its SVG curves are exact.
 const FONT_KEYS = ['400', '500', '700', '500i'];
-const POSTSCRIPT = { '400': 'TestUntitledSerif-Regular', '500': 'TestUntitledSerif-Medium', '700': 'TestUntitledSerif-Bold', '500i': 'TUntitledSf-MediumItalic' };
 const FALLBACK_FILES = { '400': '400-normal', '500': '500-normal', '700': '700-normal', '500i': '500-italic' };
-const outlines = {}, fallbacks = {}, installed = {};
-const fontOf = (st, px) => `${st.weight === '500i' ? 'italic 500' : st.weight} ${px}px ${FAMILY}`;
+const fallbacks = {};
+let primary = null; // CSS family name of Trust 3A once one of its faces has loaded
+const fontOf = (st, px) => `${st.weight === '500i' ? 'italic 500' : st.weight} ${px}px ${primary ? `"${primary}", ` : ''}${FALLBACK_FAMILY}`;
 function shaperFor(st) {
-  const key = st.weight, F = fallbacks[key], P = outlines[key] || (!installed[key] && F);
+  const F = fallbacks[st.weight], P = !primary && F;
   if (!P) return null;
   const size = st.fontSize;
   const run = text => {
     const glyphs = []; let x = 0, prev = null;
     for (const ch of text) {
       let font = P, g = P.charToGlyph(ch);
-      if ((!g || !g.index) && F) { font = F; g = F.charToGlyph(ch); }
+      if ((!g || !g.index) && F && F !== P) { font = F; g = F.charToGlyph(ch); }
       const k = size / font.unitsPerEm;
       if (prev && prev.font === font) x += font.getKerningValue(prev.g, g) * k;
       glyphs.push({ font, g, x });
@@ -312,6 +308,87 @@ function rasterText(st, W, H) {
     for (const l of lines) ctx.fillText(l.t, l.x, l.y);
   }
   return { canvas: c, data: ctx.getImageData(0, 0, c.width, c.height).data, lines, curves: !!shaper };
+}
+
+// ---------- Tracing ----------
+// For fonts the page can't read (Adobe Fonts), SVG curves are traced from a 4× render of each line:
+// marching squares with sub-pixel edge positions, then Douglas–Peucker simplification.
+const TRACE = 4;
+function traceText(st, lines) {
+  const c = document.createElement('canvas'), ctx = c.getContext('2d', { willReadFrequently: true });
+  const setFont = () => {
+    ctx.font = fontOf(st, st.fontSize * TRACE);
+    if ('letterSpacing' in ctx) ctx.letterSpacing = st.tracking * TRACE + 'px';
+    ctx.textAlign = st.align === 'center' ? 'center' : 'left'; ctx.textBaseline = 'alphabetic';
+  };
+  let d = '';
+  for (const l of lines) {
+    if (!l.t.trim()) continue;
+    setFont();
+    const m = ctx.measureText(l.t), pad = 4;
+    const left = Math.floor(-m.actualBoundingBoxLeft) - pad, top = Math.floor(-m.actualBoundingBoxAscent) - pad;
+    c.width = Math.ceil(m.actualBoundingBoxRight) + pad - left; c.height = Math.ceil(m.actualBoundingBoxDescent) + pad - top;
+    setFont(); ctx.fillStyle = '#000'; ctx.fillText(l.t, -left, -top);
+    const px = x => Math.round((l.x + (x + left) / TRACE) * 100) / 100, py = y => Math.round((l.y + (y + top) / TRACE) * 100) / 100;
+    for (const loop of contours(ctx.getImageData(0, 0, c.width, c.height).data, c.width, c.height)) {
+      const pts = simplify(loop, 0.35);
+      if (pts.length < 3) continue;
+      d += 'M' + pts.map(([x, y]) => `${px(x)} ${py(y)}`).join('L') + 'Z';
+    }
+  }
+  return d;
+}
+// Closed iso-contours of the alpha channel at 50%.
+function contours(data, w, h) {
+  const T = 128, v = (x, y) => data[(y * w + x) * 4 + 3];
+  const pos = new Map(), links = new Map();
+  const at = (id, x0, y0, x1, y1) => {
+    if (!pos.has(id)) { const a = v(x0, y0), t = (T - a) / (v(x1, y1) - a); pos.set(id, [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t]); }
+    return id;
+  };
+  const link = (a, b) => { (links.get(a) || links.set(a, []).get(a)).push(b); (links.get(b) || links.set(b, []).get(b)).push(a); };
+  for (let y = 0; y < h - 1; y++) for (let x = 0; x < w - 1; x++) {
+    const tl = v(x, y) >= T, tr = v(x + 1, y) >= T, br = v(x + 1, y + 1) >= T, bl = v(x, y + 1) >= T;
+    const c = tl * 8 + tr * 4 + br * 2 + bl;
+    if (c === 0 || c === 15) continue;
+    const Tp = () => at((y * w + x) * 2, x, y, x + 1, y), Bp = () => at(((y + 1) * w + x) * 2, x, y + 1, x + 1, y + 1);
+    const Lp = () => at((y * w + x) * 2 + 1, x, y, x, y + 1), Rp = () => at((y * w + x + 1) * 2 + 1, x + 1, y, x + 1, y + 1);
+    const centre = (v(x, y) + v(x + 1, y) + v(x + 1, y + 1) + v(x, y + 1)) / 4 >= T;
+    switch (c) {
+      case 1: case 14: link(Lp(), Bp()); break;
+      case 2: case 13: link(Bp(), Rp()); break;
+      case 3: case 12: link(Lp(), Rp()); break;
+      case 4: case 11: link(Tp(), Rp()); break;
+      case 6: case 9: link(Tp(), Bp()); break;
+      case 7: case 8: link(Lp(), Tp()); break;
+      case 5: if (centre) { link(Lp(), Tp()); link(Bp(), Rp()); } else { link(Tp(), Rp()); link(Lp(), Bp()); } break;
+      case 10: if (centre) { link(Tp(), Rp()); link(Lp(), Bp()); } else { link(Lp(), Tp()); link(Bp(), Rp()); } break;
+    }
+  }
+  const loops = [], seen = new Set();
+  for (const start of links.keys()) {
+    if (seen.has(start)) continue;
+    const loop = [];
+    for (let prev = -1, cur = start; cur !== undefined && !seen.has(cur);) {
+      seen.add(cur); loop.push(pos.get(cur));
+      const nb = links.get(cur), next = nb[0] !== prev ? nb[0] : nb[1];
+      prev = cur; cur = next;
+    }
+    loops.push(loop);
+  }
+  return loops;
+}
+function simplify(pts, eps) {
+  if (pts.length < 4) return pts;
+  const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop(), [ax, ay] = pts[a], [bx, by] = pts[b], dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1;
+    let far = -1, fd = eps;
+    for (let i = a + 1; i < b; i++) { const d = Math.abs((pts[i][0] - ax) * dy - (pts[i][1] - ay) * dx) / len; if (d > fd) { fd = d; far = i; } }
+    if (far >= 0) { keep[far] = 1; stack.push([a, far], [far, b]); }
+  }
+  return pts.filter((_, i) => keep[i]);
 }
 
 // ---------- Dissolve ----------
@@ -377,19 +454,14 @@ function draw(ctx, g, rast, st, W, H) {
   ctx.fill();
 }
 function toSvg(g, rast, st, W, H) {
-  const r = v => Math.round(v * 100) / 100, esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const r = v => Math.round(v * 100) / 100;
   const out = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W * RES}" height="${H * RES}" viewBox="0 0 ${W} ${H}">`];
   if (st.bgExport) out.push(`<rect width="100%" height="100%" fill="${st.paper}"/>`);
   let cut = '';
   eachRun(g, (x, y, w, h) => { cut += `M${r(x)} ${r(y)}h${r(w)}v${r(h)}h${r(-w)}Z`; });
   out.push(`<defs><mask id="dissolve-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}"><rect width="${W}" height="${H}" fill="#fff"/><path fill="#000" d="${cut}"/></mask></defs>`);
-  if (rast.curves) out.push(`<g mask="url(#dissolve-cut)"><path fill="${st.ink}" d="${rast.lines.map(l => l.d).join('')}"/></g>`);
-  else {
-    const italic = st.weight === '500i', weight = italic ? 500 : +st.weight, anchor = st.align === 'center' ? 'middle' : 'start';
-    out.push(`<g mask="url(#dissolve-cut)"><text font-family="${SVG_FAMILY}" font-size="${st.fontSize}" font-weight="${weight}"${italic ? ' font-style="italic"' : ''} letter-spacing="${st.tracking}" text-anchor="${anchor}" fill="${st.ink}">`);
-    for (const l of rast.lines) out.push(`<tspan x="${r(l.x)}" y="${r(l.y)}">${esc(l.t)}</tspan>`);
-    out.push('</text></g>');
-  }
+  const outline = rast.curves ? rast.lines.map(l => l.d).join('') : traceText(st, rast.lines);
+  out.push(`<g mask="url(#dissolve-cut)"><path fill="${st.ink}" fill-rule="${rast.curves ? 'nonzero' : 'evenodd'}" d="${outline}"/></g>`);
   let d = '';
   const s = g.d, rr = s * DOT;
   for (let i = 0; i < g.dots.length; i += 2) {
@@ -492,20 +564,19 @@ function render() {
 new ResizeObserver(schedule).observe(stage);
 
 // ---------- Font ----------
-// Untitled Serif comes from the computer or from .otf files loaded here; neither leaves the browser.
+// Trust 3A is loaded from an Adobe Fonts web project (its ID is remembered in this browser only).
 let fontsVer = 0;
-const keyOf = (weight, style) => style === 'italic' ? '500i' : String(weight);
+const KIT_KEY = 'text-dissolve:adobe-kit';
 function fontStatus() {
-  const k = S.weight;
-  $('#font-status').textContent = outlines[k] ? 'Usando Untitled Serif.'
-    : installed[k] ? 'Usando Untitled Serif instalada. Para el SVG en curvas, al exportar el navegador te pide permiso para leerla (Chrome/Edge), o cargá los .otf.'
-    : 'No encuentro Untitled Serif. Cargá los .otf (quedan solo en tu navegador); mientras tanto se ve con EB Garamond.';
-  $('#font-btn').hidden = FONT_KEYS.every(key => outlines[key]);
+  $('#font-status').textContent = primary
+    ? `Usando ${primary} (Adobe Fonts).`
+    : 'Trust 3A no está cargada: se ve con EB Garamond. Pegá el ID de un proyecto web de Adobe Fonts que la incluya, con este dominio habilitado.';
 }
 async function checkFont() {
-  const faces = [...document.fonts].filter(f => f.family.replace(/"/g, '') === 'Untitled Serif');
+  const faces = [...document.fonts].filter(f => /trust/i.test(f.family));
   await Promise.allSettled(faces.map(f => f.load()));
-  for (const f of faces) if (f.status === 'loaded') installed[keyOf(f.weight, f.style)] = true;
+  const ok = faces.find(f => f.status === 'loaded');
+  primary = ok ? ok.family.replace(/["']/g, '') : null;
   fontsVer++; fontStatus(); schedule();
 }
 async function loadFallbacks() {
@@ -515,30 +586,20 @@ async function loadFallbacks() {
   }));
   fontsVer++; schedule();
 }
-// Reads the installed font's file (Local Font Access, asks for permission) so the SVG can have curves.
-async function readInstalled(key) {
-  if (!('queryLocalFonts' in window)) return false;
-  try {
-    const [f] = await queryLocalFonts({ postscriptNames: [POSTSCRIPT[key]] });
-    if (!f) return false;
-    outlines[key] = opentype.parse(await (await f.blob()).arrayBuffer());
-    fontsVer++; fontStatus(); return true;
-  } catch { return false; }
+// Accepts the bare ID, the CSS URL or the whole embed code.
+function loadKit(input) {
+  const id = (input.match(/use\.typekit\.net\/([a-z0-9]+)/i) || input.trim().match(/^([a-z0-9]{4,})$/i) || [])[1];
+  if (!id) return toast('No reconozco ese ID de Adobe Fonts.');
+  document.querySelectorAll('link[data-kit]').forEach(l => l.remove());
+  const link = document.createElement('link');
+  link.rel = 'stylesheet'; link.href = `https://use.typekit.net/${id}.css`; link.dataset.kit = id;
+  link.onload = () => { try { localStorage.setItem(KIT_KEY, id); } catch {} checkFont().then(() => { if (!primary) toast('El proyecto cargó, pero no encuentro Trust 3A adentro.'); }); };
+  link.onerror = () => toast('No se pudo cargar ese proyecto de Adobe Fonts.');
+  document.head.append(link);
+  $('#kit').value = id;
 }
-$('#font-btn').addEventListener('click', () => $('#font-file').click());
-$('#font-file').addEventListener('change', async e => {
-  for (const file of e.target.files) {
-    const n = file.name.toLowerCase();
-    const descriptors = { weight: /bold/.test(n) ? '700' : /medium/.test(n) ? '500' : '400', style: /italic/.test(n) ? 'italic' : 'normal' };
-    try {
-      const buf = await file.arrayBuffer();
-      outlines[keyOf(descriptors.weight, descriptors.style)] = opentype.parse(buf);
-      const face = new FontFace('Untitled Serif', buf, descriptors); await face.load(); document.fonts.add(face);
-    } catch { toast(`No se pudo leer ${file.name}`); }
-  }
-  e.target.value = '';
-  checkFont();
-});
+$('#kit-btn').addEventListener('click', () => loadKit($('#kit').value));
+$('#kit').addEventListener('keydown', e => { if (e.key === 'Enter') loadKit(e.target.value); });
 
 // ---------- Export ----------
 let toastT = 0;
@@ -573,10 +634,7 @@ $('#png').addEventListener('click', () => {
   o.drawImage(c, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
   out.toBlob(b => b ? download(`text-dissolve-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
 });
-$('#svg').addEventListener('click', async () => {
-  if (!rast.curves && !(await readInstalled(S.weight))) {
-    return toast('Para el SVG en curvas, cargá los .otf con el botón de la sección Texto.');
-  }
+$('#svg').addEventListener('click', () => {
   render();
   const [W, H] = SIZES[S.aspect];
   download(`text-dissolve-${S.seed}.svg`, new Blob([toSvg(gen, rast, S, W, H)], { type: 'image/svg+xml' }));
@@ -585,6 +643,7 @@ $('#svg').addEventListener('click', async () => {
 sync();
 document.fonts.ready.then(checkFont);
 loadFallbacks();
+try { const kit = localStorage.getItem(KIT_KEY); if (kit) loadKit(kit); } catch {}
 </script>
 </body>
 </html>
