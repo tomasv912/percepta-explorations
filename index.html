@@ -133,8 +133,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
       <section>
         <h2>Cubos</h2>
-        <div class="seg" data-key="shape" aria-label="Forma">
-          <button data-v="flat">Plano</button><button data-v="iso">Isométrico</button>
+        <div class="seg" data-key="style" aria-label="Estilo">
+          <button data-v="mono">Mono</button><button data-v="variation">Variación</button>
         </div>
         <div id="sl-count"></div>
         <div id="sl-size"></div>
@@ -177,7 +177,7 @@ const SIZES = { '3:2': [3000, 2000], '4:3': [3000, 2250], '1:1': [3000, 3000], '
 const DEFAULTS = {
   seed: 1, aspect: '3:2',
   base: 'noise', angle: 90, mix: 0.45, scale: 0.35, warp: 0.35, contrast: 1.3, threshold: 0.4,
-  shape: 'flat', size: 14, count: 40000, mod: .6, variation: .45, clump: .5, stragglers: .04,
+  style: 'mono', size: 14, count: 40000, mod: .6, variation: .45, clump: .5, stragglers: .04,
   ink: '#1a1714', grain: .05, paper: '#ede6da', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -237,7 +237,6 @@ function makeField(st, W, H) {
 }
 
 // ---------- Generation ----------
-const SQ3 = Math.sqrt(3);
 const STRIDE = 4; // x, y, size, shade
 // Same idea as the starlings: a density grid sampled by its cumulative sum,
 // so cubes overlap, knot together and thin out instead of sitting on a lattice.
@@ -262,6 +261,7 @@ function generate(st) {
   const total = st.count, nStray = Math.round(total * st.stragglers);
   const items = new Float32Array(total * STRIDE);
   let got = 0;
+  const mono = st.style === 'mono';
   const sample = (dens, count, stray) => {
     const cdf = new Float64Array(n); let sum = 0;
     for (let k = 0; k < n; k++) cdf[k] = sum += dens[k];
@@ -275,18 +275,14 @@ function generate(st) {
       const o = got++ * STRIDE;
       items[o] = (i + rand()) * cw;
       items[o + 1] = (j + rand()) * ch;
-      items[o + 2] = st.size * k * Math.max(.15, v) * (stray ? .7 : 1);
-      items[o + 3] = Math.floor(rand() * SHADES);
+      // Mono: every cube the same size and the exact ink; Variación: size follows the field, shade varies.
+      items[o + 2] = mono ? st.size : st.size * k * Math.max(.15, v) * (stray ? .7 : 1);
+      items[o + 3] = mono ? MONO_SHADE : Math.floor(rand() * SHADES);
     }
   };
   sample(body, total - nStray, false);
   sample(halo, nStray, true);
-  if (st.shape === 'flat') return { W, H, items: items.subarray(0, got * STRIDE) };
-  // Iso cubes paint back to front so the faces occlude correctly.
-  const idx = Array.from({ length: got }, (_, i) => i).sort((a, b) => items[a * STRIDE + 1] - items[b * STRIDE + 1]);
-  const sorted = new Float32Array(got * STRIDE);
-  idx.forEach((s, d) => sorted.set(items.subarray(s * STRIDE, s * STRIDE + STRIDE), d * STRIDE));
-  return { W, H, items: sorted };
+  return { W, H, items: items.subarray(0, got * STRIDE) };
 }
 // A soft band just outside the shape where loose cubes drift, like the stragglers of a flock.
 function haloOf(M, w, h) {
@@ -323,46 +319,26 @@ function labToHex([L, a, b]) {
   return '#' + rgb.map(v => v.toString(16).padStart(2, '0')).join('');
 }
 // One ink split into a few shades: each cube takes a random one, ±grain in lightness.
-const SHADES = 9;
+const SHADES = 9, MONO_SHADE = (SHADES - 1) / 2; // the middle shade is the ink itself
 function buildLut(st) {
   const [L, a, b] = rgbToLab(hexToRgb(st.ink));
-  const base = [], top = [], right = [];
-  for (let i = 0; i < SHADES; i++) {
-    const l = L + (i / (SHADES - 1) * 2 - 1) * st.grain;
-    base.push(labToHex([l, a, b]));
-    top.push(labToHex([l + .14, a, b]));
-    right.push(labToHex([l - .14, a * .9, b * .9]));
-  }
-  return { base, top, right };
+  const base = [];
+  for (let i = 0; i < SHADES; i++) base.push(labToHex([L + (i / (SHADES - 1) * 2 - 1) * st.grain, a, b]));
+  return { base };
 }
 
 // ---------- Rendering ----------
-function isoFaces(x, y, e) {
-  const h = e * SQ3 / 2;
-  return {
-    top: [x, y - e, x + h, y - e / 2, x, y, x - h, y - e / 2],
-    left: [x - h, y - e / 2, x, y, x, y + e, x - h, y + e / 2],
-    right: [x, y, x + h, y - e / 2, x + h, y + e / 2, x, y + e],
-  };
-}
 function squareOf(x, y, s) {
   const h = s / 2;
   return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h];
 }
 function poly(ctx, p) { ctx.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]); ctx.closePath(); }
 
-// Flat squares are grouped per shade (one fill each); iso cubes keep their back-to-front order.
+// Squares are grouped per shade (one fill each).
 function eachRun(it, st, lut, fn) {
-  if (st.shape === 'flat') {
-    const groups = Array.from({ length: SHADES }, () => []);
-    for (let i = 0; i < it.length; i += STRIDE) groups[it[i + 3]].push(squareOf(it[i], it[i + 1], it[i + 2]));
-    groups.forEach((polys, k) => polys.length && fn(lut.base[k], polys));
-  } else {
-    for (let i = 0; i < it.length; i += STRIDE) {
-      const k = it[i + 3], f = isoFaces(it[i], it[i + 1], it[i + 2] / SQ3);
-      fn(lut.top[k], [f.top]); fn(lut.base[k], [f.left]); fn(lut.right[k], [f.right]);
-    }
-  }
+  const groups = Array.from({ length: SHADES }, () => []);
+  for (let i = 0; i < it.length; i += STRIDE) groups[it[i + 3]].push(squareOf(it[i], it[i + 1], it[i + 2]));
+  groups.forEach((polys, k) => polys.length && fn(lut.base[k], polys));
 }
 
 function draw(ctx, gen, st, lut) {
@@ -444,6 +420,7 @@ function sync() {
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   $('#sl-angle').hidden = S.base !== 'linear';
   $('#sl-mix').hidden = S.base === 'noise';
+  $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = S.style === 'mono';
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   lut = buildLut(S);
   schedule();
@@ -460,7 +437,7 @@ function schedule() {
   raf = requestAnimationFrame(() => setTimeout(render, 0));
 }
 function render() {
-  const key = JSON.stringify([S.seed, S.aspect, S.base, S.angle, S.mix, S.scale, S.warp, S.contrast, S.threshold, S.shape, S.size, S.count, S.mod, S.variation, S.clump, S.stragglers]);
+  const key = JSON.stringify([S.seed, S.aspect, S.base, S.angle, S.mix, S.scale, S.warp, S.contrast, S.threshold, S.style, S.size, S.count, S.mod, S.variation, S.clump, S.stragglers]);
   if (key !== genKey) { gen = generate(S); genKey = key; }
   const { w, h, W, H } = fit();
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.paper;

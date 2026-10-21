@@ -134,8 +134,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
       <section>
         <h2>Cubos</h2>
-        <div class="seg" data-key="shape" aria-label="Forma">
-          <button data-v="flat">Plano</button><button data-v="iso">Isométrico</button>
+        <div class="seg" data-key="style" aria-label="Estilo">
+          <button data-v="mono">Mono</button><button data-v="variation">Variación</button>
         </div>
         <div id="sl-size"></div>
         <div id="sl-variation"></div>
@@ -180,7 +180,7 @@ const RES = 2;              // exports render at 2x
 const MAX = 30000;          // oldest cubes drop off past this
 const DEFAULTS = {
   response: .5, gap: .7, maxGap: 220, scatter: .25, snap: false,
-  shape: 'flat', size: 16, variation: .3, speedSize: 0,
+  style: 'mono', size: 16, variation: .3, speedSize: 0,
   life: 2.5, permanent: false,
   colorMode: 'ink', palette: ['#FFE293', '#F79FFF', '#B1FFEF', '#A9EFFF', '#FFBDA9'],
   ink: '#1a1714', grain: .05, paper: '#ede6da', bgExport: false,
@@ -203,17 +203,12 @@ function labToHex([L, a, b]) {
   return '#' + rgb.map(v => v.toString(16).padStart(2, '0')).join('');
 }
 // One ink split into a few shades: each cube takes a random one, ±grain in lightness.
-const SHADES = 9;
+const SHADES = 9, MONO_SHADE = (SHADES - 1) / 2; // the middle shade is the color itself
 function shadesOf(hex, grain) {
   const [L, a, b] = rgbToLab(hexToRgb(hex));
-  const base = [], top = [], right = [];
-  for (let i = 0; i < SHADES; i++) {
-    const l = L + (i / (SHADES - 1) * 2 - 1) * grain;
-    base.push(labToHex([l, a, b]));
-    top.push(labToHex([l + .14, a, b]));
-    right.push(labToHex([l - .14, a * .9, b * .9]));
-  }
-  return { base, top, right };
+  const base = [];
+  for (let i = 0; i < SHADES; i++) base.push(labToHex([L + (i / (SHADES - 1) * 2 - 1) * grain, a, b]));
+  return { base };
 }
 function buildLut(st) { return { ink: shadesOf(st.ink, st.grain), palette: st.palette.map(h => shadesOf(h, st.grain)) }; }
 // Palette mode cycles through the colors in drop order.
@@ -247,6 +242,8 @@ function drop(x, y, t) {
   if (cubes.length > MAX) cubes.splice(0, cubes.length - MAX);
   wake();
 }
+// Mono: every cube at the set size in the exact color; Variación keeps each cube's own size and shade.
+const look = (c, st) => st.style === 'mono' ? [st.size, MONO_SHADE] : [c.s, c.k];
 // Size multiplier from age: full for most of its life, then it shrinks away.
 function lifeScale(c, now) {
   if (S.permanent) return 1;
@@ -255,35 +252,18 @@ function lifeScale(c, now) {
 }
 
 // ---------- Rendering ----------
-const SQ3 = Math.sqrt(3);
-function isoFaces(x, y, e) {
-  const h = e * SQ3 / 2;
-  return {
-    top: [x, y - e, x + h, y - e / 2, x, y, x - h, y - e / 2],
-    left: [x - h, y - e / 2, x, y, x, y + e, x - h, y + e / 2],
-    right: [x, y, x + h, y - e / 2, x + h, y + e / 2, x, y + e],
-  };
-}
 function squareOf(x, y, s) { const h = s / 2; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }
 function poly(ctx, p) { ctx.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]); ctx.closePath(); }
-// Flat squares are grouped per color (one fill each); iso cubes paint in drop order so newer ones sit on top.
+// Squares are grouped per color (one fill each).
 function eachRun(now, st, lut, fn) {
-  if (st.shape === 'flat') {
-    const groups = new Map();
-    for (const c of cubes) {
-      const k = lifeScale(c, now); if (k <= 0) continue;
-      const color = shadesFor(c, st, lut).base[c.k];
-      let g = groups.get(color); if (!g) groups.set(color, g = []);
-      g.push(squareOf(c.x, c.y, c.s * k));
-    }
-    groups.forEach((polys, color) => fn(color, polys));
-  } else {
-    for (const c of cubes) {
-      const k = lifeScale(c, now); if (k <= 0) continue;
-      const f = isoFaces(c.x, c.y, c.s * k / SQ3), sh = shadesFor(c, st, lut);
-      fn(sh.top[c.k], [f.top]); fn(sh.base[c.k], [f.left]); fn(sh.right[c.k], [f.right]);
-    }
+  const groups = new Map();
+  for (const c of cubes) {
+    const k = lifeScale(c, now); if (k <= 0) continue;
+    const [s, shade] = look(c, st), color = shadesFor(c, st, lut).base[shade];
+    let g = groups.get(color); if (!g) groups.set(color, g = []);
+    g.push(squareOf(c.x, c.y, s * k));
   }
+  groups.forEach((polys, color) => fn(color, polys));
 }
 function draw(ctx, now, st, lut) {
   eachRun(now, st, lut, (color, polys) => {
@@ -296,18 +276,13 @@ function toSvg(now, st, lut) {
   const r = v => Math.round(v * 100) / 100, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW} ${AH}">`);
   if (st.bgExport) out.push(`<rect width="100%" height="100%" fill="${st.paper}"/>`);
-  const pd = p => { let s = `M${r(p[0])} ${r(p[1])}`; for (let i = 2; i < p.length; i += 2) s += `L${r(p[i])} ${r(p[i + 1])}`; return s + 'Z'; };
   // One group per stroke (click to release), one element per cube, so ungrouping leaves loose cubes.
   let stroke = null, nStroke = 0, nCube = 0;
   for (const c of cubes) {
     const k = lifeScale(c, now); if (k <= 0) continue;
     if (c.g !== stroke) { if (stroke !== null) out.push('</g>'); out.push(`<g id="trazo-${++nStroke}">`); stroke = c.g; }
-    const sh = shadesFor(c, st, lut), s = c.s * k, id = `cubo-${++nCube}`;
-    if (st.shape === 'flat') out.push(`<rect id="${id}" x="${r(c.x - s / 2)}" y="${r(c.y - s / 2)}" width="${r(s)}" height="${r(s)}" fill="${sh.base[c.k]}"/>`);
-    else {
-      const f = isoFaces(c.x, c.y, s / SQ3);
-      out.push(`<g id="${id}"><path fill="${sh.top[c.k]}" d="${pd(f.top)}"/><path fill="${sh.base[c.k]}" d="${pd(f.left)}"/><path fill="${sh.right[c.k]}" d="${pd(f.right)}"/></g>`);
-    }
+    const [size, shade] = look(c, st), s = size * k;
+    out.push(`<rect id="cubo-${++nCube}" x="${r(c.x - s / 2)}" y="${r(c.y - s / 2)}" width="${r(s)}" height="${r(s)}" fill="${shadesFor(c, st, lut).base[shade]}"/>`);
   }
   if (stroke !== null) out.push('</g>');
   out.push('</svg>');
@@ -374,6 +349,7 @@ function sync() {
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   $('#sl-life').hidden = S.permanent;
+  $('#sl-variation').hidden = $('#sl-speedSize').hidden = $('#sl-grain').hidden = S.style === 'mono';
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   const pal = S.colorMode === 'palette';
   $('#palette-row').hidden = !pal; $('#ink-row').hidden = pal;
