@@ -3,14 +3,17 @@ import { simplex, fbm } from './noise';
 import type { Network } from './network';
 import type { Params } from './params';
 
-// The network becomes a continuous density field sampled on the dot grid. Every path is a chain of
+// The network becomes a continuous density field sampled on a fine grid. Every path is a chain of
 // gaussian splats normalised so a lone path peaks at 1; nodes add a softer, wider bump. Nearby paths
 // simply add up. The result is then shaped by low-frequency noise, a threshold and a contrast curve.
 
 export interface Grid { cols: number; rows: number; sp: number }
 
+// Field resolution in px. It is only where density is measured; pixels are placed freely inside it.
+const FIELD_CELL = 4;
+
 export function gridOf(p: Params): Grid {
-  return { cols: Math.max(1, Math.floor(p.width / p.spacing)), rows: Math.max(1, Math.floor(p.height / p.spacing)), sp: p.spacing };
+  return { cols: Math.max(1, Math.ceil(p.width / FIELD_CELL)), rows: Math.max(1, Math.ceil(p.height / FIELD_CELL)), sp: FIELD_CELL };
 }
 
 const SQRT_2PI = Math.sqrt(2 * Math.PI);

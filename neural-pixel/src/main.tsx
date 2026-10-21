@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { DEFAULTS, PRESETS, type Params, type Mode, type Shape } from './params';
+import { DEFAULTS, PRESETS, type Params, type Style, type Shape } from './params';
 import { generateNetwork } from './network';
 import { gridOf, rawField, shapeField } from './field';
 import { Activation } from './activation';
-import { drawDots, drawDebug, toSvg } from './render';
+import { scatterPixels, buildShades, drawPixels, drawDebug, toSvg, STRIDE } from './render';
 import { rng, range } from './random';
 
 type SetParam = <K extends keyof Params>(key: K, value: Params[K]) => void;
@@ -56,16 +56,19 @@ function App() {
   // Each stage only recomputes when its own inputs change.
   const net = useMemo(() => generateNetwork(p),
     [p.seed, p.width, p.height, p.margin, p.clusters, p.nodes, p.connectivity, p.branching, p.curvature, p.noiseFreq, p.noiseAmp, p.octaves, p.warp, p.pathWidth]);
-  const grid = useMemo(() => gridOf(p), [p.width, p.height, p.spacing]);
+  const grid = useMemo(() => gridOf(p), [p.width, p.height]);
   const raw = useMemo(() => rawField(net, p, grid), [net, grid]);
   const values = useMemo(() => shapeField(raw, p, grid), [raw, p.noiseMix, p.threshold, p.contrast, p.margin]);
+  const pixels = useMemo(() => scatterPixels(values, p, grid),
+    [values, p.seed, p.style, p.count, p.size, p.mod, p.variation, p.clump, p.stragglers, p.noiseFreq]);
+  const shades = useMemo(() => buildShades(p.fg, p.style === 'mono' ? 0 : p.grain), [p.fg, p.grain, p.style]);
   const activation = useMemo(() => new Activation(net, p.seed), [net]);
 
   const stageRef = useRef<HTMLElement>(null), canvasRef = useRef<HTMLCanvasElement>(null);
-  const live = useRef({ p, net, grid, values, activation, playing, view, time: 0, last: 0, act: null as Float32Array | null, dirty: true });
-  Object.assign(live.current, { p, net, grid, values, playing, view });
+  const live = useRef({ p, net, grid, pixels, shades, activation, playing, view, time: 0, last: 0, act: null as Float32Array | null, dirty: true });
+  Object.assign(live.current, { p, net, grid, pixels, shades, playing, view });
   if (live.current.activation !== activation) Object.assign(live.current, { activation, act: null });
-  useEffect(() => { live.current.dirty = true; }, [p, values, view, net]);
+  useEffect(() => { live.current.dirty = true; }, [p, pixels, shades, view, net]);
 
   useEffect(() => {
     const el = stageRef.current!;
@@ -97,7 +100,7 @@ function App() {
       const ctx = cv.getContext('2d')!;
       ctx.setTransform(cv.width / s.p.width, 0, 0, cv.height / s.p.height, 0, 0);
       ctx.fillStyle = s.p.bg; ctx.fillRect(0, 0, s.p.width, s.p.height);
-      drawDots(ctx, s.values, s.act, s.p, s.grid);
+      drawPixels(ctx, s.pixels, s.act, s.p, s.shades);
       if (s.p.debug) drawDebug(ctx, s.net, cv.width / s.p.width);
     };
     raf = requestAnimationFrame(loop);
@@ -118,10 +121,10 @@ function App() {
     const ctx = c.getContext('2d')!;
     ctx.setTransform(s, 0, 0, s, 0, 0);
     if (!transparent) { ctx.fillStyle = p.bg; ctx.fillRect(0, 0, p.width, p.height); }
-    drawDots(ctx, values, live.current.act, p, grid);
+    drawPixels(ctx, pixels, live.current.act, p, shades);
     c.toBlob(b => b ? download(`neural-pixel-${p.seed}${transparent ? '-transparent' : ''}.png`, b) : setToast('No se pudo generar el PNG.'), 'image/png');
   };
-  const exportSvg = () => download(`neural-pixel-${p.seed}.svg`, new Blob([toSvg(values, live.current.act, p, grid, false)], { type: 'image/svg+xml' }));
+  const exportSvg = () => download(`neural-pixel-${p.seed}.svg`, new Blob([toSvg(pixels, live.current.act, p, shades, false)], { type: 'image/svg+xml' }));
 
   const randomize = () => {
     const r = rng(Date.now() & 0xffffff);
@@ -149,7 +152,7 @@ function App() {
       <main id="stage" ref={stageRef}>
         <canvas ref={canvasRef} className="art" role="img" aria-label="Textura de puntos generada a partir de una red" />
         <div className="hud">
-          <span>{net.degree.length} nodos · {net.edges.length} conexiones · {grid.cols * grid.rows} puntos · {p.width} × {p.height}</span>
+          <span>{net.degree.length} nodos · {net.edges.length} conexiones · {(pixels.length / STRIDE).toLocaleString('es')} píxeles · {p.width} × {p.height}</span>
           <span className="dim"><kbd>Espacio</kbd> pausa · <kbd>R</kbd> aleatorio</span>
         </div>
       </main>
@@ -199,10 +202,17 @@ function App() {
           </Section>
 
           <Section title="Píxeles">
-            <Seg<Mode> label="Modo" value={p.mode} onChange={v => set('mode', v)} options={[['opacity', 'Opacidad'], ['halftone', 'Halftone'], ['binary', 'Binario']]} />
-            {p.mode !== 'binary' && <Seg<Shape> label="Forma" value={p.shape} onChange={v => set('shape', v)} options={[['circle', 'Punto'], ['square', 'Píxel']]} />}
-            <Slider label="Espaciado" value={p.spacing} min={3} max={30} step={0.5} fmt={px} emph onChange={v => set('spacing', v)} reset={DEFAULTS.spacing} />
-            <Slider label="Tamaño del punto" value={p.dotSize} min={0.5} max={30} step={0.1} fmt={px} onChange={v => set('dotSize', v)} reset={DEFAULTS.dotSize} />
+            <Seg<Style> label="Estilo" value={p.style} onChange={v => set('style', v)} options={[['mono', 'Mono'], ['variation', 'Variación']]} />
+            <Seg<Shape> label="Forma" value={p.shape} onChange={v => set('shape', v)} options={[['square', 'Píxel'], ['circle', 'Punto']]} />
+            <Slider label="Píxeles" value={p.count} min={1000} max={150000} step={500} emph fmt={v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k'} onChange={v => set('count', v)} reset={DEFAULTS.count} />
+            <Slider label="Tamaño" value={p.size} min={0.5} max={20} step={0.1} fmt={px} onChange={v => set('size', v)} reset={DEFAULTS.size} />
+            <Slider label="Agrupamiento" value={p.clump} min={0} max={1} step={0.01} fmt={pct} onChange={v => set('clump', v)} reset={DEFAULTS.clump} />
+            <Slider label="Sueltos" value={p.stragglers} min={0} max={0.3} step={0.005} fmt={pct} onChange={v => set('stragglers', v)} reset={DEFAULTS.stragglers} />
+            {p.style === 'variation' && <>
+              <Slider label="Tamaño según densidad" value={p.mod} min={0} max={1} step={0.01} fmt={pct} onChange={v => set('mod', v)} reset={DEFAULTS.mod} />
+              <Slider label="Variación" value={p.variation} min={0} max={1} step={0.01} fmt={pct} onChange={v => set('variation', v)} reset={DEFAULTS.variation} />
+              <Slider label="Variación de tono" value={p.grain} min={0} max={0.2} step={0.005} fmt={pct} onChange={v => set('grain', v)} reset={DEFAULTS.grain} />
+            </>}
           </Section>
 
           <Section title="Activación">
