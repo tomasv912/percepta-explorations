@@ -124,7 +124,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
     <div class="controls">
       <section>
         <h2>Trazo</h2>
-        <p class="hint">Hacé clic y arrastrá. Lento deja muchos cubos juntos; rápido los separa. Con <kbd>Shift</kbd>, una línea recta de cubos equidistantes.</p>
+        <p class="hint">Hacé clic y arrastrá. Lento deja muchos cubos juntos; rápido los separa. Con <kbd>Shift</kbd>, una línea recta de cubos equidistantes; mientras la sostenés, el scroll agrega o quita cubos.</p>
         <div id="sl-response"></div>
         <div id="sl-gap"></div>
         <div id="sl-maxGap"></div>
@@ -390,13 +390,14 @@ function toArt(e) {
   return [(e.clientX - r.left) / r.width * AW, (e.clientY - r.top) / r.height * AH];
 }
 // Shift-drag lays a straight line instead: cubes at equal steps from the press point to the pointer,
-// no jitter and no speed, redrawn as the line moves until release.
+// no jitter and no speed, redrawn as the line moves until release. Scrolling while it's held sets the
+// number of cubes directly (up adds, down removes); from then on the count stays and the spacing adapts.
 let line = null;
 function layLine(to, t) {
   cubes.splice(cubes.length - line.count);
-  dropped = line.n0;
+  dropped = line.n0; line.to = to;
   const [x0, y0] = line.from, len = Math.hypot(to[0] - x0, to[1] - y0);
-  const steps = Math.max(0, Math.round(len / Math.max(1, S.size * S.lineGap)));
+  const steps = line.steps ?? Math.max(0, Math.round(len / Math.max(1, S.size * S.lineGap)));
   for (let i = 0; i <= steps; i++) {
     const u = steps ? i / steps : 0;
     let x = x0 + (to[0] - x0) * u, y = y0 + (to[1] - y0) * u;
@@ -416,7 +417,7 @@ frame.addEventListener('pointerdown', e => {
   frame.setPointerCapture(e.pointerId);
   pressed = true; speed = 0; strokes++;
   const p = toArt(e);
-  if (e.shiftKey) { line = { from: p, n0: dropped, count: 0 }; layLine(p, e.timeStamp); return; }
+  if (e.shiftKey) { line = { from: p, n0: dropped, count: 0, scroll: 0 }; layLine(p, e.timeStamp); return; }
   drop(p[0], p[1], e.timeStamp);
   last = { p, t: e.timeStamp }; carry = 0;
 });
@@ -427,6 +428,16 @@ frame.addEventListener('pointermove', e => {
   for (const ev of evs.length ? evs : [e]) addPoint(toArt(ev), ev.timeStamp);
 });
 const release = () => { pressed = false; last = line = null; speed = 0; };
+addEventListener('wheel', e => {
+  if (!line) return;
+  e.preventDefault();
+  // One cube per wheel notch; trackpads send small deltas, so they add up to a notch first.
+  line.scroll += e.deltaY;
+  if (Math.abs(line.scroll) < 40) return;
+  const dir = Math.sign(line.scroll); line.scroll = 0;
+  line.steps = clamp((line.count - 1) - dir, 1, 2000);
+  layLine(line.to, e.timeStamp);
+}, { passive: false });
 frame.addEventListener('pointerup', release);
 frame.addEventListener('pointercancel', release);
 
