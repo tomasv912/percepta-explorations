@@ -41,7 +41,8 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
 main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding-bottom: 32px; }
 .frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); }
 .frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity .15s ease-out; }
-.frame.busy canvas { opacity: .6; }
+.frame { touch-action: none; cursor: crosshair; }
+.cursor { position: absolute; left: 0; top: 0; pointer-events: none; border-radius: 50%; border: 1px solid #fff; mix-blend-mode: difference; transform: translate(-50%, -50%); }
 .hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; white-space: nowrap;
   background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
 .hud kbd { font: 500 11px var(--mono); color: var(--text); }
@@ -105,23 +106,24 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <script src="toolbar.js"></script>
 <div class="app">
   <main id="stage">
-    <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Cubos generados a partir de ruido"></canvas></div>
-    <div class="hud"><span id="stats">—</span><span class="dim"><kbd>R</kbd> nueva semilla</span></div>
+    <div class="frame" id="frame">
+      <canvas id="cv" role="img" aria-label="Olas formadas por cubos"></canvas>
+      <div class="cursor" id="cursor" hidden></div>
+    </div>
+    <div class="hud"><span id="stats">—</span><span class="dim">Mantené el clic para dispersar · <kbd>R</kbd> nueva semilla</span></div>
   </main>
 
   <aside>
     <div class="controls">
       <section>
-        <h2>Campo</h2>
-        <div class="seg" data-key="base" aria-label="Base del campo">
-          <button data-v="noise">Ruido</button><button data-v="linear">Lineal</button><button data-v="radial">Radial</button>
-        </div>
-        <div id="sl-angle"></div>
-        <div id="sl-mix"></div>
-        <div id="sl-scale"></div>
-        <div id="sl-warp"></div>
-        <div id="sl-contrast"></div>
-        <div id="sl-threshold"></div>
+        <h2>Olas</h2>
+        <div id="sl-layers"></div>
+        <div id="sl-amp"></div>
+        <div id="sl-freq"></div>
+        <div id="sl-complexity"></div>
+        <div id="sl-persp"></div>
+        <div id="sl-thickness"></div>
+        <div id="sl-fade"></div>
         <div class="row">
           <span>Semilla</span>
           <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
@@ -138,26 +140,26 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         </div>
         <div id="sl-count"></div>
         <div id="sl-size"></div>
-        <div id="sl-variation"></div>
         <div id="sl-mod"></div>
-        <div id="sl-clump"></div>
-        <div id="sl-stragglers"></div>
+        <div id="sl-variation"></div>
+        <div id="sl-grain"></div>
       </section>
 
       <section>
-        <h2>Color</h2>
-        <div class="row" style="grid-template-columns:56px 1fr">
-          <span>Tinta</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="ink" aria-label="Tinta"></label>
-        </div>
-        <div id="sl-grain"></div>
+        <h2>Dispersión</h2>
+        <p class="hint">Mantené el clic sobre la imagen: los píxeles de esa zona se dispersan y siguen derivando.</p>
+        <div id="sl-radius"></div>
+        <div id="sl-force"></div>
+        <div id="sl-drift"></div>
+        <button class="btn" id="reform">Recomponer</button>
+      </section>
+
+      <section>
+        <h2>Fondo y formato</h2>
         <div class="row" style="grid-template-columns:56px 1fr">
           <span>Fondo</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="paper" aria-label="Fondo"></label>
         </div>
         <label class="check"><input type="checkbox" id="bg-export"> Incluir fondo al exportar</label>
-      </section>
-
-      <section>
-        <h2>Formato</h2>
         <div class="seg" data-key="aspect" aria-label="Proporción">
           <button data-v="3:2">3:2</button><button data-v="4:3">4:3</button><button data-v="1:1">1:1</button><button data-v="4:5">4:5</button><button data-v="16:9">16:9</button>
         </div>
@@ -174,19 +176,24 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <script>
 // ---------- State ----------
 const SIZES = { '3:2': [3000, 2000], '4:3': [3000, 2250], '1:1': [3000, 3000], '4:5': [2400, 3000], '16:9': [3200, 1800] };
+const INK = '#000000';
 const DEFAULTS = {
   seed: 1, aspect: '3:2',
-  base: 'noise', angle: 90, mix: 0.45, scale: 0.35, warp: 0.35, contrast: 1.3, threshold: 0.4,
-  style: 'mono', size: 14, count: 40000, mod: .6, variation: .45, clump: .5, stragglers: .04,
-  ink: '#1a1714', grain: .05, paper: '#ede6da', bgExport: false,
+  layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5,
+  style: 'mono', count: 45000, size: 3.5, mod: .6, variation: .35, grain: .12,
+  radius: 220, force: .9, drift: .5,
+  paper: '#f6f5f2', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
 
-// ---------- Noise (seeded Perlin + fBm) ----------
+// ---------- Noise ----------
 function rng(seed) {
   let a = seed >>> 0 || 1;
   return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 }
+const gauss = r => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
 function perlin(rand) {
   const p = new Uint8Array(512);
   for (let i = 0; i < 256; i++) p[i] = i;
@@ -203,182 +210,146 @@ function perlin(rand) {
     return x1 + v * (x2 - x1);
   };
 }
-function makeField(st, W, H) {
-  const rand = rng(st.seed * 7919 + 13);
-  const n = perlin(rand);
-  const off = Array.from({ length: 10 }, () => rand() * 200);
-  const fbm = (x, y) => { let s = 0, a = .5, f = 1; for (let o = 0; o < 4; o++) { s += a * n(x * f, y * f); f *= 2.03; a *= .5; } return s; };
-  const unit = Math.min(W, H), freq = 0.6 + st.scale * st.scale * 9, warp = st.warp * 1.6;
-  const ang = st.angle * Math.PI / 180, ca = Math.cos(ang), sa = Math.sin(ang);
-  const ext = (W * Math.abs(ca) + H * Math.abs(sa)) / 2, rmax = Math.hypot(W / 2, H / 2);
-  const t = st.threshold, c = st.contrast;
-  // Writes into out: [m, unused, depth, clump]. m is in (0,1] above the threshold, <= 0 below it.
-  return (x, y, out) => {
-    let u = x / unit * freq, v = y / unit * freq;
-    const qx = fbm(u + off[0], v + off[1]), qy = fbm(u + off[2], v + off[3]);
-    u += warp * qx * 2; v += warp * qy * 2;
-    // Low-frequency "depth": nearer cubes read bigger.
-    out[2] = .5 + fbm(u * .7 + off[6], v * .7 + off[7]);
-    // High-frequency mask that pulls cubes into knots and leaves gaps.
-    out[3] = .5 + fbm(u * 3.2 + off[8], v * 3.2 + off[9]) * 1.6;
-    const nn = Math.min(1, Math.max(0, .5 + fbm(u + off[4], v + off[5]) * 1.25));
-    let val;
-    if (st.base === 'noise') val = nn;
-    else {
-      const g = st.base === 'linear'
-        ? .5 + ((x - W / 2) * ca + (y - H / 2) * sa) / (2 * ext)
-        : 1 - Math.hypot(x - W / 2, y - H / 2) / rmax;
-      val = g + (nn - .5) * st.mix * 2;
-    }
-    val = Math.min(1, Math.max(0, (val - .5) * c + .5));
-    out[0] = t >= 1 ? -1 : (val - t) / (1 - t);
-    return out;
+
+// ---------- Waves ----------
+// Each layer is a 3D sheet: a height field made of a few long sine waves, seen in perspective from just
+// above. Pixels are spread evenly over the sheet, so they pile up by themselves where it folds or turns
+// edge-on (the bright crests in the references) and thin out where it faces the camera. The far edge and
+// the ends fade out, and a little thickness gives the sheet some volume.
+function generate(st) {
+  const [W, H] = SIZES[st.aspect], r = rng(st.seed);
+  const layers = Array.from({ length: st.layers }, (_, l) => {
+    const waves = Array.from({ length: st.complexity }, (_, k) => ({
+      f: st.freq * (k === 0 ? 1 : 1 + k * .7) * (.7 + r() * .6) * Math.PI * 2,
+      th: (r() - .5) * 1.1, ph: r() * Math.PI * 2, a: 1 / (1 + k * 1.1),
+    }));
+    return { waves, base: (l - (st.layers - 1) / 2) * .35 + (r() - .5) * .15, tilt: (r() - .5) * .3 };
+  });
+  const height = (L, u, v) => {
+    let h = 0, norm = 0;
+    for (const w of L.waves) { h += w.a * Math.sin(w.f * (u * Math.cos(w.th) + v * Math.sin(w.th)) + w.ph); norm += w.a; }
+    return L.base + L.tilt * (u - .5) + (h / norm) * st.amp;
   };
+  const focal = .4 + st.persp * 1.4, zNear = 1, zFar = 1 + 1.5 + st.persp * 2.5;
+  const n = st.count, mono = st.style === 'mono';
+  const px = new Float32Array(n), py = new Float32Array(n), size = new Float32Array(n), shade = new Uint8Array(n);
+  let got = 0;
+  for (let tries = 0; got < n && tries < n * 6; tries++) {
+    const L = layers[Math.floor(r() * layers.length)], u = r(), v = r();
+    // Fade the far edge, the near edge a little, and both ends.
+    const keep = smooth(0, .12 + st.fade * .2, v) * (1 - smooth(1 - st.fade * .7, 1, v)) * smooth(0, .05 + st.fade * .12, u) * smooth(0, .05 + st.fade * .12, 1 - u);
+    if (r() > keep) continue;
+    const z = zNear + v * (zFar - zNear), x = (u - .5) * 2 * z / focal * 1.1;
+    const y = height(L, u, v) + gauss(r) * st.thickness * .06;
+    px[got] = x / z * focal; py[got] = (.9 - y) / z * focal;
+    const k = mono ? 1 : (1 - st.mod) + st.mod * clamp(1.6 / z);
+    size[got] = mono ? st.size : st.size * k * Math.max(.2, 1 + st.variation * (r() * 2 - 1) * .7);
+    shade[got] = mono ? MONO_SHADE : Math.floor(r() * SHADES);
+    got++;
+  }
+  // Fit the projection to the frame: full width (bleeding a little), a generous band vertically.
+  const sx = [...px.subarray(0, got)].sort((a, b) => a - b), sy = [...py.subarray(0, got)].sort((a, b) => a - b);
+  const q = (s, t) => s[Math.floor(t * (s.length - 1))];
+  const x0 = q(sx, .005), x1 = q(sx, .995), y0 = q(sy, .01), y1 = q(sy, .99);
+  const X0 = -.02 * W, X1 = 1.02 * W, Y0 = .14 * H, Y1 = .86 * H;
+  for (let i = 0; i < got; i++) { px[i] = X0 + (px[i] - x0) / (x1 - x0) * (X1 - X0); py[i] = Y0 + (py[i] - y0) / (y1 - y0) * (Y1 - Y0); }
+  return { W, H, n: got, hx: px.slice(0, got), hy: py.slice(0, got), size: size.slice(0, got), shade: shade.slice(0, got) };
 }
 
-// ---------- Generation ----------
-const STRIDE = 4; // x, y, size, shade
-// Same idea as the starlings: a density grid sampled by its cumulative sum,
-// so cubes overlap, knot together and thin out instead of sitting on a lattice.
-function generate(st) {
-  const [W, H] = SIZES[st.aspect];
-  const field = makeField(st, W, H);
-  const rand = rng(st.seed);
-  const G = 480, gw = W >= H ? G : Math.round(G * W / H), gh = W >= H ? Math.round(G * H / W) : G;
-  const n = gw * gh, cw = W / gw, ch = H / gh;
-  const M = new Float32Array(n), DP = new Float32Array(n), body = new Float32Array(n);
-  const out = [0, 0, 0, 0];
-  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
-    const k = j * gw + i;
-    field((i + .5) * cw, (j + .5) * ch, out);
-    M[k] = out[0]; DP[k] = out[2];
-    if (out[0] > 0) {
-      const knot = Math.max(0, out[3]) ** 2.2;
-      body[k] = out[0] ** 1.2 * Math.max(.02, 1 - st.clump + st.clump * knot);
+// ---------- Color ----------
+// Black split into a few greys for Variación; Mono is pure black.
+const SHADES = 9, MONO_SHADE = 0;
+const shadeHex = (k, grain) => { const v = Math.round(255 * k / (SHADES - 1) * grain * 2.5); return '#' + v.toString(16).padStart(2, '0').repeat(3); };
+
+// ---------- Dispersal ----------
+// Pixels have a home and an offset. While the pointer is held, each pixel that comes under it gets one kick
+// outwards with a random strength (so they open into a cloud instead of being shoved into a ring); once
+// moving, they drift along a slow noise flow and settle as friction takes over. "Recomponer" eases them home.
+let gen = null, genKey = '', X = null, Y = null, VX = null, VY = null, active = new Set(), kicked = new Set();
+let pointer = null, pressing = false, reform = null, flow = null;
+function resetMotion() {
+  X = gen.hx.slice(); Y = gen.hy.slice(); VX = new Float32Array(gen.n); VY = new Float32Array(gen.n);
+  active = new Set(); kicked = new Set(); reform = null; flow = perlin(rng(S.seed * 31 + 7));
+}
+function step(dt) {
+  const unit = Math.min(gen.W, gen.H);
+  if (pressing && pointer) {
+    const R = S.radius, R2 = R * R, kick = S.force * 1500;
+    for (let i = 0; i < gen.n; i++) {
+      if (kicked.has(i)) continue;
+      const dx = X[i] - pointer[0], dy = Y[i] - pointer[1], d2 = dx * dx + dy * dy;
+      if (d2 > R2) continue;
+      const d = Math.sqrt(d2), u = Math.random(), f = kick * (1 - .5 * d / R) * (.08 + .92 * u * u);
+      const a = (d > 1 ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2) + (Math.random() - .5) * 1.8;
+      VX[i] += Math.cos(a) * f; VY[i] += Math.sin(a) * f;
+      kicked.add(i); active.add(i);
     }
   }
-  const halo = haloOf(M, gw, gh);
-  const total = st.count, nStray = Math.round(total * st.stragglers);
-  const items = new Float32Array(total * STRIDE);
-  let got = 0;
-  const mono = st.style === 'mono';
-  const sample = (dens, count, stray) => {
-    const cdf = new Float64Array(n); let sum = 0;
-    for (let k = 0; k < n; k++) cdf[k] = sum += dens[k];
-    if (sum <= 0) return;
-    for (let c = 0; c < count; c++) {
-      const r = rand() * sum; let lo = 0, hi = n - 1;
-      while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < r) lo = mid + 1; else hi = mid; }
-      const i = lo % gw, j = (lo - i) / gw, m = Math.max(0, M[lo]);
-      const k = (1 - st.mod) + st.mod * Math.sqrt(Math.max(m, .04));
-      const v = 1 + st.variation * ((rand() * 2 - 1) * .7 - (DP[lo] - .5) * .9);
-      const o = got++ * STRIDE;
-      items[o] = (i + rand()) * cw;
-      items[o + 1] = (j + rand()) * ch;
-      // Mono: every cube the same size and the exact ink; Variación: size follows the field, shade varies.
-      items[o + 2] = mono ? st.size : st.size * k * Math.max(.15, v) * (stray ? .7 : 1);
-      items[o + 3] = mono ? MONO_SHADE : Math.floor(rand() * SHADES);
-    }
-  };
-  sample(body, total - nStray, false);
-  sample(halo, nStray, true);
-  return { W, H, items: items.subarray(0, got * STRIDE) };
-}
-// A soft band just outside the shape where loose cubes drift, like the stragglers of a flock.
-function haloOf(M, w, h) {
-  const r = Math.max(2, Math.round(Math.max(w, h) / 30));
-  const a = new Float32Array(M.length), b = new Float32Array(M.length);
-  for (let k = 0; k < M.length; k++) a[k] = M[k] > 0 ? 1 : 0;
-  const pass = (src, dst, len, step, lines, lineStep) => {
-    for (let l = 0; l < lines; l++) {
-      const base = l * lineStep; let s = 0;
-      for (let t = -r; t <= r; t++) s += src[base + Math.min(len - 1, Math.max(0, t)) * step];
-      for (let t = 0; t < len; t++) {
-        dst[base + t * step] = s / (2 * r + 1);
-        s += src[base + Math.min(len - 1, t + r + 1) * step] - src[base + Math.max(0, t - r) * step];
-      }
-    }
-  };
-  for (let it = 0; it < 2; it++) { pass(a, b, w, 1, h, w); pass(b, a, h, w, w, 1); }
-  for (let k = 0; k < M.length; k++) a[k] *= 1 - Math.min(1, Math.max(0, M[k]) * 4);
-  return a;
-}
-
-// ---------- Color (OKLab) ----------
-const hexToRgb = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
-const toLin = c => (c /= 255) <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
-const toSrgb = c => Math.round(255 * Math.min(1, Math.max(0, c <= .0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - .055)));
-function rgbToLab([r, g, b]) {
-  r = toLin(r); g = toLin(g); b = toLin(b);
-  const l = Math.cbrt(.4122214708 * r + .5363325363 * g + .0514459929 * b), m = Math.cbrt(.2119034982 * r + .6806995451 * g + .1073969566 * b), s = Math.cbrt(.0883024619 * r + .2817188376 * g + .6299787005 * b);
-  return [.2104542553 * l + .793617785 * m - .0040720468 * s, 1.9779984951 * l - 2.428592205 * m + .4505937099 * s, .0259040371 * l + .7827717662 * m - .808675766 * s];
-}
-function labToHex([L, a, b]) {
-  const l = (L + .3963377774 * a + .2158037573 * b) ** 3, m = (L - .1055613458 * a - .0638541728 * b) ** 3, s = (L - .0894841775 * a - 1.291485548 * b) ** 3;
-  const rgb = [toSrgb(4.0767416621 * l - 3.3077115913 * m + .2309699292 * s), toSrgb(-1.2684380046 * l + 2.6097574011 * m - .3413193965 * s), toSrgb(-.0041960863 * l - .7034186147 * m + 1.707614701 * s)];
-  return '#' + rgb.map(v => v.toString(16).padStart(2, '0')).join('');
-}
-// One ink split into a few shades: each cube takes a random one, ±grain in lightness.
-const SHADES = 9, MONO_SHADE = (SHADES - 1) / 2; // the middle shade is the ink itself
-function buildLut(st) {
-  const [L, a, b] = rgbToLab(hexToRgb(st.ink));
-  const base = [];
-  for (let i = 0; i < SHADES; i++) base.push(labToHex([L + (i / (SHADES - 1) * 2 - 1) * st.grain, a, b]));
-  return { base };
+  // The flow only steers (turns the velocity towards the local flow direction), so it adds no energy and
+  // friction always brings the pixels to rest.
+  const fs = 2.2 / unit, steer = Math.min(1, S.drift * dt * 2.5), damp = Math.pow(.18, dt);
+  for (const i of active) {
+    const ang = flow(X[i] * fs, Y[i] * fs) * Math.PI * 3, sp = Math.hypot(VX[i], VY[i]);
+    VX[i] += (Math.cos(ang) * sp - VX[i]) * steer; VY[i] += (Math.sin(ang) * sp - VY[i]) * steer;
+    VX[i] *= damp; VY[i] *= damp;
+    X[i] += VX[i] * dt; Y[i] += VY[i] * dt;
+    if (Math.abs(VX[i]) + Math.abs(VY[i]) < 3) { VX[i] = VY[i] = 0; active.delete(i); }
+  }
+  if (reform) {
+    const t = clamp((performance.now() - reform.t0) / 900), e = t * t * (3 - 2 * t);
+    for (let i = 0; i < gen.n; i++) { X[i] = reform.x[i] + (gen.hx[i] - reform.x[i]) * e; Y[i] = reform.y[i] + (gen.hy[i] - reform.y[i]) * e; }
+    if (t >= 1) reform = null;
+  }
 }
 
 // ---------- Rendering ----------
-function squareOf(x, y, s) {
-  const h = s / 2;
-  return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h];
-}
-function poly(ctx, p) { ctx.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]); ctx.closePath(); }
-
-// Squares are grouped per shade (one fill each).
-function eachRun(it, st, lut, fn) {
+function eachRun(st, fn) {
   const groups = Array.from({ length: SHADES }, () => []);
-  for (let i = 0; i < it.length; i += STRIDE) groups[it[i + 3]].push(squareOf(it[i], it[i + 1], it[i + 2]));
-  groups.forEach((polys, k) => polys.length && fn(lut.base[k], polys));
+  for (let i = 0; i < gen.n; i++) groups[gen.shade[i]].push(i);
+  groups.forEach((idx, k) => idx.length && fn(k === MONO_SHADE && st.style === 'mono' ? INK : shadeHex(k, st.grain), idx));
 }
-
-function draw(ctx, gen, st, lut) {
-  eachRun(gen.items, st, lut, (color, polys) => {
+function draw(ctx, st) {
+  eachRun(st, (color, idx) => {
     ctx.fillStyle = color; ctx.beginPath();
-    for (const p of polys) poly(ctx, p);
+    for (const i of idx) { const s = gen.size[i], h = s / 2; ctx.rect(X[i] - h, Y[i] - h, s, s); }
     ctx.fill();
   });
 }
-
-function toSvg(gen, st, lut) {
+function toSvg(st) {
   const r = v => Math.round(v * 10) / 10, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${gen.W}" height="${gen.H}" viewBox="0 0 ${gen.W} ${gen.H}">`);
   if (st.bgExport) out.push(`<rect width="100%" height="100%" fill="${st.paper}"/>`);
-  const pd = p => { let s = `M${r(p[0])} ${r(p[1])}`; for (let i = 2; i < p.length; i += 2) s += `L${r(p[i])} ${r(p[i + 1])}`; return s + 'Z'; };
-  eachRun(gen.items, st, lut, (color, polys) => out.push(`<path fill="${color}" d="${polys.map(pd).join('')}"/>`));
+  eachRun(st, (color, idx) => {
+    let d = '';
+    for (const i of idx) { const s = gen.size[i], h = s / 2; d += `M${r(X[i] - h)} ${r(Y[i] - h)}h${r(s)}v${r(s)}h${r(-s)}Z`; }
+    out.push(`<path fill="${color}" d="${d}"/>`);
+  });
   out.push('</svg>');
   return out.join('');
 }
 
 // ---------- UI ----------
 const $ = s => document.querySelector(s);
-const cv = $('#cv'), frame = $('#frame'), stage = $('#stage');
-let gen = null, genKey = '', lut = null, raf = 0;
+const cv = $('#cv'), frame = $('#frame'), stage = $('#stage'), cursor = $('#cursor');
+let raf = 0, last = 0;
 
 const pct = v => Math.round(v * 100) + '%';
 const SLIDERS = {
-  angle: { label: 'Ángulo', min: 0, max: 360, step: 1, fmt: v => v + '°' },
-  mix: { label: 'Ruido', min: 0, max: 1, step: .01, fmt: pct },
-  scale: { label: 'Escala del ruido', min: 0, max: 1, step: .01, fmt: pct },
-  warp: { label: 'Distorsión', min: 0, max: 1, step: .01, fmt: pct },
-  contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
-  threshold: { label: 'Umbral', min: 0, max: .99, step: .01, fmt: pct, emph: true },
-  size: { label: 'Tamaño', min: 2, max: 120, step: .5, fmt: v => v + ' px' },
-  count: { label: 'Cubos', min: 200, max: 150000, step: 200, fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k' },
-  mod: { label: 'Tamaño según ruido', min: 0, max: 1, step: .01, fmt: pct },
+  layers: { label: 'Capas', min: 1, max: 4, step: 1, fmt: String },
+  amp: { label: 'Altura de las olas', min: 0, max: 1.5, step: .01, fmt: pct, emph: true },
+  freq: { label: 'Frecuencia', min: .3, max: 3, step: .01, fmt: v => v.toFixed(2) },
+  complexity: { label: 'Complejidad', min: 1, max: 6, step: 1, fmt: String },
+  persp: { label: 'Perspectiva', min: 0, max: 1, step: .01, fmt: pct },
+  thickness: { label: 'Grosor', min: 0, max: 1, step: .01, fmt: pct },
+  fade: { label: 'Desvanecer bordes', min: 0, max: 1, step: .01, fmt: pct },
+  count: { label: 'Cubos', min: 2000, max: 150000, step: 1000, fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k', emph: true },
+  size: { label: 'Tamaño', min: 1, max: 24, step: .5, fmt: v => v + ' px' },
+  mod: { label: 'Tamaño según profundidad', min: 0, max: 1, step: .01, fmt: pct },
   variation: { label: 'Variación', min: 0, max: 1, step: .01, fmt: pct },
-  clump: { label: 'Agrupamiento', min: 0, max: 1, step: .01, fmt: pct },
-  stragglers: { label: 'Sueltos', min: 0, max: .25, step: .005, fmt: pct },
-  grain: { label: 'Variación de tono', min: 0, max: .2, step: .005, fmt: pct },
+  grain: { label: 'Variación de tono', min: 0, max: .4, step: .01, fmt: pct },
+  radius: { label: 'Radio', min: 30, max: 900, step: 10, fmt: v => v + ' px' },
+  force: { label: 'Fuerza', min: .05, max: 2, step: .01, fmt: pct },
+  drift: { label: 'Deriva', min: 0, max: 2, step: .01, fmt: pct },
 };
 for (const [key, d] of Object.entries(SLIDERS)) {
   const host = $('#sl-' + key);
@@ -397,6 +368,7 @@ $('#bg-export').addEventListener('change', e => { S.bgExport = e.target.checked;
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('#reseed').addEventListener('click', reseed);
+$('#reform').addEventListener('click', () => { if (!gen) return; active.clear(); VX.fill(0); VY.fill(0); reform = { t0: performance.now(), x: X.slice(), y: Y.slice() }; wake(); });
 addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
   if (e.key === 'r' || e.key === 'R') reseed();
@@ -407,9 +379,7 @@ function paintSwatch(el, hex) {
   el.querySelector('[data-hex]').textContent = hex.toUpperCase();
   const inp = el.querySelector('input'); if (inp.value !== hex) inp.value = hex;
 }
-
 function sync() {
-  // Controls reflect state.
   for (const key of Object.keys(SLIDERS)) {
     const input = $('#in-' + key), d = SLIDERS[key];
     if (+input.value !== S[key]) input.value = S[key];
@@ -418,39 +388,58 @@ function sync() {
   }
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
-  $('#sl-angle').hidden = S.base !== 'linear';
-  $('#sl-mix').hidden = S.base === 'noise';
   $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = S.style === 'mono';
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
-  lut = buildLut(S);
-  schedule();
+  const key = JSON.stringify([S.seed, S.aspect, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.style, S.count, S.size, S.mod, S.variation]);
+  if (key !== genKey) { gen = generate(S); genKey = key; resetMotion(); }
+  wake();
 }
 
 function fit() {
-  const [W, H] = SIZES[S.aspect], r = stage.getBoundingClientRect();
-  const k = Math.max(0, Math.min((r.width - 64) / W, (r.height - 96) / H));
-  return { w: Math.round(W * k), h: Math.round(H * k), W, H };
+  const r = stage.getBoundingClientRect();
+  const k = Math.max(0, Math.min((r.width - 64) / gen.W, (r.height - 96) / gen.H));
+  return { w: Math.round(gen.W * k), h: Math.round(gen.H * k) };
 }
-function schedule() {
-  frame.classList.add('busy');
-  cancelAnimationFrame(raf);
-  raf = requestAnimationFrame(() => setTimeout(render, 0));
-}
-function render() {
-  const key = JSON.stringify([S.seed, S.aspect, S.base, S.angle, S.mix, S.scale, S.warp, S.contrast, S.threshold, S.style, S.size, S.count, S.mod, S.variation, S.clump, S.stragglers]);
-  if (key !== genKey) { gen = generate(S); genKey = key; }
-  const { w, h, W, H } = fit();
+// Runs while something moves; otherwise draws once and sleeps.
+function wake() { if (!raf) raf = requestAnimationFrame(frameLoop); }
+function frameLoop(now) {
+  raf = 0;
+  const dt = last ? Math.min(.05, (now - last) / 1000) : 1 / 60; last = now;
+  step(dt);
+  const { w, h } = fit();
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.paper;
-  const dpr = devicePixelRatio || 1;
-  cv.width = Math.max(1, Math.round(w * dpr)); cv.height = Math.max(1, Math.round(h * dpr));
+  const dpr = devicePixelRatio || 1, pw = Math.max(1, Math.round(w * dpr)), ph = Math.max(1, Math.round(h * dpr));
+  if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
   const ctx = cv.getContext('2d');
-  ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
-  ctx.clearRect(0, 0, W, H);
-  draw(ctx, gen, S, lut);
-  frame.classList.remove('busy');
-  $('#stats').textContent = `${(gen.items.length / STRIDE).toLocaleString('es')} cubos · ${W} × ${H} px`;
+  ctx.setTransform(pw / gen.W, 0, 0, ph / gen.H, 0, 0);
+  ctx.clearRect(0, 0, gen.W, gen.H);
+  draw(ctx, S);
+  $('#stats').textContent = `${gen.n.toLocaleString('es')} cubos · ${active.size.toLocaleString('es')} en movimiento · ${gen.W} × ${gen.H} px`;
+  if (pressing || active.size || reform) raf = requestAnimationFrame(frameLoop); else last = 0;
 }
-new ResizeObserver(schedule).observe(stage);
+new ResizeObserver(wake).observe(stage);
+
+// ---------- Pointer ----------
+function toArt(e) {
+  const r = frame.getBoundingClientRect();
+  return [(e.clientX - r.left) / r.width * gen.W, (e.clientY - r.top) / r.height * gen.H];
+}
+function moveCursor(e) {
+  const r = frame.getBoundingClientRect(), d = 2 * S.radius * r.width / gen.W;
+  cursor.hidden = false;
+  cursor.style.width = cursor.style.height = d + 'px';
+  cursor.style.left = (e.clientX - r.left) + 'px'; cursor.style.top = (e.clientY - r.top) + 'px';
+}
+frame.addEventListener('pointermove', e => { pointer = toArt(e); moveCursor(e); });
+frame.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  frame.setPointerCapture(e.pointerId);
+  pointer = toArt(e); pressing = true; reform = null; kicked = new Set(); moveCursor(e); wake();
+});
+const release = () => { pressing = false; kicked = new Set(); };
+frame.addEventListener('pointerup', release);
+frame.addEventListener('pointercancel', release);
+frame.addEventListener('pointerleave', () => { if (!pressing) cursor.hidden = true; });
 
 // ---------- Export ----------
 let toastT = 0;
@@ -464,10 +453,10 @@ $('#png').addEventListener('click', () => {
   const c = document.createElement('canvas'); c.width = gen.W; c.height = gen.H;
   const ctx = c.getContext('2d');
   if (S.bgExport) { ctx.fillStyle = S.paper; ctx.fillRect(0, 0, gen.W, gen.H); }
-  draw(ctx, gen, S, lut);
-  c.toBlob(b => b ? download(`cubos-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
+  draw(ctx, S);
+  c.toBlob(b => b ? download(`cube-waves-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
 });
-$('#svg').addEventListener('click', () => download(`cubos-${S.seed}.svg`, new Blob([toSvg(gen, S, lut)], { type: 'image/svg+xml' })));
+$('#svg').addEventListener('click', () => download(`cube-waves-${S.seed}.svg`, new Blob([toSvg(S)], { type: 'image/svg+xml' })));
 
 sync();
 </script>
