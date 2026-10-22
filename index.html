@@ -187,14 +187,14 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section>
         <h2>Color</h2>
         <div class="seg" data-key="colorMode" aria-label="Color de los cubos">
-          <button data-v="single">Un color</button><button data-v="random">Al azar</button><button data-v="combo">Combinados</button><button data-v="image" id="cm-image">Imagen</button>
+          <button data-v="single">Un color</button><button data-v="random">Al azar</button><button data-v="image" id="cm-image">Imagen</button>
         </div>
         <div class="row" id="ink-row" style="grid-template-columns:56px 1fr">
           <span>Color</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="ink" aria-label="Color de los cubos"></label>
         </div>
         <div id="palette-box">
           <div class="palette" id="palette"></div>
-          <button class="btn" id="shuffle">Nueva paleta</button>
+          <button class="btn" id="shuffle">Restablecer paleta</button>
         </div>
       </section>
 
@@ -240,13 +240,11 @@ const DEFAULTS = {
   layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5,
   contrast: 1.2, threshold: .1, invert: false, grid: false, gridCols: 140, rotX: 0, rotY: 0, rotZ: 0,
   style: 'mono', count: 45000, size: 3.5, mod: .6, variation: .35, grain: .12,
-  colorMode: 'single', ink: '#000000', palette: ['#111111', '#f15bb5', '#fee440', '#00bbf9', '#00f5d4'],
+  colorMode: 'single', ink: '#000000', palette: ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B'],
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
 };
 const S = structuredClone(DEFAULTS);
-// Combinados: each cube takes one of these at random.
-const COMBO = ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B'];
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
 
@@ -416,14 +414,9 @@ function colorOf(i, st) {
     const c = gen.rgb[i] & 0xF8F8F8;
     return rgbHex(c >> 16 & 255, c >> 8 & 255, c & 255);
   }
-  const base = st.colorMode === 'combo' ? COMBO[gen.pal[i] % COMBO.length] : st.colorMode === 'random' ? st.palette[gen.pal[i] % st.palette.length] : st.ink;
+  const base = st.colorMode === 'random' ? st.palette[gen.pal[i] % st.palette.length] : st.ink;
   return st.style === 'mono' ? base : tint(base, gen.shade[i], st.grain);
 }
-const randomPalette = () => Array.from({ length: 5 }, () => {
-  const h = Math.random() * 360, s = 55 + Math.random() * 40, l = 35 + Math.random() * 35;
-  const a = s / 100 * Math.min(l / 100, 1 - l / 100), f = n => { const k = (n + h / 30) % 12; return 255 * (l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))); };
-  return rgbHex(f(0), f(8), f(4));
-});
 
 // ---------- Dispersal ----------
 // Cubes have a home and a current position. While the pointer is held, each cube that comes under it gets
@@ -577,7 +570,7 @@ document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('i
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
 $('#palette').innerHTML = S.palette.map((_, i) => `<label title="Color ${i + 1}"><input type="color" data-pal="${i}" aria-label="Color ${i + 1}"></label>`).join('');
 document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('input', () => { S.palette[+inp.dataset.pal] = inp.value; sync(); }));
-$('#shuffle').addEventListener('click', () => { S.palette = randomPalette(); sync(); });
+$('#shuffle').addEventListener('click', () => { S.palette = DEFAULTS.palette.slice(); sync(); });
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('#reseed').addEventListener('click', reseed);
