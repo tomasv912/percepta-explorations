@@ -137,7 +137,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <input type="file" id="file" accept="image/*" hidden>
         <p class="hint">También podés arrastrarla o pegarla. Sin imagen, D3 genera una forma.</p>
         <div class="seg" data-key="format" aria-label="Formato">
-          <button data-v="portrait">Vertical</button><button data-v="landscape">Horizontal</button><button data-v="square">Cuadrado</button>
+          <button data-v="landscape">Horizontal</button><button data-v="portrait">Vertical</button><button data-v="square">Cuadrado</button>
         </div>
         <div id="sl-scale"></div>
         <div id="sl-offX"></div>
@@ -260,13 +260,13 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <script>
 // ---------- State ----------
 const FORMATS = { portrait: [1080, 1920], landscape: [1920, 1080], square: [1440, 1440] };
-let AW = 1080, AH = 1920; // artboard, in units; set by the format
+let AW = 1920, AH = 1080; // artboard, in units; set by the format
 const RES = 2;              // exports render at 2x
 const GRID = 480;           // luminance grid of the image, long side
 const FIELD = 320;          // brush field resolution, long side
 const DEFAULTS = {
   seed: 1,
-  source: 'shape', format: 'portrait',
+  source: 'shape', format: 'landscape',
   scale: .9, offX: 0, offY: 0,
   bulbs: 4, width: .5, waist: .7, ripple: .35, petals: 1.3, fold: .45, droop: .35, twist: .25, curve: .35,
   tilt: 18, yaw: 0, persp: .35, order: .85,
@@ -1020,7 +1020,16 @@ addEventListener('paste', e => {
 // ---------- Export ----------
 let toastT = 0;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2400); }
-function download(name, blob) {
+// Inside a claude.ai artifact the viewer can't follow download links, so the file goes through its
+// downloads capability (the viewer confirms the save); anywhere else, a plain link.
+const saver = window.claude?.use ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
+async function download(name, blob) {
+  const dl = await saver;
+  if (dl) {
+    try { await dl.save({ filename: name, data: blob }); toast(name + ' descargado'); }
+    catch (e) { if (e?.code !== 'declined') toast('No se pudo descargar ' + name + '.'); }
+    return;
+  }
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   toast(name + ' descargado');
