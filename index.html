@@ -105,6 +105,10 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .palette label { position: relative; height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); cursor: pointer; }
 .palette input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 #palette-box { display: flex; flex-direction: column; }
+.inks { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.inks button { appearance: none; border: 0; height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); cursor: pointer; }
+.inks button[aria-pressed="true"] { box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text); }
+.inks button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tools { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; padding: 4px; z-index: 3;
   background: var(--surface); border-radius: 10px; box-shadow: 0 0 0 1px var(--line), 0 4px 18px rgb(0 0 0 / .1); }
 .tools button { appearance: none; border: 0; background: none; color: var(--text); width: 34px; height: 34px; border-radius: 7px; display: grid; place-items: center; cursor: pointer; }
@@ -189,6 +193,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div class="seg" data-key="colorMode" aria-label="Color de los cubos">
           <button data-v="single">Un color</button><button data-v="random">Al azar</button><button data-v="image" id="cm-image">Imagen</button>
         </div>
+        <div class="inks" id="inks" aria-label="Color"></div>
         <div class="row" id="ink-row" style="grid-template-columns:56px 1fr">
           <span>Color</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="ink" aria-label="Color de los cubos"></label>
         </div>
@@ -240,7 +245,7 @@ const DEFAULTS = {
   layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5,
   contrast: 1.2, threshold: .1, invert: false, grid: false, gridCols: 140, rotX: 0, rotY: 0, rotZ: 0,
   style: 'mono', count: 45000, size: 3.5, mod: .6, variation: .35, grain: .12,
-  colorMode: 'single', ink: '#000000', palette: ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B'],
+  colorMode: 'single', ink: '#272727', palette: ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B'],
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
 };
@@ -570,6 +575,10 @@ document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('i
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
 $('#palette').innerHTML = S.palette.map((_, i) => `<label title="Color ${i + 1}"><input type="color" data-pal="${i}" aria-label="Color ${i + 1}"></label>`).join('');
 document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('input', () => { S.palette[+inp.dataset.pal] = inp.value; sync(); }));
+// Un color: the five palette colours plus a black and a white, one click each; the picker below takes any other.
+const INKS = ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B', '#272727', '#F6F5F4'];
+$('#inks').innerHTML = INKS.map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join('');
+$('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
 $('#shuffle').addEventListener('click', () => { S.palette = DEFAULTS.palette.slice(); sync(); });
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
@@ -606,7 +615,8 @@ function sync() {
   $('#source-hint').textContent = waves ? 'También podés arrastrar o pegar una imagen: más cubos en lo oscuro, menos en lo claro.' : 'Más cubos en las zonas oscuras, menos en las claras.';
   $('#cm-image').hidden = waves;
   $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = mono;
-  $('#ink-row').hidden = S.colorMode !== 'single'; $('#palette-box').hidden = S.colorMode !== 'random';
+  $('#ink-row').hidden = $('#inks').hidden = S.colorMode !== 'single';
+  document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase())); $('#palette-box').hidden = S.colorMode !== 'random';
   $('#sl-trailAngle').hidden = $('#sl-trailJitter').hidden = !S.trail;
   $('#sl-gridCols').hidden = !S.grid; $('#sl-count').hidden = !waves && S.grid;
   $('#tools').hidden = waves; if (waves && tool !== 'brush') setTool('brush');
