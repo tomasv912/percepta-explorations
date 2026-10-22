@@ -217,7 +217,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div class="row" style="grid-template-columns:64px 1fr">
           <span>Fondo</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="paper" aria-label="Fondo"></label>
         </div>
-        <label class="check"><input type="checkbox" data-check="transparent"> Exportar sin fondo</label>
+        <p style="margin:0;color:var(--text-3);font-size:12px">El fondo es solo para ver: se exporta sin fondo, y el PNG recortado a los puntos.</p>
       </section>
     </div>
     <footer>
@@ -239,7 +239,7 @@ const DEFAULTS = {
   invert: false, contrast: 1.2, threshold: .15,
   count: 18000, size: 4.5, overlap: .5,
   fill: true, fillColor: '#f4f1ea', stroke: true, strokeColor: '#0c0c0c', strokeW: .8,
-  paper: '#0c0c0c', transparent: false,
+  paper: '#0c0c0c',
 };
 const S = structuredClone(DEFAULTS);
 let panX = 0, panY = 0; // where the hand moved the content, in artboard units
@@ -528,7 +528,6 @@ function draw(ctx, it) {
 function toSvg(it) {
   const n = v => Math.round(v * 100) / 100, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW} ${AH}">`);
-  if (!S.transparent) out.push(`<rect width="100%" height="100%" fill="${S.paper}"/>`);
   const stroke = S.stroke && S.strokeW > 0, ring = !S.fill && stroke;
   if (S.fill || ring) {
     const d = unionPath(it, S.size / 2, ring ? S.strokeW / 2 : 0);
@@ -885,9 +884,17 @@ $('#png').addEventListener('click', () => {
   const c = document.createElement('canvas'); c.width = AW * RES; c.height = AH * RES;
   const ctx = c.getContext('2d');
   ctx.setTransform(RES, 0, 0, RES, 0, 0);
-  if (!S.transparent) { ctx.fillStyle = S.paper; ctx.fillRect(0, 0, AW, AH); }
   draw(ctx, currentDots());
-  c.toBlob(b => b ? download(`d3-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
+  // Transparent, cropped to the pixels the dots cover.
+  const { data } = ctx.getImageData(0, 0, c.width, c.height);
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let y = 0; y < c.height; y++) for (let x = 0, o = y * c.width * 4 + 3; x < c.width; x++, o += 4) if (data[o]) {
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  if (x1 < 0) return toast('No hay puntos para exportar.');
+  const crop = document.createElement('canvas'); crop.width = x1 - x0 + 1; crop.height = y1 - y0 + 1;
+  crop.getContext('2d').drawImage(c, -x0, -y0);
+  crop.toBlob(b => b ? download(`d3-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
 });
 $('#svg').addEventListener('click', () => {
   toast('Unificando el SVG…');
