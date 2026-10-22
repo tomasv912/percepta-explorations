@@ -252,7 +252,7 @@ const PAPER = '#FFFFFF';
 const DEFAULTS = {
   seed: 1, aspect: '3:2', source: 'waves',
   layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5,
-  rfChannels: 5, rfFocus: .42, rfChaos: .7, rfSpread: .6, rfAmp: .5, rfFreq: 1, rfOrder: .7,
+  rfChannels: 3, rfFocus: .42, rfChaos: .7, rfSpread: .6, rfAmp: .5, rfFreq: 1, rfOrder: .7,
   contrast: 1.2, threshold: .1, invert: false, grid: false, gridCols: 140, rotX: 0, rotY: 0, rotZ: 0,
   style: 'mono', count: 45000, size: 3.5, mod: .6, variation: .35, grain: .12,
   colorMode: 'single', ink: '#272727', palette: ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B'],
@@ -353,29 +353,32 @@ function generate(st) {
     }
   } else if (st.source === 'refract') {
     // Refracción: loose points drift in from the left as a wide, disordered cloud that narrows onto the focus
-    // point; past it they are channelled into a fan of waves, each with its own heading, frequency and
-    // amplitude (and, with a palette, its own colour), settling from scattered to ordered as they go.
-    const N = st.rfChannels, f = st.rfFocus, AR = W / H;
-    const ch = Array.from({ length: N }, (_, c) => ({
-      th: N > 1 ? (c / (N - 1) - .5) * st.rfSpread * 1.6 + (r() - .5) * .08 : (r() - .5) * .1,
-      fr: st.rfFreq * (.6 + r() * .9) * 7, amp: st.rfAmp * (.5 + r() * .7) * .2, ph: r() * Math.PI * 2, col: c % st.palette.length,
+    // point; past it they spread evenly over a single wave sheet that opens from the focus like a beam. The
+    // sheet is a fan (across-parameter w) bent by a few long sine waves; where it folds, its rays cross and
+    // the points bunch into denser bands, as in Olas. With a palette, colour follows w, so each ray keeps its
+    // colour from the focus out.
+    const f = st.rfFocus, AR = W / H, K = st.rfChannels, P = st.palette.length;
+    const ws = Array.from({ length: K }, (_, k) => ({
+      f: st.rfFreq * (k === 0 ? 1 : 1 + k * .7) * (.7 + r() * .6) * Math.PI * 2,
+      th: (r() - .5) * 1.6, ph: r() * Math.PI * 2, a: 1 / (1 + k * 1.1),
     }));
-    const tight = (1 - st.rfOrder) * .03 + .003, g = () => clamp(gauss(r), -2.6, 2.6);
+    const norm = ws.reduce((t, w) => t + w.a, 0);
+    const sheet = (s, w) => { let h = 0; for (const q of ws) h += q.a * Math.sin(q.f * (s * Math.cos(q.th) + w * Math.sin(q.th)) + q.ph); return h / norm; };
+    const tight = (1 - st.rfOrder) * .02 + .002, g = () => clamp(gauss(r), -2.6, 2.6);
     for (let tries = 0; got < n && tries < n * 4; tries++) {
       const u = r();
       if (r() > smooth(0, .1, u) * (1 - smooth(.9, 1, u))) continue;
       if (u < f) {
         // Chaos: a cone that closes on the focus, looser the farther back; a few strays wander off it.
-        // At the focus it is exactly as loose as the channels just past it, so there is no seam.
-        const t = 1 - u / f, w = st.rfChaos * .3 * Math.pow(t, .9) + tight + st.rfChaos * .06;
-        const y = g() * w * (r() < .1 ? 1.5 : 1);
-        add(u * AR, y, .55 + r() * .7, 0);
+        // At the focus it is exactly as loose as the sheet just past it, so there is no seam.
+        const t = 1 - u / f, w = st.rfChaos * .3 * Math.pow(t, .9) + tight + st.rfChaos * .05;
+        add(u * AR, g() * w * (r() < .1 ? 1.5 : 1), .55 + r() * .7, 0);
       } else {
-        const c = ch[Math.floor(r() * N)], d = u - f;
-        // Order sets in over a short run past the focus: jitter fades, the wave grows to full amplitude.
-        const settle = smooth(0, .12, d), jit = tight + st.rfChaos * .06 * (1 - settle);
-        const y = Math.tan(c.th) * d * AR + c.amp * settle * Math.sin(c.fr * Math.PI * d + c.ph) + g() * jit;
-        add(u * AR, y, 1, 0, r() < settle ? c.col : undefined);
+        const d = u - f, s = d / (1 - f), w = r() - .5;
+        // Order sets in over a short run past the focus: the jitter fades and the sheet takes its shape.
+        const settle = smooth(0, .12, d), jit = tight + st.rfChaos * .05 * (1 - settle);
+        const y = d * AR * (st.rfSpread * 1.7 * w + st.rfAmp * .6 * (sheet(s, w) - sheet(0, 0))) + g() * jit;
+        add(u * AR, y, 1, 0, r() < settle ? Math.min(P - 1, Math.floor((w + .5) * P)) : undefined);
       }
     }
   } else {
@@ -576,7 +579,7 @@ const SLIDERS = {
   persp: { label: 'Perspectiva', min: 0, max: 1, step: .01, fmt: pct },
   thickness: { label: 'Grosor', min: 0, max: 1, step: .01, fmt: pct },
   fade: { label: 'Desvanecer bordes', min: 0, max: 1, step: .01, fmt: pct },
-  rfChannels: { label: 'Canales', min: 1, max: 9, step: 1, fmt: String, emph: true },
+  rfChannels: { label: 'Complejidad', min: 1, max: 6, step: 1, fmt: String, emph: true },
   rfFocus: { label: 'Punto de encauce', min: .1, max: .9, step: .01, fmt: pct },
   rfChaos: { label: 'Desorden', min: 0, max: 1, step: .01, fmt: pct },
   rfSpread: { label: 'Apertura', min: 0, max: 1.4, step: .01, fmt: pct },
