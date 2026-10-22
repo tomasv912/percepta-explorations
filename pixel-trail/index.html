@@ -255,16 +255,17 @@ function lifeScale(c, now) {
 // ---------- Rendering ----------
 function squareOf(x, y, s) { const h = s / 2; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }
 function poly(ctx, p) { ctx.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]); ctx.closePath(); }
-// Squares are grouped per color (one fill each).
+// Squares are drawn in drop order so each new one sits on top of the ones before it; only consecutive
+// squares of the same colour share a fill.
 function eachRun(now, st, lut, fn) {
-  const groups = new Map();
+  let color = null, run = [];
   for (const c of cubes) {
     const k = lifeScale(c, now); if (k <= 0) continue;
-    const [s, shade] = look(c, st), color = shadesFor(c, st, lut).base[shade];
-    let g = groups.get(color); if (!g) groups.set(color, g = []);
-    g.push(squareOf(c.x, c.y, s * k));
+    const [s, shade] = look(c, st), col = shadesFor(c, st, lut).base[shade];
+    if (col !== color) { if (run.length) fn(color, run); color = col; run = []; }
+    run.push(squareOf(c.x, c.y, s * k));
   }
-  groups.forEach((polys, color) => fn(color, polys));
+  if (run.length) fn(color, run);
 }
 function draw(ctx, now, st, lut) {
   eachRun(now, st, lut, (color, polys) => {
