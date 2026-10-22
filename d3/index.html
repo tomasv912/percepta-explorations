@@ -143,12 +143,12 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-offX"></div>
         <div id="sl-offY"></div>
         <div id="image-controls" style="display:contents">
+          <label class="check"><input type="checkbox" data-check="invert"> Invertir imagen (negativo) <kbd style="font:500 11px var(--mono);color:var(--text-3)">I</kbd></label>
           <div class="seg" data-key="pattern" aria-label="Trama">
             <button data-v="scatter">Dispersa</button><button data-v="grid">Rejilla</button>
           </div>
           <div id="sl-contrast"></div>
           <div id="sl-threshold"></div>
-          <label class="check"><input type="checkbox" data-check="invert"> Invertir luces y sombras</label>
         </div>
       </section>
 
@@ -473,7 +473,8 @@ function push(b, x, y, s, sh, c, ox, oy, loose) {
   b.a[o] = x; b.a[o + 1] = y; b.a[o + 2] = s; b.a[o + 3] = sh; b.a[o + 4] = c; b.a[o + 5] = ox; b.a[o + 6] = oy; b.a[o + 7] = loose;
 }
 
-// Image → circles. Darkness above the threshold becomes density (scatter) or circle size (grid).
+// Image → circles. Invertir turns the input into its negative first (tones and colours).
+// Darkness above the threshold becomes density (scatter) or circle size (grid).
 // Mono: every circle the same size and the exact fill; Variación: size follows the tone and shades vary.
 // Superposición below 100% rejects scattered circles that would cut into their neighbours too much
 // (at 0% they can only touch). The gap a circle asks for grows as the tone lightens, so packing them
@@ -498,7 +499,7 @@ function generateBase(st) {
       const k = Math.min(gh - 1, Math.floor((y - rect.y) / ch)) * gw + Math.min(gw - 1, Math.floor((x - rect.x) / cw)), m = M[k];
       if (m <= 0) continue;
       const j = mono ? 0 : st.variation * cell * .3, px = x + (rand() - .5) * j, py = y + (rand() - .5) * j;
-      push(out, px, py, sizeOf(m, .5), shade(), rgb[k], px, py, 0);
+      push(out, px, py, sizeOf(m, .5), shade(), st.invert ? rgb[k] ^ 0xFFFFFF : rgb[k], px, py, 0);
     }
   } else {
     const cdf = new Float64Array(n); let sum = 0;
@@ -529,7 +530,7 @@ function generateBase(st) {
         let list = cells.get(key); if (!list) cells.set(key, list = []);
         list.push(out.n * STRIDE);
       }
-      push(out, x, y, d, sh, rgb[lo], x, y, 0); c++;
+      push(out, x, y, d, sh, st.invert ? rgb[lo] ^ 0xFFFFFF : rgb[lo], x, y, 0); c++;
     }
   }
   return out.a.subarray(0, out.n * STRIDE);
@@ -742,6 +743,7 @@ function toSvg(it, st, lut) {
   const n = v => Math.round(v * 100) / 100, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW} ${AH}">`);
   if (st.bgExport) out.push(`<rect width="100%" height="100%" fill="${st.paper}"/>`);
+  if (cam.k < 1) out.push(`<g transform="translate(${n(cam.tx)} ${n(cam.ty)}) scale(${Math.round(cam.k * 1e5) / 1e5})">`);
   const c = (i, attrs) => `<circle cx="${n(it[i])}" cy="${n(it[i + 1])}" r="${n(Math.max(0, it[i + 2] / 2))}"${attrs}/>`;
   const sw = i => st.strokeMod ? ` stroke-width="${n(widthOf(it[i + 2], st))}"` : '';
   const fo = st.fillOp < 1 ? ` fill-opacity="${st.fillOp}"` : '', so = st.strokeOp < 1 ? ` stroke-opacity="${st.strokeOp}"` : '';
@@ -761,6 +763,7 @@ function toSvg(it, st, lut) {
       out.push('</g>');
     }
   }
+  if (cam.k < 1) out.push('</g>');
   out.push('</svg>');
   return out.join('\n');
 }
@@ -847,6 +850,7 @@ addEventListener('keydown', e => {
   else if (k === 'b') { S.tool = 'paint'; sync(); }
   else if (k === 'e') { S.tool = 'erase'; sync(); }
   else if (k === 'g') { S.tool = 'gradient'; sync(); }
+  else if (k === 'i' && S.source === 'image') { S.invert = !S.invert; sync(); }
   else if (k === '[' || k === ']') { const d = SLIDERS.brush; S.brush = clamp(Math.round(S.brush * (k === ']' ? 1.15 : 1 / 1.15) / 5) * 5, d.min, d.max); sync(); }
 });
 
@@ -895,6 +899,22 @@ function fit() {
   return { w: Math.round(AW * k), h: Math.round(AH * k) };
 }
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
+// The frame always holds every circle: when any (with its stroke) crosses the edge, everything is
+// scaled down about the content's centre until it fits inside a small margin. Exports use the same
+// framing. It holds still during a stroke and catches up on release, so the canvas doesn't swim.
+let cam = { k: 1, tx: 0, ty: 0 };
+function framing(it, st) {
+  const sw = st.strokeMode === 'none' ? 0 : st.strokeW * (1 + st.strokeMod * 2) / 2;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = 0; i < it.length; i += STRIDE) {
+    const r = it[i + 2] / 2 + sw;
+    if (it[i] - r < x0) x0 = it[i] - r; if (it[i] + r > x1) x1 = it[i] + r;
+    if (it[i + 1] - r < y0) y0 = it[i + 1] - r; if (it[i + 1] + r > y1) y1 = it[i + 1] + r;
+  }
+  if (!(x1 > x0) || (x0 >= 0 && y0 >= 0 && x1 <= AW && y1 <= AH)) return { k: 1, tx: 0, ty: 0 };
+  const m = Math.min(AW, AH) * .03, k = Math.min(1, (AW - 2 * m) / (x1 - x0), (AH - 2 * m) / (y1 - y0));
+  return { k, tx: AW / 2 - (x0 + x1) / 2 * k, ty: AH / 2 - (y0 + y1) / 2 * k };
+}
 function render() {
   view = committed();
   if (live) view = applyPass(view, live.s, live.f, strokes.length);
@@ -903,35 +923,39 @@ function render() {
   const dpr = devicePixelRatio || 1;
   cv.width = Math.max(1, Math.round(w * dpr)); cv.height = Math.max(1, Math.round(h * dpr));
   const ctx = cv.getContext('2d');
-  ctx.setTransform(cv.width / AW, 0, 0, cv.height / AH, 0, 0);
+  if (!live) cam = framing(view, S);
+  const sx = cv.width / AW, sy = cv.height / AH;
+  ctx.setTransform(sx, 0, 0, sy, 0, 0);
   ctx.clearRect(0, 0, AW, AH);
+  ctx.setTransform(sx * cam.k, 0, 0, sy * cam.k, sx * cam.tx, sy * cam.ty);
   draw(ctx, view, S, lut);
   let loose = 0;
   for (let o = 7; o < view.length; o += STRIDE) loose += view[o];
   const n = strokes.length;
-  $('#stats').textContent = `${(view.length / STRIDE).toLocaleString('es')} círculos · ${loose.toLocaleString('es')} sueltos · ${n} ${n === 1 ? 'pasada' : 'pasadas'} · exporta a ${AW * RES} × ${AH * RES} px`;
+  $('#stats').textContent = `${(view.length / STRIDE).toLocaleString('es')} círculos · ${loose.toLocaleString('es')} sueltos · ${n} ${n === 1 ? 'pasada' : 'pasadas'} · exporta a ${AW * RES} × ${AH * RES} px${cam.k < .999 ? ` · encuadre ${Math.round(cam.k * 100)}%` : ''}`;
 }
 new ResizeObserver(schedule).observe(stage);
 
 // ---------- Painting ----------
 function toImage(e) {
   const r = frame.getBoundingClientRect();
-  return [(e.clientX - r.left) / r.width * AW, (e.clientY - r.top) / r.height * AH];
+  return [((e.clientX - r.left) / r.width * AW - cam.tx) / cam.k, ((e.clientY - r.top) / r.height * AH - cam.ty) / cam.k];
 }
 function moveCursor(e) {
   if (S.tool === 'gradient') return;
-  const r = frame.getBoundingClientRect(), d = 2 * S.brush * r.width / AW;
+  const r = frame.getBoundingClientRect(), d = 2 * S.brush * cam.k * r.width / AW;
   cursor.hidden = false;
   cursor.style.width = cursor.style.height = d + 'px';
   cursor.style.left = (e.clientX - r.left) + 'px'; cursor.style.top = (e.clientY - r.top) + 'px';
 }
 function showGuide(a, b) {
-  const r = frame.getBoundingClientRect(), k = r.width / AW, g = $('#guide');
+  const r = frame.getBoundingClientRect(), s = r.width / AW, g = $('#guide');
+  const [ax, ay] = [(a[0] * cam.k + cam.tx) * s, (a[1] * cam.k + cam.ty) * s], [bx, by] = [(b[0] * cam.k + cam.tx) * s, (b[1] * cam.k + cam.ty) * s];
   g.hidden = false;
-  $('#guide-line').setAttribute('x1', a[0] * k); $('#guide-line').setAttribute('y1', a[1] * k);
-  $('#guide-line').setAttribute('x2', b[0] * k); $('#guide-line').setAttribute('y2', b[1] * k);
-  $('#guide-a').setAttribute('cx', a[0] * k); $('#guide-a').setAttribute('cy', a[1] * k);
-  $('#guide-b').setAttribute('cx', b[0] * k); $('#guide-b').setAttribute('cy', b[1] * k);
+  $('#guide-line').setAttribute('x1', ax); $('#guide-line').setAttribute('y1', ay);
+  $('#guide-line').setAttribute('x2', bx); $('#guide-line').setAttribute('y2', by);
+  $('#guide-a').setAttribute('cx', ax); $('#guide-a').setAttribute('cy', ay);
+  $('#guide-b').setAttribute('cx', bx); $('#guide-b').setAttribute('cy', by);
 }
 frame.addEventListener('pointerdown', e => {
   if (e.button !== 0) return;
@@ -1006,6 +1030,7 @@ $('#png').addEventListener('click', () => {
   const ctx = c.getContext('2d');
   ctx.setTransform(RES, 0, 0, RES, 0, 0);
   if (S.bgExport) { ctx.fillStyle = S.paper; ctx.fillRect(0, 0, AW, AH); }
+  ctx.setTransform(RES * cam.k, 0, 0, RES * cam.k, RES * cam.tx, RES * cam.ty);
   draw(ctx, view, S, lut);
   c.toBlob(b => b ? download(`d3-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
 });
