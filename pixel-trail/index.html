@@ -190,7 +190,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <p class="hint">Con el cursor, arrastrá el último cubo de un trazo para redireccionarlo: más lejos agrega cubos, más cerca los quita. Al activar el punto de fuga, todos los trazos giran hacia él (la mira; por defecto el centro), con los cubos del mismo tamaño. Con Perspectiva, el cubo de atrás de todo es el más chico y la punta, adelante, la más grande; desde ahí, redireccionar o hacer una línea con <kbd>Shift</kbd> siempre apunta al punto.</p>
         <label class="check"><input type="checkbox" data-check="vp"> Punto de fuga</label>
         <label class="check" id="vpDepth-row"><input type="checkbox" data-check="vpDepth"> Perspectiva (el tamaño crece hacia el frente)</label>
-        <button class="btn" id="vp-all">Llevar todo al punto</button>
+        <div class="btns"><button class="btn" id="vp-all">Llevar al punto</button><button class="btn" id="vp-gen">Generar</button></div>
       </section>
 
       <section>
@@ -726,6 +726,34 @@ function relay(o, i0, count, p) {
 $('#vp-all').addEventListener('click', vpAll);
 $('[data-check="vp"]').addEventListener('change', () => { if (S.vp && cubes.length) vpAll(); });
 $('[data-check="vpDepth"]').addEventListener('change', () => { if (S.vp && cubes.length) vpAll(); });
+// Generar: a random composition around a centred vanishing point. Trails start anywhere on the board, wave a
+// little and run toward the centre; each gets its own size, so with the depth blur on the small ones (drawn
+// first, behind) come out soft and the big ones sharp.
+$('#vp-gen').addEventListener('click', () => {
+  snapshot();
+  S.vp = S.depth = S.permanent = true; vpPos = [AW / 2, AH / 2]; sync();
+  cubes = []; rowScale.clear(); select(null);
+  const R = Math.random, cx = AW / 2, cy = AH / 2, count = 10 + Math.floor(R() * 14), turn = R() * Math.PI * 2;
+  const scales = Array.from({ length: count }, () => .25 + R() ** 1.5 * 1.75).sort((a, b) => a - b);
+  // Angles spread evenly around the point (shuffled against size), so the composition radiates.
+  const angles = scales.map((_, i) => turn + (i + R() * .8) / count * Math.PI * 2).sort(() => R() - .5);
+  scales.forEach((k, j) => {
+    const g = ++strokes, a = angles[j], d = .5 + R() * .5;
+    const x0 = cx + Math.cos(a) * AW / 2 * d, y0 = cy + Math.sin(a) * AH / 2 * d;
+    const D = Math.hypot(cx - x0, cy - y0), ux = (cx - x0) / D, uy = (cy - y0) / D, len = D * (.25 + R() * .6);
+    const amp = R() < .5 ? 0 : R() * len * .06, freq = 1 + R() * 3, ph = R() * 6.3, gp = S.size * k * (1 + R() * .8), N = 48;
+    const o = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N, w = amp * Math.sin(t * freq * Math.PI + ph) * Math.sin(t * Math.PI);
+      o.push({ x: x0 + ux * len * t - uy * w, y: y0 + uy * len * t + ux * w, s: S.size, k: Math.floor(R() * SHADES), n: dropped + i, g, t: performance.now(), gp });
+    }
+    dropped += N + 1;
+    rowScale.set(g, k);
+    const i0 = cubes.length; cubes.push(...o);
+    relay(o.map(c => ({ ...c })), i0, o.length, [x0 + ux * len, y0 + uy * len]);
+  });
+  wake();
+});
 function vpAll() {
   const rows = [];
   cubes.forEach((c, i) => { const r = rows[rows.length - 1]; if (r && r.g === c.g) r.count++; else rows.push({ g: c.g, i0: i, count: 1 }); });
