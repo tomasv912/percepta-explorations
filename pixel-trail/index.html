@@ -110,14 +110,34 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .palette { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .palette label { position: relative; height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); cursor: pointer; }
 .palette input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.tools { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; padding: 4px; z-index: 3;
+  background: var(--surface); border-radius: 10px; box-shadow: 0 0 0 1px var(--line), 0 4px 18px rgb(0 0 0 / .1); }
+.tools button { appearance: none; border: 0; background: none; color: var(--text); width: 34px; height: 34px; border-radius: 7px; display: grid; place-items: center; cursor: pointer; }
+.tools button:hover { background: var(--fill); }
+.tools button[aria-pressed="true"] { background: var(--text); color: var(--surface); }
+.tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.frame.select { cursor: default; }
+.sel { position: absolute; border: 1px solid #0d99ff; pointer-events: none; z-index: 2; }
+.sel i { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; background: #fff; border: 1px solid #0d99ff; pointer-events: auto; }
+.sel i[data-h="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+.sel i[data-h="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
+.sel i[data-h="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+.sel i[data-h="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+.sel b { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 6px); background: #0d99ff; color: #fff; font: 500 10px var(--mono); padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
 </style>
 </head>
 <body>
 <script src="../toolbar.js"></script>
 <div class="app">
   <main id="stage">
-    <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Rastro de cubos que deja el puntero"></canvas></div>
-    <div class="hud"><span id="stats">Hacé clic y arrastrá sobre la mesa</span><span class="dim"><kbd>Shift</kbd> línea · <kbd>C</kbd> limpiar · <kbd>P</kbd> permanente</span></div>
+    <div class="tools" role="toolbar" aria-label="Herramientas">
+      <button id="tool-draw" title="Pincel (B)" aria-label="Pincel"><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.5 3.5l-8.6 8.6"/><path d="M12.4 9.6l1.9 1.9"/><path d="M9.6 12.3a2.8 2.8 0 0 0-3.9 0c-1.2 1.2-.7 3.3-2.2 4.7 2.6 1 5.6.6 6.9-.8a2.8 2.8 0 0 0-.8-3.9z"/></svg></button>
+      <button id="tool-select" title="Cursor (V): seleccionar, mover y escalar filas" aria-label="Cursor"><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M5 3.5l12 7-5.2 1.3L9.6 17z"/></svg></button>
+    </div>
+    <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Rastro de cubos que deja el puntero"></canvas>
+      <div class="sel" id="sel" hidden><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i><b id="sel-size"></b></div>
+    </div>
+    <div class="hud"><span id="stats">Hacé clic y arrastrá sobre la mesa</span><span class="dim"><kbd>B</kbd> pincel · <kbd>V</kbd> cursor · <kbd>Shift</kbd> línea · <kbd>C</kbd> limpiar</span></div>
   </main>
 
   <aside>
@@ -148,6 +168,13 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-life"></div>
         <label class="check"><input type="checkbox" data-check="permanent"> Permanente (no se borra)</label>
         <button class="btn" id="clear">Limpiar</button>
+      </section>
+
+      <section>
+        <h2>Profundidad</h2>
+        <p class="hint">Con el cursor de la barra seleccionás una fila y la escalás desde las esquinas. Las filas más chicas se ven más desenfocadas.</p>
+        <label class="check"><input type="checkbox" data-check="depth"> Desenfocar según tamaño</label>
+        <div id="sl-depthBlur"></div>
       </section>
 
       <section>
@@ -182,8 +209,9 @@ const MAX = 30000;          // oldest cubes drop off past this
 const DEFAULTS = {
   response: .5, gap: .7, maxGap: 220, scatter: .25, lineGap: 2, snap: false,
   style: 'mono', size: 16, variation: .3, speedSize: 0,
-  life: 2.5, permanent: false,
-  colorMode: 'ink', palette: ['#FFE293', '#F79FFF', '#B1FFEF', '#A9EFFF', '#FFBDA9'],
+  life: 2.5, permanent: true,
+  colorMode: 'ink', palette: ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B'],
+  depth: false, depthBlur: 14,
   ink: '#1a1714', grain: .05, paper: '#ede6da', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -211,7 +239,8 @@ function shadesOf(hex, grain) {
   for (let i = 0; i < SHADES; i++) base.push(labToHex([L + (i / (SHADES - 1) * 2 - 1) * grain, a, b]));
   return { base };
 }
-function buildLut(st) { return { ink: shadesOf(st.ink, st.grain), palette: st.palette.map(h => shadesOf(h, st.grain)) }; }
+// The palette is used exactly as given: no tone variation.
+function buildLut(st) { return { ink: shadesOf(st.ink, st.grain), palette: st.palette.map(h => shadesOf(h, 0)) }; }
 // Palette mode cycles through the colors in drop order.
 const shadesFor = (c, st, lut) => st.colorMode === 'palette' ? lut.palette[c.n % lut.palette.length] : lut.ink;
 
@@ -219,6 +248,9 @@ const shadesFor = (c, st, lut) => st.colorMode === 'palette' ? lut.palette[c.n %
 // Cubes are dropped every `gap` units along the pointer path. The gap grows with pointer speed,
 // so a slow pass lays them densely and a fast one spaces them out.
 let cubes = [], last = null, carry = 0, speed = 0, dropped = 0, strokes = 0;
+// Each stroke is a row; scaling a row from the cursor tool stores its size factor here.
+const rowScale = new Map();
+const scaleOf = g => rowScale.get(g) ?? 1;
 function addPoint(p, t) {
   if (!last) { last = { p, t }; carry = 0; return; }
   const dx = p[0] - last.p[0], dy = p[1] - last.p[1], d = Math.hypot(dx, dy);
@@ -244,7 +276,7 @@ function drop(x, y, t) {
   wake();
 }
 // Mono: every cube at the set size in the exact color; Variación keeps each cube's own size and shade.
-const look = (c, st) => st.style === 'mono' ? [st.size, MONO_SHADE] : [c.s, c.k];
+const look = (c, st) => st.style === 'mono' ? [st.size * scaleOf(c.g), MONO_SHADE] : [c.s * scaleOf(c.g), c.k];
 // Size multiplier from age: full for most of its life, then it shrinks away.
 function lifeScale(c, now) {
   if (S.permanent) return 1;
@@ -255,38 +287,65 @@ function lifeScale(c, now) {
 // ---------- Rendering ----------
 function squareOf(x, y, s) { const h = s / 2; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }
 function poly(ctx, p) { ctx.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]); ctx.closePath(); }
-// Squares are drawn in drop order so each new one sits on top of the ones before it; only consecutive
-// squares of the same colour share a fill.
-function eachRun(now, st, lut, fn) {
-  let color = null, run = [];
+// Rows in drop order, each with its squares (also in drop order) and its average cube size.
+function rowsOf(now, st, lut) {
+  const rows = [];
+  let row = null;
   for (const c of cubes) {
     const k = lifeScale(c, now); if (k <= 0) continue;
-    const [s, shade] = look(c, st), col = shadesFor(c, st, lut).base[shade];
-    if (col !== color) { if (run.length) fn(color, run); color = col; run = []; }
-    run.push(squareOf(c.x, c.y, s * k));
+    if (!row || row.g !== c.g) rows.push(row = { g: c.g, items: [], sum: 0 });
+    const [s, shade] = look(c, st);
+    row.items.push([c.x, c.y, s * k, shadesFor(c, st, lut).base[shade]]);
+    row.sum += s;
   }
-  if (run.length) fn(color, run);
+  for (const r of rows) r.size = r.sum / r.items.length;
+  return rows;
 }
+// Depth: a row is blurred by how much smaller it is than the largest row.
+function blurOf(row, maxSize, st) { return st.depth ? st.depthBlur * (1 - row.size / maxSize) : 0; }
+// Squares go down in drop order so each new one sits on top; consecutive squares of the same colour share a fill.
+function paintItems(ctx, items) {
+  let color = null;
+  for (const [x, y, s, col] of items) {
+    if (col !== color) { if (color) ctx.fill(); ctx.fillStyle = color = col; ctx.beginPath(); }
+    ctx.rect(x - s / 2, y - s / 2, s, s);
+  }
+  if (color) ctx.fill();
+}
+const layer = document.createElement('canvas');
 function draw(ctx, now, st, lut) {
-  eachRun(now, st, lut, (color, polys) => {
-    ctx.fillStyle = color; ctx.beginPath();
-    for (const p of polys) poly(ctx, p);
-    ctx.fill();
-  });
+  const rows = rowsOf(now, st, lut), maxSize = Math.max(0, ...rows.map(r => r.size)), t = ctx.getTransform(), ppu = t.a;
+  for (const row of rows) {
+    const blur = blurOf(row, maxSize, st) * ppu;
+    if (blur < .3 || !('filter' in ctx)) { paintItems(ctx, row.items); continue; }
+    // Blurred rows are painted on their own layer (sized to the row) and composited through a blur.
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y, s] of row.items) { x0 = Math.min(x0, x - s / 2); y0 = Math.min(y0, y - s / 2); x1 = Math.max(x1, x + s / 2); y1 = Math.max(y1, y + s / 2); }
+    const pad = blur * 3 / ppu, bx = x0 - pad, by = y0 - pad;
+    layer.width = Math.max(1, Math.ceil((x1 - x0 + 2 * pad) * ppu)); layer.height = Math.max(1, Math.ceil((y1 - y0 + 2 * pad) * ppu));
+    const lx = layer.getContext('2d');
+    lx.setTransform(ppu, 0, 0, ppu, -bx * ppu, -by * ppu);
+    paintItems(lx, row.items);
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.filter = `blur(${blur}px)`;
+    ctx.drawImage(layer, bx * ppu + t.e, by * ppu + t.f);
+    ctx.restore();
+  }
 }
 function toSvg(now, st, lut) {
   const r = v => Math.round(v * 100) / 100, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW} ${AH}">`);
   if (st.bgExport) out.push(`<rect width="100%" height="100%" fill="${st.paper}"/>`);
-  // One group per stroke (click to release), one element per cube, so ungrouping leaves loose cubes.
-  let stroke = null, nStroke = 0, nCube = 0;
-  for (const c of cubes) {
-    const k = lifeScale(c, now); if (k <= 0) continue;
-    if (c.g !== stroke) { if (stroke !== null) out.push('</g>'); out.push(`<g id="trazo-${++nStroke}">`); stroke = c.g; }
-    const [size, shade] = look(c, st), s = size * k;
-    out.push(`<rect id="cubo-${++nCube}" x="${r(c.x - s / 2)}" y="${r(c.y - s / 2)}" width="${r(s)}" height="${r(s)}" fill="${shadesFor(c, st, lut).base[shade]}"/>`);
-  }
-  if (stroke !== null) out.push('</g>');
+  // One group per stroke (row), one element per cube, so ungrouping leaves loose cubes. Depth blur is
+  // a gaussian filter on the row's group.
+  const rows = rowsOf(now, st, lut), maxSize = Math.max(0, ...rows.map(r => r.size));
+  let nCube = 0;
+  rows.forEach((row, i) => {
+    const blur = blurOf(row, maxSize, st);
+    if (blur >= .15) out.push(`<filter id="blur-${i + 1}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${r(blur)}"/></filter>`);
+    out.push(`<g id="trazo-${i + 1}"${blur >= .15 ? ` filter="url(#blur-${i + 1})"` : ''}>`);
+    for (const [x, y, s, col] of row.items) out.push(`<rect id="cubo-${++nCube}" x="${r(x - s / 2)}" y="${r(y - s / 2)}" width="${r(s)}" height="${r(s)}" fill="${col}"/>`);
+    out.push('</g>');
+  });
   out.push('</svg>');
   return out.join('');
 }
@@ -308,6 +367,7 @@ const SLIDERS = {
   speedSize: { label: 'Tamaño según velocidad', min: -1, max: 1, step: .01, fmt: v => (v > 0 ? '+' : '') + Math.round(v * 100) + '%' },
   life: { label: 'Duración', min: .2, max: 15, step: .1, fmt: v => v.toFixed(1) + ' s' },
   grain: { label: 'Variación de tono', min: 0, max: .2, step: .005, fmt: pct },
+  depthBlur: { label: 'Desenfoque máximo', min: 1, max: 60, step: 1, fmt: v => v + ' px' },
 };
 for (const [key, d] of Object.entries(SLIDERS)) {
   const host = $('#sl-' + key);
@@ -325,7 +385,7 @@ document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('i
 $('#palette-row').innerHTML = S.palette.map((_, i) => `<label title="Color ${i + 1}"><input type="color" data-pal="${i}" aria-label="Color ${i + 1}"></label>`).join('');
 document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('input', () => { S.palette[+inp.dataset.pal] = inp.value; sync(); }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
-const clear = () => { cubes = []; wake(); };
+const clear = () => { cubes = []; rowScale.clear(); select(null); wake(); };
 $('#clear').addEventListener('click', clear);
 addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
@@ -352,12 +412,14 @@ function sync() {
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   $('#sl-life').hidden = S.permanent;
+  $('#sl-depthBlur').hidden = !S.depth;
   $('#sl-variation').hidden = $('#sl-speedSize').hidden = $('#sl-grain').hidden = S.style === 'mono';
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   const pal = S.colorMode === 'palette';
   $('#palette-row').hidden = !pal; $('#ink-row').hidden = pal;
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal].toLowerCase(); if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
   lut = buildLut(S);
+  updateSel();
   wake();
 }
 
@@ -416,6 +478,7 @@ let pressed = false;
 frame.addEventListener('pointerdown', e => {
   if (e.button !== 0) return;
   frame.setPointerCapture(e.pointerId);
+  if (tool === 'select') return selectDown(e);
   pressed = true; speed = 0; strokes++;
   const p = toArt(e);
   if (e.shiftKey) { line = { from: p, n0: dropped, count: 0, scroll: 0 }; layLine(p, e.timeStamp); return; }
@@ -423,12 +486,13 @@ frame.addEventListener('pointerdown', e => {
   last = { p, t: e.timeStamp }; carry = 0;
 });
 frame.addEventListener('pointermove', e => {
+  if (drag) return selectMove(e);
   if (!pressed) return;
   if (line) { layLine(toArt(e), e.timeStamp); return; }
   const evs = e.getCoalescedEvents?.() || [];
   for (const ev of evs.length ? evs : [e]) addPoint(toArt(ev), ev.timeStamp);
 });
-const release = () => { pressed = false; last = line = null; speed = 0; };
+const release = () => { pressed = false; last = line = null; speed = 0; drag = null; };
 addEventListener('wheel', e => {
   if (!line) return;
   e.preventDefault();
@@ -441,6 +505,83 @@ addEventListener('wheel', e => {
 }, { passive: false });
 frame.addEventListener('pointerup', release);
 frame.addEventListener('pointercancel', release);
+
+// ---------- Cursor tool ----------
+// Like Figma: click a row to select it, drag inside its box to move it, drag a corner handle to scale it
+// from the opposite corner (proportionally, sizes included), Delete removes it.
+let tool = 'draw', selected = null, drag = null;
+function setTool(t) {
+  tool = t;
+  if (t === 'select' && !S.permanent) { S.permanent = true; sync(); toast('Permanente activado para poder editar las filas.'); }
+  if (t === 'draw') select(null);
+  $('#tool-draw').setAttribute('aria-pressed', t === 'draw'); $('#tool-select').setAttribute('aria-pressed', t === 'select');
+  frame.classList.toggle('select', t === 'select');
+}
+$('#tool-draw').addEventListener('click', () => setTool('draw'));
+$('#tool-select').addEventListener('click', () => setTool('select'));
+function rowBox(g) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const c of cubes) if (c.g === g) {
+    const h = look(c, S)[0] / 2;
+    x0 = Math.min(x0, c.x - h); y0 = Math.min(y0, c.y - h); x1 = Math.max(x1, c.x + h); y1 = Math.max(y1, c.y + h);
+  }
+  return x1 < x0 ? null : { x0, y0, x1, y1 };
+}
+function select(g) { selected = g; updateSel(); }
+function updateSel() {
+  const el = $('#sel'), b = selected == null ? null : rowBox(selected);
+  if (!b) { el.hidden = true; if (selected != null) selected = null; return; }
+  const k = frame.getBoundingClientRect().width / AW;
+  el.hidden = false;
+  Object.assign(el.style, { left: b.x0 * k + 'px', top: b.y0 * k + 'px', width: (b.x1 - b.x0) * k + 'px', height: (b.y1 - b.y0) * k + 'px' });
+  $('#sel-size').textContent = `${Math.round(b.x1 - b.x0)} × ${Math.round(b.y1 - b.y0)}`;
+}
+function rowAt([x, y]) {
+  for (let i = cubes.length - 1; i >= 0; i--) {
+    const c = cubes[i], h = look(c, S)[0] / 2 + 4;
+    if (Math.abs(c.x - x) <= h && Math.abs(c.y - y) <= h) return c.g;
+  }
+  return null;
+}
+function selectDown(e) {
+  const p = toArt(e), handle = e.target.closest('.sel i')?.dataset.h;
+  let b = selected == null ? null : rowBox(selected);
+  if (!handle && !(b && p[0] >= b.x0 && p[0] <= b.x1 && p[1] >= b.y0 && p[1] <= b.y1)) {
+    select(rowAt(p)); b = selected == null ? null : rowBox(selected);
+    if (!b) return;
+  }
+  const idx = cubes.reduce((a, c, i) => (c.g === selected && a.push(i), a), []);
+  const orig = idx.map(i => [cubes[i].x, cubes[i].y]);
+  if (handle) {
+    const ax = handle.includes('w') ? b.x1 : b.x0, ay = handle.includes('n') ? b.y1 : b.y0;
+    const hx = handle.includes('w') ? b.x0 : b.x1, hy = handle.includes('n') ? b.y0 : b.y1;
+    drag = { mode: 'scale', idx, orig, anchor: [ax, ay], corner: [hx, hy], scale0: scaleOf(selected) };
+  } else drag = { mode: 'move', idx, orig, from: p };
+}
+function selectMove(e) {
+  const p = toArt(e), d = drag;
+  if (d.mode === 'move') {
+    const dx = p[0] - d.from[0], dy = p[1] - d.from[1];
+    d.idx.forEach((i, j) => { cubes[i].x = d.orig[j][0] + dx; cubes[i].y = d.orig[j][1] + dy; });
+  } else {
+    // Projection of the pointer on the anchor→corner diagonal gives one uniform factor.
+    const [ax, ay] = d.anchor, vx = d.corner[0] - ax, vy = d.corner[1] - ay;
+    const k = Math.max(.05, ((p[0] - ax) * vx + (p[1] - ay) * vy) / (vx * vx + vy * vy || 1));
+    d.idx.forEach((i, j) => { cubes[i].x = ax + (d.orig[j][0] - ax) * k; cubes[i].y = ay + (d.orig[j][1] - ay) * k; });
+    rowScale.set(selected, d.scale0 * k);
+  }
+  updateSel(); wake();
+}
+addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'v') setTool('select');
+  else if (k === 'b') setTool('draw');
+  else if ((k === 'delete' || k === 'backspace') && selected != null) {
+    e.preventDefault(); cubes = cubes.filter(c => c.g !== selected); rowScale.delete(selected); select(null); wake();
+  } else if (k === 'escape') select(null);
+});
+new ResizeObserver(updateSel).observe(frame);
 
 // ---------- Export ----------
 let toastT = 0;
@@ -462,6 +603,7 @@ $('#png').addEventListener('click', () => {
 $('#svg').addEventListener('click', () => download(`pixel-trail-${stamp()}.svg`, new Blob([toSvg(performance.now(), S, lut)], { type: 'image/svg+xml' })));
 
 sync();
+setTool('draw');
 </script>
 </body>
 </html>
