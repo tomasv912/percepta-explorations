@@ -38,12 +38,20 @@ html, body { height: 100%; margin: 0; }
 body { display: flex; flex-direction: column; background: var(--page); color: var(--text); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
 
 .app { display: grid; flex: 1; min-height: 0; grid-template-columns: 1fr 280px; }
-main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding-bottom: 32px; }
-.frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); touch-action: none; cursor: none; }
-.frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity .15s ease-out; }
+main { position: relative; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; touch-action: none; }
+main canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+main[data-tool="move"] { cursor: grab; }
+main[data-tool="move"].dragging, main.panning { cursor: grabbing; }
+main[data-tool="zoom"] { cursor: zoom-in; }
+main[data-tool="zoom"].alt { cursor: zoom-out; }
 
-.cursor { position: absolute; left: 0; top: 0; pointer-events: none; border-radius: 50%; border: 1px solid #fff; mix-blend-mode: difference; transform: translate(-50%, -50%); }
-.cursor.erase { border-style: dashed; }
+.tools { position: absolute; top: 12px; left: 12px; display: flex; gap: 2px; align-items: center; background: var(--surface); border-radius: 10px; padding: 3px; box-shadow: 0 0 0 1px var(--line), 0 1px 3px rgb(0 0 0 / .06); z-index: 1; }
+.tools button { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 7px; background: transparent; color: var(--text-2); cursor: pointer; }
+.tools button:hover { background: var(--fill); color: var(--text); }
+.tools button[aria-pressed="true"] { background: var(--fill); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+.tools .zoom { min-width: 52px; width: auto; padding: 0 8px; font: 500 12px var(--mono); font-variant-numeric: tabular-nums; }
+.tools i { width: 1px; height: 18px; background: var(--line); margin: 0 3px; }
+
 .drop { position: absolute; inset: 12px; display: grid; place-items: center; border-radius: 12px; border: 1.5px dashed var(--text-2); background: color-mix(in srgb, var(--stage) 85%, transparent); color: var(--text); font-weight: 500; pointer-events: none; z-index: 2; }
 .hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; white-space: nowrap;
   background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
@@ -54,18 +62,16 @@ aside { display: flex; flex-direction: column; min-height: 0; background: var(--
 .controls { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 24px; }
 section { display: flex; flex-direction: column; gap: 10px; }
 h2 { margin: 0; font-size: 13px; font-weight: 600; }
-.hint { margin: 0; color: var(--text-3); font-size: 12px; }
 
 .seg { display: flex; background: var(--fill); border-radius: 8px; padding: 2px; gap: 2px; }
 .seg button { flex: 1; border: 0; background: transparent; color: var(--text-2); font: 500 12px var(--font); height: 26px; border-radius: 6px; cursor: pointer; }
 .seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .08), 0 0 0 1px var(--line); }
-.seg button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.seg button:focus-visible, .btn:focus-visible, .tools button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .slider { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; }
 .slider label { color: var(--text-2); font-size: 12px; }
 .slider output { font: 12px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
 .slider input { grid-column: 1 / -1; }
-.slider.emph label { color: var(--text); font-weight: 500; }
 input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; margin: 0; cursor: pointer; }
 input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(var(--text), var(--text)) 0 / var(--p, 50%) 100% no-repeat, var(--line); }
 input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line); }
@@ -73,10 +79,8 @@ input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; backgr
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text); }
 input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text); }
 
-.row { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; align-items: center; }
+.row { display: grid; grid-template-columns: 64px 1fr auto; gap: 8px; align-items: center; }
 .row > span { color: var(--text-2); font-size: 12px; }
-.btns { display: flex; gap: 6px; }
-.btns .btn { flex: 1; }
 .text { font: 12px var(--mono); height: 28px; min-width: 0; border-radius: 8px; border: 0; background: var(--fill); color: var(--text); padding: 0 8px; box-shadow: inset 0 0 0 1px var(--line); }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 0; background: var(--fill);
   color: var(--text); font: 500 12px var(--font); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); }
@@ -85,11 +89,11 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 
 .btn.primary { background: var(--accent); color: var(--accent-text); box-shadow: none; }
 .btn.primary:hover { opacity: .9; }
 .btn.big { height: 40px; width: 100%; border-radius: 12px; }
-.btn:disabled { opacity: .5; cursor: default; }
 
 .swatch { position: relative; display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px 0 4px; border-radius: 8px; background: var(--fill); box-shadow: inset 0 0 0 1px var(--line); font: 12px var(--mono); min-width: 0; }
 .swatch i { width: 20px; height: 20px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); flex: none; }
 .swatch input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.swatch.off { opacity: .4; }
 .check { display: flex; gap: 8px; align-items: center; color: var(--text-2); font-size: 12px; cursor: pointer; }
 .check input { accent-color: var(--text); margin: 0; }
 
@@ -104,23 +108,25 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
   .controls { overflow: visible; }
   .hud .dim { display: none; }
 }
-.frame.gradient { cursor: crosshair; }
-.guide { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
-.guide line { stroke: #fff; stroke-width: 1.5; stroke-dasharray: 4 3; mix-blend-mode: difference; }
-.guide circle { fill: #fff; mix-blend-mode: difference; }
 </style>
 </head>
 <body>
 <script src="../toolbar.js"></script>
 <div class="app">
-  <main id="stage">
-    <div class="frame" id="frame">
-      <canvas id="cv" role="img" aria-label="Imagen convertida en círculos por densidad, dispersada con el pincel"></canvas>
-      <svg class="guide" id="guide" hidden aria-hidden="true"><line id="guide-line"/><circle id="guide-a" r="4"/><circle id="guide-b" r="4"/></svg>
-      <div class="cursor" id="cursor" hidden></div>
+  <main id="stage" data-tool="move">
+    <canvas id="cv" role="img" aria-label="Forma o imagen hecha de círculos por densidad"></canvas>
+    <div class="tools" role="toolbar" aria-label="Vista">
+      <button data-tool="move" title="Mover (H)" aria-label="Mover">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 8V3.2a1 1 0 0 1 2 0V7.5M7.5 7V2.2a1 1 0 0 1 2 0V7.5M9.5 7.2V3.2a1 1 0 0 1 2 0V9c0 2.8-1.8 5-4.5 5-1.6 0-2.6-.7-3.5-2L2.2 9.6a1 1 0 0 1 1.6-1.2L5.5 10"/></svg>
+      </button>
+      <button data-tool="zoom" title="Lupa (Z) · Alt para alejar" aria-label="Lupa">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5M5 7h4M7 5v4"/></svg>
+      </button>
+      <i></i>
+      <button class="zoom" id="zoom-fit" title="Ajustar a la vista (0)">100%</button>
     </div>
     <div class="drop" id="drop" hidden>Soltá la imagen</div>
-    <div class="hud"><span id="stats">—</span><span class="dim"><kbd>B</kbd> pincel · <kbd>E</kbd> restaurar · <kbd>G</kbd> degradado · <kbd>⌘Z</kbd> deshacer</span></div>
+    <div class="hud"><span id="stats">—</span><span class="dim"><kbd>H</kbd> mover · <kbd>Z</kbd> lupa · <kbd>Espacio</kbd> arrastrar vista · <kbd>0</kbd> ajustar · <kbd>R</kbd> otra forma</span></div>
   </main>
 
   <aside>
@@ -135,18 +141,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           Subir imagen
         </button>
         <input type="file" id="file" accept="image/*" hidden>
-        <p class="hint">También podés arrastrarla o pegarla. Sin imagen, D3 genera una forma.</p>
-        <div class="seg" data-key="format" aria-label="Formato">
-          <button data-v="landscape">Horizontal</button><button data-v="portrait">Vertical</button><button data-v="square">Cuadrado</button>
-        </div>
-        <div id="sl-scale"></div>
-        <div id="sl-offX"></div>
-        <div id="sl-offY"></div>
         <div id="image-controls" style="display:contents">
-          <label class="check"><input type="checkbox" data-check="invert"> Invertir imagen (negativo) <kbd style="font:500 11px var(--mono);color:var(--text-3)">I</kbd></label>
-          <div class="seg" data-key="pattern" aria-label="Trama">
-            <button data-v="scatter">Dispersa</button><button data-v="grid">Rejilla</button>
-          </div>
+          <label class="check"><input type="checkbox" data-check="invert"> Invertir imagen</label>
           <div id="sl-contrast"></div>
           <div id="sl-threshold"></div>
         </div>
@@ -154,99 +150,44 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
       <section id="shape-section">
         <h2>Forma</h2>
-        <p class="hint">Una membrana alrededor de un tallo: se hincha en bulbos, se pliega y se retuerce. Los puntos van en filas parejas sobre la superficie y se juntan donde se ve de canto. Cada semilla es otra forma.</p>
-        <button class="btn" id="shuffle">Forma al azar</button>
-        <div id="sl-bulbs"></div>
-        <div id="sl-width"></div>
-        <div id="sl-waist"></div>
-        <div id="sl-ripple"></div>
-        <div id="sl-petals"></div>
-        <div id="sl-fold"></div>
-        <div id="sl-droop"></div>
-        <div id="sl-twist"></div>
-        <div id="sl-curve"></div>
-        <div id="sl-tilt"></div>
-        <div id="sl-yaw"></div>
-        <div id="sl-persp"></div>
-        <div id="sl-order"></div>
-      </section>
-
-      <section>
-        <h2>Círculos</h2>
-        <div class="seg" data-key="style" aria-label="Estilo">
-          <button data-v="mono">Mono</button><button data-v="variation">Variación</button>
-        </div>
-        <div id="sl-count"></div>
-        <div id="sl-size"></div>
-        <div id="sl-mod"></div>
-        <div id="sl-variation"></div>
-        <div id="sl-overlap"></div>
-        <label class="check" id="stack-row"><input type="checkbox" data-check="stack"> Apilar: cada círculo tapa a los de abajo</label>
-      </section>
-
-      <section>
-        <h2>Pincel</h2>
-        <p class="hint">Cada trazo es una pasada nueva sobre el resultado: suelta más círculos y empuja más lejos los que ya están sueltos, hacia donde arrastrás.</p>
-        <div class="seg" data-key="tool" aria-label="Herramienta">
-          <button data-v="paint">Dispersar</button><button data-v="erase">Restaurar</button><button data-v="gradient">Degradado</button>
-        </div>
-        <div id="sl-brush"></div>
-        <div id="sl-soft"></div>
-        <div id="sl-strength"></div>
-        <div class="btns">
-          <button class="btn" id="undo">Deshacer</button>
-          <button class="btn" id="reset">Volver al original</button>
-        </div>
-      </section>
-
-      <section>
-        <h2>Dispersión</h2>
-        <div id="sl-amount"></div>
-        <div id="sl-frag"></div>
-        <div id="sl-dist"></div>
-        <div id="sl-spread"></div>
-        <div id="sl-turb"></div>
-        <div id="sl-irreg"></div>
         <div class="row">
           <span>Semilla</span>
           <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
-          <button class="btn icon" id="reseed" title="Nueva semilla (R)" aria-label="Nueva semilla">
+          <button class="btn icon" id="reseed" title="Otra forma (R)" aria-label="Otra forma">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg>
           </button>
         </div>
+        <button class="btn" id="shuffle">Todo al azar</button>
+        <div id="sl-bulbs"></div>
+        <div id="sl-waist"></div>
+        <div id="sl-fold"></div>
+        <div id="sl-droop"></div>
+        <div id="sl-twist"></div>
+        <div id="sl-yaw"></div>
       </section>
 
       <section>
-        <h2>Relleno</h2>
-        <div class="seg" data-key="fillMode" aria-label="Relleno de los círculos">
-          <button data-v="color">Color</button><button data-v="image" data-src-label>Imagen</button><button data-v="none">Ninguno</button>
-        </div>
-        <div class="row" id="fill-row" style="grid-template-columns:56px 1fr">
-          <span>Color</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="fill" aria-label="Color del relleno"></label>
-        </div>
-        <div id="sl-fillOp"></div>
-        <div id="sl-grain"></div>
+        <h2>Puntos</h2>
+        <div id="sl-count"></div>
+        <div id="sl-size"></div>
+        <div id="sl-overlap"></div>
       </section>
 
       <section>
-        <h2>Trazo</h2>
-        <div class="seg" data-key="strokeMode" aria-label="Trazo de los círculos">
-          <button data-v="color">Color</button><button data-v="image" data-src-label>Imagen</button><button data-v="none">Ninguno</button>
+        <h2>Color</h2>
+        <div class="row" style="grid-template-columns:64px 1fr">
+          <label class="check"><input type="checkbox" data-check="fill"> Relleno</label>
+          <label class="swatch"><i></i><b data-hex></b><input type="color" data-color="fillColor" aria-label="Color del relleno"></label>
         </div>
-        <div class="row" id="stroke-row" style="grid-template-columns:56px 1fr">
-          <span>Color</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="stroke" aria-label="Color del trazo"></label>
+        <div class="row" style="grid-template-columns:64px 1fr">
+          <label class="check"><input type="checkbox" data-check="stroke"> Trazo</label>
+          <label class="swatch"><i></i><b data-hex></b><input type="color" data-color="strokeColor" aria-label="Color del trazo"></label>
         </div>
         <div id="sl-strokeW"></div>
-        <div id="sl-strokeMod"></div>
-        <div id="sl-strokeOp"></div>
-      </section>
-
-      <section>
-        <h2>Fondo</h2>
-        <div class="row" style="grid-template-columns:56px 1fr">
+        <div class="row" style="grid-template-columns:64px 1fr">
           <span>Fondo</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="paper" aria-label="Fondo"></label>
         </div>
-        <label class="check"><input type="checkbox" data-check="bgExport"> Incluir fondo al exportar</label>
+        <label class="check"><input type="checkbox" data-check="transparent"> Exportar sin fondo</label>
       </section>
     </div>
     <footer>
@@ -259,126 +200,26 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
 <script>
 // ---------- State ----------
-const FORMATS = { portrait: [1080, 1920], landscape: [1920, 1080], square: [1440, 1440] };
-let AW = 1920, AH = 1080; // artboard, in units; set by the format
+const AW = 1920, AH = 1080; // artboard, in units
 const RES = 2;              // exports render at 2x
 const GRID = 480;           // luminance grid of the image, long side
-const FIELD = 320;          // brush field resolution, long side
 const DEFAULTS = {
-  seed: 1,
-  source: 'shape', format: 'landscape',
-  scale: .9, offX: 0, offY: 0,
-  bulbs: 4, width: .5, waist: .7, ripple: .35, petals: 1.3, fold: .45, droop: .35, twist: .25, curve: .35,
-  tilt: 18, yaw: 0, persp: .35, order: .85,
-  pattern: 'scatter', contrast: 1.2, threshold: .15, invert: false,
-  style: 'mono', count: 18000, size: 4.5, mod: .7, variation: .35, overlap: .5, stack: true,
-  tool: 'paint', brush: 120, soft: .6, strength: .7,
-  amount: .9, frag: .5, dist: .12, spread: .2, turb: .35, irreg: .5,
-  fillMode: 'color', fill: '#f4f1ea', fillOp: 1, grain: .05,
-  strokeMode: 'color', stroke: '#0c0c0c', strokeW: .8, strokeMod: 0, strokeOp: 1,
-  paper: '#0c0c0c', bgExport: true,
+  source: 'shape', seed: 1,
+  bulbs: 4, waist: .7, fold: .45, droop: .35, twist: .25, yaw: 0,
+  invert: false, contrast: 1.2, threshold: .15,
+  count: 18000, size: 4.5, overlap: .5,
+  fill: true, fillColor: '#f4f1ea', stroke: true, strokeColor: '#0c0c0c', strokeW: .8,
+  paper: '#0c0c0c', transparent: false,
 };
 const S = structuredClone(DEFAULTS);
+let panX = 0, panY = 0; // where the hand moved the content, in artboard units
 
-// ---------- Noise ----------
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
 function rng(seed) {
   let a = seed >>> 0 || 1;
   return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 }
-function perlin(rand) {
-  const p = new Uint8Array(512);
-  for (let i = 0; i < 256; i++) p[i] = i;
-  for (let i = 255; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
-  for (let i = 0; i < 256; i++) p[i + 256] = p[i];
-  const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
-  const g = (h, x, y) => { switch (h & 7) { case 0: return x + y; case 1: return -x + y; case 2: return x - y; case 3: return -x - y; case 4: return x; case 5: return -x; case 6: return y; default: return -y; } };
-  return (x, y) => {
-    const X = Math.floor(x), Y = Math.floor(y), xf = x - X, yf = y - Y, xi = X & 255, yi = Y & 255;
-    const u = fade(xf), v = fade(yf);
-    const aa = p[p[xi] + yi], ab = p[p[xi] + yi + 1], ba = p[p[xi + 1] + yi], bb = p[p[xi + 1] + yi + 1];
-    const x1 = g(aa, xf, yf) + u * (g(ba, xf - 1, yf) - g(aa, xf, yf));
-    const x2 = g(ab, xf, yf - 1) + u * (g(bb, xf - 1, yf - 1) - g(ab, xf, yf - 1));
-    return x1 + v * (x2 - x1);
-  };
-}
-// Two-octave noise with a few independent offsets (o picks the channel).
-function noiseKit(seed) {
-  const rand = rng(seed * 7919 + 13), n = perlin(rand);
-  const off = Array.from({ length: 6 }, () => rand() * 200);
-  return (x, y, o) => n(x + off[o], y + off[o + 1]) * .67 + n(x * 2.03 + off[o], y * 2.03 + off[o + 1]) * .33;
-}
-// Stateless per-cell random, so painting one area never reshuffles the rest.
-function hash(a, b) {
-  let t = Math.imul(a ^ 0x9E3779B9, 0x85EBCA6B) ^ Math.imul(b + 0x632BE5AB, 0xC2B2AE35);
-  t ^= t >>> 15; t = Math.imul(t, 0x2C1B3C6D); t ^= t >>> 12; t = Math.imul(t, 0x297A2D39); t ^= t >>> 15;
-  return (t >>> 0) / 4294967296;
-}
-const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
-const lerp = (a, b, t) => a + (b - a) * t;
-
-// ---------- Color (OKLab) ----------
-const hexToRgb = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
-const toLin = c => (c /= 255) <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4;
-const toSrgb = c => Math.round(255 * Math.min(1, Math.max(0, c <= .0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - .055)));
-function rgbToLab([r, g, b]) {
-  r = toLin(r); g = toLin(g); b = toLin(b);
-  const l = Math.cbrt(.4122214708 * r + .5363325363 * g + .0514459929 * b), m = Math.cbrt(.2119034982 * r + .6806995451 * g + .1073969566 * b), s = Math.cbrt(.0883024619 * r + .2817188376 * g + .6299787005 * b);
-  return [.2104542553 * l + .793617785 * m - .0040720468 * s, 1.9779984951 * l - 2.428592205 * m + .4505937099 * s, .0259040371 * l + .7827717662 * m - .808675766 * s];
-}
-function labToHex([L, a, b]) {
-  const l = (L + .3963377774 * a + .2158037573 * b) ** 3, m = (L - .1055613458 * a - .0638541728 * b) ** 3, s = (L - .0894841775 * a - 1.291485548 * b) ** 3;
-  const rgb = [toSrgb(4.0767416621 * l - 3.3077115913 * m + .2309699292 * s), toSrgb(-1.2684380046 * l + 2.6097574011 * m - .3413193965 * s), toSrgb(-.0041960863 * l - .7034186147 * m + 1.707614701 * s)];
-  return '#' + rgb.map(v => v.toString(16).padStart(2, '0')).join('');
-}
-// The fill colour split into a few shades: each circle takes a random one, ±grain in lightness.
-const SHADES = 9, MONO_SHADE = (SHADES - 1) / 2; // the middle shade is the colour itself
-function buildLut(st) {
-  const [L, a, b] = rgbToLab(hexToRgb(st.fill));
-  const base = [];
-  for (let i = 0; i < SHADES; i++) base.push(labToHex([L + (i / (SHADES - 1) * 2 - 1) * st.grain, a, b]));
-  return { base };
-}
-
-// ---------- Source ----------
-// The image is read once into a luminance grid; circles are laid out where it sits on the artboard.
-let src = null, srcId = 0;
-function loadImage(img) {
-  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
-  const gw = Math.max(2, Math.round(iw >= ih ? GRID : GRID * iw / ih)), gh = Math.max(2, Math.round(iw >= ih ? GRID * ih / iw : GRID));
-  // Halve in steps so big photos downsample without aliasing.
-  let cur = img, cw = iw, ch = ih;
-  while (cw / 2 > gw && ch / 2 > gh) {
-    cw = Math.round(cw / 2); ch = Math.round(ch / 2);
-    const c = document.createElement('canvas'); c.width = cw; c.height = ch;
-    const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(cur, 0, 0, cw, ch);
-    cur = c;
-  }
-  const c = document.createElement('canvas'); c.width = gw; c.height = gh;
-  const ctx = c.getContext('2d', { willReadFrequently: true });
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, gw, gh);
-  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(cur, 0, 0, gw, gh);
-  const d = ctx.getImageData(0, 0, gw, gh).data, n = gw * gh;
-  const lum = new Float32Array(n), rgb = new Uint32Array(n);
-  for (let k = 0; k < n; k++) {
-    const r = d[k * 4], g = d[k * 4 + 1], b = d[k * 4 + 2];
-    lum[k] = (.2126 * r + .7152 * g + .0722 * b) / 255;
-    rgb[k] = r << 16 | g << 8 | b;
-  }
-  src = { gw, gh, lum, rgb, ar: iw / ih }; srcId++;
-}
-// Fits the source (aspect ar) inside scale × artboard, centered, then shifted by the offsets.
-function placement(ar) {
-  const w0 = AW * S.scale, h0 = AH * S.scale;
-  const [w, h] = w0 / h0 > ar ? [h0 * ar, h0] : [w0, w0 / ar];
-  return { x: (AW - w) / 2 + S.offX * AW, y: (AH - h) / 2 + S.offY * AH, w, h };
-}
-
-// ---------- Shape ----------
-// With no image the source is an organic membrane: a tube around a meandering stem whose width swells
-// into a few bulbs and pinches between them, its rim rippled, folded up and down and drooping like a cap,
-// twisted along the stem. Dots sit in even rows over the surface (one ring of dots per row, spaced by arc
-// length), so in perspective they crowd where it folds or turns edge-on and thin out where it faces the
-// camera. Nothing is hidden: the far side shows through, like a veil.
 function perlin3(rand) {
   const p = new Uint8Array(512);
   for (let i = 0; i < 256; i++) p[i] = i;
@@ -396,426 +237,283 @@ function perlin3(rand) {
       lerp(lerp(g(p[AA + 1] & 15, x, y, z - 1), g(p[BA + 1] & 15, x - 1, y, z - 1), u), lerp(g(p[AB + 1] & 15, x, y - 1, z - 1), g(p[BB + 1] & 15, x - 1, y - 1, z - 1), u), v), w);
   };
 }
-const NT = 320, NA = 220; // surface mesh: rows along the stem × points around it
+
+// ---------- Image ----------
+// Read once into a luminance grid.
+let src = null;
+function loadImage(img) {
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const gw = Math.max(2, Math.round(iw >= ih ? GRID : GRID * iw / ih)), gh = Math.max(2, Math.round(iw >= ih ? GRID * ih / iw : GRID));
+  // Halve in steps so big photos downsample without aliasing.
+  let cur = img, cw = iw, ch = ih;
+  while (cw / 2 > gw && ch / 2 > gh) {
+    cw = Math.round(cw / 2); ch = Math.round(ch / 2);
+    const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+    const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(cur, 0, 0, cw, ch);
+    cur = c;
+  }
+  const c = document.createElement('canvas'); c.width = gw; c.height = gh;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, gw, gh);
+  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(cur, 0, 0, gw, gh);
+  const d = ctx.getImageData(0, 0, gw, gh).data, n = gw * gh, lum = new Float32Array(n);
+  for (let k = 0; k < n; k++) lum[k] = (.2126 * d[k * 4] + .7152 * d[k * 4 + 1] + .0722 * d[k * 4 + 2]) / 255;
+  src = { gw, gh, lum, ar: iw / ih };
+}
+// The source fills 90% of the artboard, centred, keeping its proportions.
+function box(ar) {
+  const w0 = AW * .9, h0 = AH * .9, [w, h] = w0 / h0 > ar ? [h0 * ar, h0] : [w0, w0 / ar];
+  return { x: (AW - w) / 2, y: (AH - h) / 2, w, h };
+}
+
+// Darkness above the threshold becomes density (the negative's, when inverted). Superposición below 100%
+// rejects circles that would cut into their neighbours too much (at 0% they only touch); the gap asked
+// for grows as the tone lightens, so packing still reads as density.
+function imageDots(st) {
+  const { gw, gh, lum } = src, rect = box(src.ar), n = gw * gh, cw = rect.w / gw, ch = rect.h / gh, t = st.threshold;
+  const M = new Float32Array(n), cdf = new Float64Array(n);
+  let sum = 0;
+  for (let k = 0; k < n; k++) {
+    const v = clamp(((st.invert ? lum[k] : 1 - lum[k]) - .5) * st.contrast + .5);
+    M[k] = t >= 1 ? -1 : (v - t) / (1 - t);
+    cdf[k] = sum += M[k] > 0 ? M[k] ** 1.2 : 0;
+  }
+  const rand = rng(st.seed), d = st.size, keep = 1 - st.overlap, cell = Math.max(1, d), cells = new Map(), out = [];
+  const fits = (x, y, m) => {
+    const min = d * keep / Math.sqrt(Math.max(m, .05)), reach = Math.ceil(min / cell);
+    const gx = Math.floor(x / cell), gy = Math.floor(y / cell);
+    for (let v = gy - reach; v <= gy + reach; v++) for (let u = gx - reach; u <= gx + reach; u++) {
+      const list = cells.get(v * 65536 + u); if (!list) continue;
+      for (const o of list) { const ex = x - out[o], ey = y - out[o + 1]; if (ex * ex + ey * ey < min * min) return false; }
+    }
+    return true;
+  };
+  // Rejected candidates don't count; tries are capped for when the image is full.
+  if (sum > 0) for (let c = 0, tries = 0; c < st.count && tries < st.count * 8; tries++) {
+    const r = rand() * sum; let lo = 0, hi = n - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < r) lo = mid + 1; else hi = mid; }
+    const i = lo % gw, j = (lo - i) / gw, x = rect.x + (i + rand()) * cw, y = rect.y + (j + rand()) * ch;
+    if (keep > 0) {
+      if (!fits(x, y, M[lo])) continue;
+      const key = Math.floor(y / cell) * 65536 + Math.floor(x / cell);
+      let list = cells.get(key); if (!list) cells.set(key, list = []);
+      list.push(out.length);
+    }
+    out.push(x, y); c++;
+  }
+  return Float32Array.from(out);
+}
+
+// ---------- Shape ----------
+// An organic membrane: a tube around a meandering stem that swells into bulbs and pinches between them,
+// its rim rippled, folded up and down and drooping like a cap, twisted along the stem. Dots sit in even
+// rows over the surface, so in perspective they crowd where it folds or turns edge-on and thin out where
+// it faces the camera. Nothing is hidden: the far side shows through.
+const NT = 320, NA = 220; // mesh: rows along the stem × points around it
+const WIDTH = .5, PETALS = 1.3, CURVE = .35, TILT = 18, PERSP = .35, ORDER = .85;
 function membraneMesh(st) {
   const rand = rng(st.seed * 31 + 7), n3 = perlin3(rand), k = st.bulbs, bulbs = [];
-  for (let i = 0; i < k; i++) bulbs.push({ t: (i + .5 + (rand() - .5) * .7) / k, r: st.width * (.55 + .65 * rand()), w: (.12 + .16 * rand()) / Math.sqrt(k) });
-  const neck = st.width * (1 - st.waist) * .5;
+  for (let i = 0; i < k; i++) bulbs.push({ t: (i + .5 + (rand() - .5) * .7) / k, r: WIDTH * (.55 + .65 * rand()), w: (.12 + .16 * rand()) / Math.sqrt(k) });
+  const neck = WIDTH * (1 - st.waist) * .5, ripple = st.fold * .8;
   // Soft max of the bulbs, so they merge into the neck without a crease.
   const env = t => { let sum = neck ** 4; for (const b of bulbs) sum += (b.r * Math.exp(-(((t - b.t) / b.w) ** 2))) ** 4; return sum ** .25; };
-  const fa = st.petals, ft = 1.5 + st.petals * 2, P = new Float32Array((NT + 1) * NA * 3);
+  const ft = 1.5 + PETALS * 2, P = new Float32Array((NT + 1) * NA * 3);
   for (let i = 0; i <= NT; i++) {
     const t = i / NT, e = env(t), tw = st.twist * Math.PI * 2 * t;
-    const cx = st.curve * .6 * n3(t * 1.7, 11.3, .5), cz = st.curve * .6 * n3(t * 1.7, 47.1, .5);
+    const cx = CURVE * .6 * n3(t * 1.7, 11.3, .5), cz = CURVE * .6 * n3(t * 1.7, 47.1, .5);
     for (let j = 0; j < NA; j++) {
       const a = j / NA * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
-      const r = e * Math.max(.05, 1 + st.ripple * 1.6 * n3(ca * fa, sa * fa, t * ft));
-      const fold = st.fold * e * 1.4 * n3(ca * fa + 19.7, sa * fa + 3.1, t * ft + 7.7);
-      const aa = a + tw, o = (i * NA + j) * 3;
-      P[o] = cx + r * Math.cos(aa);
-      P[o + 1] = (t - .5) * 2 + fold - st.droop * r * r / Math.max(.1, st.width) * 1.5;
-      P[o + 2] = cz + r * Math.sin(aa);
+      const r = e * Math.max(.05, 1 + ripple * 1.6 * n3(ca * PETALS, sa * PETALS, t * ft));
+      const fold = st.fold * e * 1.4 * n3(ca * PETALS + 19.7, sa * PETALS + 3.1, t * ft + 7.7), o = (i * NA + j) * 3;
+      P[o] = cx + r * Math.cos(a + tw);
+      P[o + 1] = (t - .5) * 2 + fold - st.droop * r * r / WIDTH * 1.5;
+      P[o + 2] = cz + r * Math.sin(a + tw);
     }
   }
   return P;
 }
-// Even rows of dots over the mesh, then the camera: turn, tilt, perspective. Far dots come first.
-let shapeCache = null, shapeKey = '';
-function shapePoints(st) {
-  const key = JSON.stringify([st.seed, st.bulbs, st.width, st.waist, st.ripple, st.petals, st.fold, st.droop, st.twist, st.curve, st.tilt, st.yaw, st.persp, st.order, st.count]);
-  if (key === shapeKey) return shapeCache;
+// Even rows of dots over the mesh, then the camera; returned far to near so near dots cover far ones.
+function shapeDots(st) {
   const P = membraneMesh(st), rand = rng(st.seed * 131 + 5);
   const dist = (o1, o2) => Math.hypot(P[o1] - P[o2], P[o1 + 1] - P[o2 + 1], P[o1 + 2] - P[o2 + 2]);
-  const L = new Float64Array(NT + 1), S = new Float64Array(NT + 1);
+  const L = new Float64Array(NT + 1), Sm = new Float64Array(NT + 1);
   for (let i = 0; i <= NT; i++) for (let j = 0; j < NA; j++) L[i] += dist((i * NA + j) * 3, (i * NA + (j + 1) % NA) * 3);
   let area = 0;
   for (let i = 1; i <= NT; i++) {
     let d = 0; for (let j = 0; j < NA; j++) d += dist((i * NA + j) * 3, ((i - 1) * NA + j) * 3);
-    S[i] = S[i - 1] + d / NA; area += (L[i] + L[i - 1]) / 2 * (d / NA);
+    Sm[i] = Sm[i - 1] + d / NA; area += (L[i] + L[i - 1]) / 2 * (d / NA);
   }
-  const h = Math.sqrt(area / st.count), jit = 1 - st.order, pts = [];
+  const h = Math.sqrt(area / st.count), jit = 1 - ORDER, pts = [];
   const ring = new Float32Array(NA * 3), arc = new Float64Array(NA + 1);
-  for (let s = h / 2, row = 0; s < S[NT]; s += h * (1 + (rand() - .5) * jit * .8), row++) {
-    let i = 1; while (i < NT && S[i] < s) i++;
-    const f = (s - S[i - 1]) / Math.max(1e-9, S[i] - S[i - 1]);
+  for (let s = h / 2, row = 0; s < Sm[NT]; s += h * (1 + (rand() - .5) * jit * .8), row++) {
+    let i = 1; while (i < NT && Sm[i] < s) i++;
+    const f = (s - Sm[i - 1]) / Math.max(1e-9, Sm[i] - Sm[i - 1]);
     for (let j = 0; j < NA * 3; j++) ring[j] = lerp(P[(i - 1) * NA * 3 + j], P[i * NA * 3 + j], f);
     for (let j = 0; j < NA; j++) { const o = j * 3, q = (j + 1) % NA * 3; arc[j + 1] = arc[j] + Math.hypot(ring[q] - ring[o], ring[q + 1] - ring[o + 1], ring[q + 2] - ring[o + 2]); }
-    const len = arc[NA], n = Math.max(3, Math.round(len / h)), phase = (row % 2) * .5 + rand() * jit;
+    const len = arc[NA], n = Math.max(3, Math.round(len / h)), phase = (row % 2) * .5 + rand() * jit, js = jit * h * .35;
     for (let q = 0, j = 0; q < n; q++) {
       const at = ((q + phase + (rand() - .5) * jit) / n % 1 + 1) % 1 * len;
       if (at < arc[j]) j = 0;
       while (j < NA - 1 && arc[j + 1] < at) j++;
-      const u = (at - arc[j]) / Math.max(1e-9, arc[j + 1] - arc[j]), o = j * 3, o2 = (j + 1) % NA * 3, js = jit * h * .35;
+      const u = (at - arc[j]) / Math.max(1e-9, arc[j + 1] - arc[j]), o = j * 3, o2 = (j + 1) % NA * 3;
       pts.push(lerp(ring[o], ring[o2], u) + (rand() - .5) * js, lerp(ring[o + 1], ring[o2 + 1], u) + (rand() - .5) * js, lerp(ring[o + 2], ring[o2 + 2], u) + (rand() - .5) * js);
     }
   }
-  const yw = st.yaw * Math.PI / 180, tl = st.tilt * Math.PI / 180, cy = Math.cos(yw), sy = Math.sin(yw), ct = Math.cos(tl), stl = Math.sin(tl);
+  const yw = st.yaw * Math.PI / 180, tl = TILT * Math.PI / 180, cy = Math.cos(yw), sy = Math.sin(yw), ct = Math.cos(tl), stl = Math.sin(tl);
   const n = pts.length / 3, X = new Float32Array(n), Y = new Float32Array(n), Z = new Float32Array(n);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (let k = 0; k < n; k++) {
     const x = pts[k * 3], y = pts[k * 3 + 1], z = pts[k * 3 + 2];
-    const x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y2 = y * ct - z1 * stl, z2 = y * stl + z1 * ct;
-    const p = 1 / (1 + st.persp * .45 * z2);
-    X[k] = x1 * p; Y[k] = -y2 * p; Z[k] = z2;
+    const xr = x * cy + z * sy, zr = -x * sy + z * cy, y2 = y * ct - zr * stl, z2 = y * stl + zr * ct, p = 1 / (1 + PERSP * .45 * z2);
+    X[k] = xr * p; Y[k] = -y2 * p; Z[k] = z2;
+    x0 = Math.min(x0, X[k]); x1 = Math.max(x1, X[k]); y0 = Math.min(y0, Y[k]); y1 = Math.max(y1, Y[k]);
   }
-  const order = Array.from({ length: n }, (_, k) => k).sort((a, b) => Z[b] - Z[a]);
-  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-  for (let k = 0; k < n; k++) { x0 = Math.min(x0, X[k]); x1 = Math.max(x1, X[k]); y0 = Math.min(y0, Y[k]); y1 = Math.max(y1, Y[k]); z0 = Math.min(z0, Z[k]); z1 = Math.max(z1, Z[k]); }
-  shapeCache = { X, Y, Z, order, box: [x0, y0, x1, y1, z0, z1] }; shapeKey = key;
-  return shapeCache;
+  const rect = box((x1 - x0) / Math.max(1e-9, y1 - y0)), k = Math.min(rect.w / (x1 - x0), rect.h / (y1 - y0));
+  const ox = AW / 2 - (x0 + x1) / 2 * k, oy = AH / 2 - (y0 + y1) / 2 * k;
+  const out = new Float32Array(n * 2);
+  Array.from({ length: n }, (_, i) => i).sort((a, b) => Z[b] - Z[a]).forEach((i, o) => { out[o * 2] = ox + X[i] * k; out[o * 2 + 1] = oy + Y[i] * k; });
+  return out;
 }
 
-// ---------- Circles ----------
-const STRIDE = 8; // x, y, diameter, shade, rgb, home x, home y, loose
-function buffer(n) { return { a: new Float32Array(Math.max(64, n) * STRIDE), n: 0 }; }
-function push(b, x, y, s, sh, c, ox, oy, loose) {
-  if ((b.n + 1) * STRIDE > b.a.length) { const a = new Float32Array(b.a.length * 2); a.set(b.a); b.a = a; }
-  const o = b.n++ * STRIDE;
-  b.a[o] = x; b.a[o + 1] = y; b.a[o + 2] = s; b.a[o + 3] = sh; b.a[o + 4] = c; b.a[o + 5] = ox; b.a[o + 6] = oy; b.a[o + 7] = loose;
+// Dot centres in artboard units (before the hand's offset), cached until a setting that moves them changes.
+let dots = null, dotsKey = '';
+function currentDots() {
+  const image = S.source === 'image' && src;
+  const key = JSON.stringify(image ? ['i', src.ar, src.gw, S.seed, S.invert, S.contrast, S.threshold, S.count, S.size, S.overlap]
+    : ['s', S.seed, S.bulbs, S.waist, S.fold, S.droop, S.twist, S.yaw, S.count]);
+  if (key !== dotsKey) { dots = image ? imageDots(S) : shapeDots(S); dotsKey = key; clampPan(); }
+  return dots;
+}
+// The hand can move the content anywhere it still fits whole inside the artboard.
+function clampPan() {
+  if (!dots || !dots.length) { panX = panY = 0; return; }
+  const r = S.size / 2 + (S.stroke ? S.strokeW / 2 : 0), m = 8;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = 0; i < dots.length; i += 2) { x0 = Math.min(x0, dots[i]); x1 = Math.max(x1, dots[i]); y0 = Math.min(y0, dots[i + 1]); y1 = Math.max(y1, dots[i + 1]); }
+  panX = clamp(panX, m + r - x0, AW - m - r - x1); panY = clamp(panY, m + r - y0, AH - m - r - y1);
 }
 
-// Image → circles. Invertir turns the input into its negative first (tones and colours).
-// Darkness above the threshold becomes density (scatter) or circle size (grid).
-// Mono: every circle the same size and the exact fill; Variación: size follows the tone and shades vary.
-// Superposición below 100% rejects scattered circles that would cut into their neighbours too much
-// (at 0% they can only touch). The gap a circle asks for grows as the tone lightens, so packing them
-// still reads as density instead of filling every area evenly.
-function generateBase(st) {
-  if (st.source === 'shape' || !src) return generateShape(st);
-  const { gw, gh, lum, rgb } = src, rect = placement(src.ar);
-  const n = gw * gh, cw = rect.w / gw, ch = rect.h / gh, t = st.threshold, mono = st.style === 'mono';
-  const M = new Float32Array(n);
-  for (let k = 0; k < n; k++) {
-    const v = clamp(((st.invert ? lum[k] : 1 - lum[k]) - .5) * st.contrast + .5);
-    M[k] = t >= 1 ? -1 : (v - t) / (1 - t);
+// ---------- Drawing ----------
+// With fill and stroke, each circle is filled then outlined in order, so it covers the outlines below.
+function draw(ctx, it) {
+  const r = S.size / 2, fill = S.fill, stroke = S.stroke && S.strokeW > 0;
+  ctx.fillStyle = S.fillColor; ctx.strokeStyle = S.strokeColor; ctx.lineWidth = S.strokeW;
+  if (fill && stroke) {
+    for (let i = 0; i < it.length; i += 2) { ctx.beginPath(); ctx.arc(it[i] + panX, it[i + 1] + panY, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+  } else if (fill || stroke) {
+    ctx.beginPath();
+    for (let i = 0; i < it.length; i += 2) { ctx.moveTo(it[i] + panX + r, it[i + 1] + panY); ctx.arc(it[i] + panX, it[i + 1] + panY, r, 0, Math.PI * 2); }
+    fill ? ctx.fill() : ctx.stroke();
   }
-  const rand = rng(st.seed);
-  const sizeOf = (m, spread) => mono ? st.size
-    : st.size * ((1 - st.mod) + st.mod * Math.sqrt(Math.max(m, .04))) * Math.max(.15, 1 + st.variation * (rand() * 2 - 1) * spread);
-  const shade = () => mono ? MONO_SHADE : Math.floor(rand() * SHADES);
-  const out = buffer(st.pattern === 'grid' ? 4096 : st.count);
-  if (st.pattern === 'grid') {
-    const cell = Math.max(st.size * 1.1, 2);
-    for (let y = rect.y + cell / 2; y < rect.y + rect.h; y += cell) for (let x = rect.x + cell / 2; x < rect.x + rect.w; x += cell) {
-      const k = Math.min(gh - 1, Math.floor((y - rect.y) / ch)) * gw + Math.min(gw - 1, Math.floor((x - rect.x) / cw)), m = M[k];
-      if (m <= 0) continue;
-      const j = mono ? 0 : st.variation * cell * .3, px = x + (rand() - .5) * j, py = y + (rand() - .5) * j;
-      push(out, px, py, sizeOf(m, .5), shade(), st.invert ? rgb[k] ^ 0xFFFFFF : rgb[k], px, py, 0);
-    }
-  } else {
-    const cdf = new Float64Array(n); let sum = 0;
-    for (let k = 0; k < n; k++) cdf[k] = sum += M[k] > 0 ? M[k] ** 1.2 : 0;
-    const free = st.overlap >= 1, keep = 1 - st.overlap;
-    const cell = Math.max(1, st.size * (mono ? 1 : 1 + st.variation)), cells = new Map();
-    const fits = (x, y, d, m) => {
-      const spread = 1 / Math.sqrt(Math.max(m, .05)), reach = Math.ceil((d / 2 + cell / 2) * keep * spread / cell);
-      const gx = Math.floor(x / cell), gy = Math.floor(y / cell);
-      for (let v = gy - reach; v <= gy + reach; v++) for (let u = gx - reach; u <= gx + reach; u++) {
-        const list = cells.get(v * 65536 + u); if (!list) continue;
-        for (const o of list) {
-          const min = (d + out.a[o + 2]) / 2 * keep * spread, ex = x - out.a[o], ey = y - out.a[o + 1];
-          if (ex * ex + ey * ey < min * min) return false;
-        }
-      }
-      return true;
-    };
-    // Rejected candidates don't count, so the density stays the image's; tries are capped when it's full.
-    if (sum > 0) for (let c = 0, tries = 0; c < st.count && tries < st.count * 8; tries++) {
-      const r = rand() * sum; let lo = 0, hi = n - 1;
-      while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < r) lo = mid + 1; else hi = mid; }
-      const i = lo % gw, j = (lo - i) / gw;
-      const x = rect.x + (i + rand()) * cw, y = rect.y + (j + rand()) * ch, d = sizeOf(M[lo], .7), sh = shade();
-      if (!free) {
-        if (!fits(x, y, d, M[lo])) continue;
-        const key = Math.floor(y / cell) * 65536 + Math.floor(x / cell);
-        let list = cells.get(key); if (!list) cells.set(key, list = []);
-        list.push(out.n * STRIDE);
-      }
-      push(out, x, y, d, sh, st.invert ? rgb[lo] ^ 0xFFFFFF : rgb[lo], x, y, 0); c++;
-    }
-  }
-  return out.a.subarray(0, out.n * STRIDE);
 }
-
-// Shape → circles, far to near so stacking covers the back with the front. In Variación nearer dots
-// grow (Tamaño según profundidad); the "Profundidad" colour is a grey from dim (far) to white (near).
-function generateShape(st) {
-  const { X, Y, Z, order, box: [x0, y0, x1, y1, z0, z1] } = shapePoints(st);
-  const pad = st.size, rect = placement((x1 - x0) / Math.max(1e-9, y1 - y0));
-  const k = Math.min((rect.w - pad * 2) / (x1 - x0), (rect.h - pad * 2) / (y1 - y0));
-  const ox = rect.x + rect.w / 2 - (x0 + x1) / 2 * k, oy = rect.y + rect.h / 2 - (y0 + y1) / 2 * k;
-  const rand = rng(st.seed), mono = st.style === 'mono', out = buffer(order.length);
-  for (const i of order) {
-    const m = (z1 - Z[i]) / Math.max(1e-9, z1 - z0), g = Math.round(lerp(70, 255, m));
-    const d = mono ? st.size : st.size * ((1 - st.mod) + st.mod * Math.sqrt(Math.max(m, .04))) * Math.max(.15, 1 + st.variation * (rand() * 2 - 1) * .5);
-    const x = ox + X[i] * k, y = oy + Y[i] * k;
-    push(out, x, y, d, mono ? MONO_SHADE : Math.floor(rand() * SHADES), g << 16 | g << 8 | g, x, y, 0);
-  }
-  return out.a.subarray(0, out.n * STRIDE);
-}
-
-// ---------- Passes ----------
-// Each stroke is one pass over the current result: it frees circles that are still part of the image and
-// pushes the loose ones further along the drag (in Variación, sometimes splitting them into four circles
-// of half the diameter). Circles only move or split, so nothing appears or vanishes. Strokes are kept as geometry and
-// replayed when a setting changes; nothing of the brush itself stays on the artboard.
-let FW, FH;
-function setFormat() {
-  [AW, AH] = FORMATS[S.format];
-  FW = AW >= AH ? FIELD : Math.round(FIELD * AW / AH); FH = AH >= AW ? FIELD : Math.round(FIELD * AH / AW);
-}
-let strokes = [], live = null, histVer = 0;
-function newField() {
-  return { m: new Float32Array(FW * FH), dx: new Float32Array(FW * FH), dy: new Float32Array(FW * FH), x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
-}
-function sampleField(a, x, y) {
-  const fx = x / AW * FW - .5, fy = y / AH * FH - .5;
-  const i = Math.floor(fx), j = Math.floor(fy), u = fx - i, v = fy - j;
-  const i0 = clamp(i, 0, FW - 1), i1 = clamp(i + 1, 0, FW - 1), j0 = clamp(j, 0, FH - 1), j1 = clamp(j + 1, 0, FH - 1);
-  return (a[j0 * FW + i0] * (1 - u) + a[j0 * FW + i1] * u) * (1 - v) + (a[j1 * FW + i0] * (1 - u) + a[j1 * FW + i1] * u) * v;
-}
-// Strength within one stroke is the max of its dabs (overlap doesn't stack); direction sums the drag.
-function stampField(f, x, y, r, soft, ux, uy) {
-  const sx = FW / AW, sy = FH / AH, cx = x * sx, cy = y * sy, rx = r * sx, ry = r * sy, hard = 1 - soft;
-  for (let j = Math.max(0, Math.floor(cy - ry)); j <= Math.min(FH - 1, Math.ceil(cy + ry)); j++) {
-    for (let i = Math.max(0, Math.floor(cx - rx)); i <= Math.min(FW - 1, Math.ceil(cx + rx)); i++) {
-      const d = Math.hypot((i + .5 - cx) / rx, (j + .5 - cy) / ry);
-      if (d >= 1) continue;
-      let v = 1;
-      if (d > hard) { const t = (d - hard) / (1 - hard); v = 1 - t * t * (3 - 2 * t); }
-      const k = j * FW + i;
-      if (v > f.m[k]) f.m[k] = v;
-      f.dx[k] += ux * v; f.dy[k] += uy * v;
-    }
-  }
-  f.x0 = Math.min(f.x0, x - r); f.y0 = Math.min(f.y0, y - r); f.x1 = Math.max(f.x1, x + r); f.y1 = Math.max(f.y1, y + r);
-}
-function addSegment(f, s, a, b) {
-  const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.hypot(dx, dy);
-  if (!d) return;
-  const n = Math.max(1, Math.ceil(d / (s.brush * .2)));
-  for (let k = 1; k <= n; k++) stampField(f, lerp(a[0], b[0], k / n), lerp(a[1], b[1], k / n), s.brush, s.soft, dx / d, dy / d);
-}
-// A ramp from 0 at a to 1 at b, pushing from a towards b.
-function gradientField(f, a, b) {
-  const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy, l = Math.sqrt(l2);
-  if (!l) return;
-  for (let j = 0; j < FH; j++) for (let i = 0; i < FW; i++) {
-    const x = (i + .5) / FW * AW, y = (j + .5) / FH * AH, k = j * FW + i;
-    const t = clamp(((x - a[0]) * dx + (y - a[1]) * dy) / l2);
-    f.m[k] = t * t * (3 - 2 * t); f.dx[k] = dx / l; f.dy[k] = dy / l;
-  }
-  f.x0 = 0; f.y0 = 0; f.x1 = AW; f.y1 = AH;
-}
-function fieldOf(s) {
-  const f = newField();
-  if (s.tool === 'gradient') gradientField(f, s.a, s.b);
-  else {
-    stampField(f, s.pts[0][0], s.pts[0][1], s.brush, s.soft, 0, 0);
-    for (let i = 1; i < s.pts.length; i++) addSegment(f, s, s.pts[i - 1], s.pts[i]);
-  }
-  return f;
-}
-
-function applyPass(items, s, f, idx) {
-  const out = buffer(items.length / STRIDE + 1024);
-  if (s.tool === 'erase') {
-    // Restore: circles whose home is under the brush go back to it.
-    for (let o = 0; o < items.length; o += STRIDE) {
-      const ox = items[o + 5], oy = items[o + 6];
-      if (items[o + 7] && sampleField(f.m, ox, oy) > .3) push(out, ox, oy, items[o + 2], items[o + 3], items[o + 4], ox, oy, 0);
-      else push(out, items[o], items[o + 1], items[o + 2], items[o + 3], items[o + 4], ox, oy, items[o + 7]);
-    }
-    return out.a.subarray(0, out.n * STRIDE);
-  }
-  const noise = noiseKit(S.seed), unit = Math.min(AW, AH), far = Math.max(AW, AH), tf = 2.4 / unit, sf = 7 / unit;
-  const sb = S.seed * 977 + idx * 7919, mono = S.style === 'mono';
-  const N = 8, px = new Float32Array(N + 1), py = new Float32Array(N + 1);
-  // Low-frequency streaks make neighbours come loose (and travel) together.
-  const streakAt = (x, y) => clamp(.55 + noise(x * sf, y * sf, 2) * 1.8, .05, 1.3);
-  const move = (x, y, sz, sh, col, ox, oy, m, id) => {
-    let dx = sampleField(f.dx, x, y), dy = sampleField(f.dy, x, y);
-    const dl = Math.hypot(dx, dy), aimed = dl > 1e-3;
-    if (aimed) { dx /= dl; dy /= dl; } else dx = dy = 0;
-    const turb = aimed ? S.turb * 1.6 : 1;
-    const rot = (hash(id, sb + 3) - .5) * S.spread * Math.PI, rc = Math.cos(rot), rs = Math.sin(rot);
-    // sqrt: the soft edge of the brush still sends circles clear of it instead of piling them up there.
-    const L = S.dist * far * Math.sqrt(m) * lerp(1, .25 + .75 * hash(id, sb + 4), S.irreg * .8) * lerp(1, streakAt(x, y), S.irreg), step = L / N;
-    px[0] = x; py[0] = y;
-    for (let n = 1; n <= N; n++) {
-      const r = noise(px[n - 1] * tf, py[n - 1] * tf, 0) * Math.PI * 3;
-      let vx = dx + turb * Math.cos(r), vy = dy + turb * Math.sin(r);
-      const l = Math.hypot(vx, vy) || 1; vx /= l; vy /= l;
-      px[n] = px[n - 1] + (vx * rc - vy * rs) * step;
-      py[n] = py[n - 1] + (vx * rs + vy * rc) * step;
-    }
-    push(out, px[N], py[N], sz, sh, col, ox, oy, 1);
-  };
-  for (let o = 0, pid = 0; o < items.length; o += STRIDE, pid++) {
-    const x = items[o], y = items[o + 1], sz = items[o + 2], sh = items[o + 3], col = items[o + 4], ox = items[o + 5], oy = items[o + 6], loose = items[o + 7];
-    const m = sampleField(f.m, x, y) * S.strength;
-    if (m <= .002 || (!loose && hash(pid, sb) >= S.amount * Math.min(1, m) * lerp(1, streakAt(x, y), S.irreg))) {
-      push(out, x, y, sz, sh, col, ox, oy, loose); continue;
-    }
-    if (!mono && sz >= 1.5 && hash(pid, sb + 1) < S.frag * Math.min(1, m) * .6) {
-      const q = sz / 2;
-      for (let k = 0; k < 4; k++) {
-        const ex = ((k & 1) - .5) * q, ey = ((k >> 1) - .5) * q;
-        move(x + ex, y + ey, q, sh, col, ox + ex, oy + ey, m, pid * 8 + k);
-      }
-    } else move(x, y, sz, sh, col, ox, oy, m, pid * 8 + 4);
-  }
-  return out.a.subarray(0, out.n * STRIDE);
-}
-
-let base = null, baseKey = '', state = null, stateKey = '';
-const baseKeyOf = () => JSON.stringify([S.source, S.format, srcId, S.bulbs, S.width, S.waist, S.ripple, S.petals, S.fold, S.droop, S.twist, S.curve, S.tilt, S.yaw, S.persp, S.order, S.scale, S.offX, S.offY, S.seed, S.pattern, S.contrast, S.threshold, S.invert, S.style, S.count, S.size, S.mod, S.variation, S.overlap]);
-const settingsKey = () => JSON.stringify([baseKeyOf(), S.amount, S.frag, S.strength, S.dist, S.spread, S.turb, S.irreg]);
-function committed() {
-  const bk = baseKeyOf();
-  if (bk !== baseKey) { base = generateBase(S); baseKey = bk; }
-  const key = settingsKey() + '|' + histVer;
-  if (key !== stateKey) {
-    let it = base;
-    strokes.forEach((s, i) => { it = applyPass(it, s, fieldOf(s), i); });
-    state = it; stateKey = key;
-  }
-  return state;
-}
-function undo() { if (!strokes.length) return; strokes.pop(); histVer++; schedule(); }
-function resetPasses() { strokes = []; live = null; histVer++; schedule(); }
-
-// ---------- Rendering ----------
-// Each circle gets a fill and a stroke: the fill colour's shades or the image's colour (quantized to
-// 5 bits per channel), or none. Stacked, circles are drawn one by one in order, fill then stroke, so each
-// covers the outlines below it; otherwise all fills go first, batched by colour, and every outline shows.
-const imgHex = c => '#' + ((c & 0xF8F8F8) >>> 0).toString(16).padStart(6, '0');
-const fillOf = (it, i, st, lut) => st.fillMode === 'none' ? null : st.fillMode === 'image' ? imgHex(it[i + 4]) : lut.base[it[i + 3]];
-const strokeOf = (it, i, st) => st.strokeMode === 'none' ? null : st.strokeMode === 'image' ? imgHex(it[i + 4]) : st.stroke;
-// Width in artboard px; Trazo según tamaño scales it with the diameter, relative to the base size.
-const widthOf = (d, st) => st.strokeW * lerp(1, d / st.size, st.strokeMod);
-const stacked = st => st.stack && st.fillMode !== 'none' && st.strokeMode !== 'none';
-function groupBy(it, keyOf) {
-  const g = new Map();
-  for (let i = 0; i < it.length; i += STRIDE) {
-    const key = keyOf(i); if (key === null) continue;
-    let list = g.get(key); if (!list) g.set(key, list = []);
-    list.push(i);
-  }
-  return g;
-}
-function draw(ctx, it, st, lut) {
-  const r = i => Math.max(0, it[i + 2] / 2);
-  if (stacked(st)) {
-    let f = '', k = '';
-    for (let i = 0; i < it.length; i += STRIDE) {
-      const fc = fillOf(it, i, st, lut), sc = strokeOf(it, i, st);
-      if (fc !== f) ctx.fillStyle = f = fc;
-      if (sc !== k) ctx.strokeStyle = k = sc;
-      ctx.beginPath(); ctx.arc(it[i], it[i + 1], r(i), 0, Math.PI * 2);
-      ctx.globalAlpha = st.fillOp; ctx.fill();
-      ctx.lineWidth = widthOf(it[i + 2], st); ctx.globalAlpha = st.strokeOp; ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-    return;
-  }
-  if (st.fillMode !== 'none') {
-    ctx.globalAlpha = st.fillOp;
-    for (const [color, idx] of groupBy(it, i => fillOf(it, i, st, lut))) {
-      ctx.fillStyle = color; ctx.beginPath();
-      for (const i of idx) { ctx.moveTo(it[i] + r(i), it[i + 1]); ctx.arc(it[i], it[i + 1], r(i), 0, Math.PI * 2); }
-      ctx.fill();
-    }
-  }
-  if (st.strokeMode !== 'none') {
-    ctx.globalAlpha = st.strokeOp;
-    // Same colour and (rounded) width go in one path.
-    for (const [key, idx] of groupBy(it, i => strokeOf(it, i, st) + ' ' + Math.round(widthOf(it[i + 2], st) * 20) / 20)) {
-      const [color, w] = key.split(' ');
-      ctx.strokeStyle = color; ctx.lineWidth = +w; ctx.beginPath();
-      for (const i of idx) { ctx.moveTo(it[i] + r(i), it[i + 1]); ctx.arc(it[i], it[i + 1], r(i), 0, Math.PI * 2); }
-      ctx.stroke();
-    }
-  }
-  ctx.globalAlpha = 1;
-}
-// One <circle> per circle, in drawing order; unstacked, the outlines are a second group above the fills.
-function toSvg(it, st, lut) {
+function toSvg(it) {
   const n = v => Math.round(v * 100) / 100, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW} ${AH}">`);
-  if (st.bgExport) out.push(`<rect width="100%" height="100%" fill="${st.paper}"/>`);
-  if (cam.k < 1) out.push(`<g transform="translate(${n(cam.tx)} ${n(cam.ty)}) scale(${Math.round(cam.k * 1e5) / 1e5})">`);
-  const c = (i, attrs) => `<circle cx="${n(it[i])}" cy="${n(it[i + 1])}" r="${n(Math.max(0, it[i + 2] / 2))}"${attrs}/>`;
-  const sw = i => st.strokeMod ? ` stroke-width="${n(widthOf(it[i + 2], st))}"` : '';
-  const fo = st.fillOp < 1 ? ` fill-opacity="${st.fillOp}"` : '', so = st.strokeOp < 1 ? ` stroke-opacity="${st.strokeOp}"` : '';
-  if (stacked(st)) {
-    out.push(`<g stroke-width="${n(st.strokeW)}"${fo}${so}>`);
-    for (let i = 0; i < it.length; i += STRIDE) out.push(c(i, ` fill="${fillOf(it, i, st, lut)}" stroke="${strokeOf(it, i, st)}"${sw(i)}`));
-    out.push('</g>');
-  } else {
-    if (st.fillMode !== 'none') {
-      out.push(`<g id="relleno" stroke="none"${fo}>`);
-      for (let i = 0; i < it.length; i += STRIDE) out.push(c(i, ` fill="${fillOf(it, i, st, lut)}"`));
-      out.push('</g>');
-    }
-    if (st.strokeMode !== 'none') {
-      out.push(`<g id="trazo" fill="none" stroke-width="${n(st.strokeW)}"${so}>`);
-      for (let i = 0; i < it.length; i += STRIDE) out.push(c(i, ` stroke="${strokeOf(it, i, st)}"${sw(i)}`));
-      out.push('</g>');
-    }
-  }
-  if (cam.k < 1) out.push('</g>');
-  out.push('</svg>');
+  if (!S.transparent) out.push(`<rect width="100%" height="100%" fill="${S.paper}"/>`);
+  const stroke = S.stroke && S.strokeW > 0;
+  out.push(`<g fill="${S.fill ? S.fillColor : 'none'}" stroke="${stroke ? S.strokeColor : 'none'}"${stroke ? ` stroke-width="${S.strokeW}"` : ''}>`);
+  for (let i = 0; i < it.length; i += 2) out.push(`<circle cx="${n(it[i] + panX)}" cy="${n(it[i + 1] + panY)}" r="${n(S.size / 2)}"/>`);
+  out.push('</g>', '</svg>');
   return out.join('\n');
 }
 
-// ---------- UI ----------
+// ---------- View ----------
+// The canvas covers the stage; the artboard sits in it at the fitted scale times the lupa's zoom,
+// shifted by the view pan. Zooming never changes the export.
 const $ = s => document.querySelector(s);
-const cv = $('#cv'), frame = $('#frame'), stage = $('#stage'), cursor = $('#cursor');
-let view = null, lut = null, raf = 0;
+const cv = $('#cv'), stage = $('#stage');
+let zoom = 1, vx = 0, vy = 0, tool = 'move', raf = 0;
+function baseScale() { const r = stage.getBoundingClientRect(); return Math.max(.01, Math.min((r.width - 64) / AW, (r.height - 112) / AH)); }
+function viewT() {
+  const r = stage.getBoundingClientRect(), k = baseScale() * zoom;
+  return { k, x: r.width / 2 - AW / 2 * k + vx, y: (r.height - 16) / 2 - AH / 2 * k + vy };
+}
+const toArt = e => { const r = stage.getBoundingClientRect(), t = viewT(); return [(e.clientX - r.left - t.x) / t.k, (e.clientY - r.top - t.y) / t.k]; };
+// Zoom by f keeping the point under (cx, cy) still.
+function zoomAt(f, cx, cy) {
+  const t = viewT(), ax = (cx - t.x) / t.k, ay = (cy - t.y) / t.k;
+  zoom = clamp(zoom * f, 1, 64);
+  const t2 = viewT();
+  vx += cx - (t2.x + ax * t2.k); vy += cy - (t2.y + ay * t2.k);
+  if (zoom === 1) vx = vy = 0;
+  schedule();
+}
+function fitView() { zoom = 1; vx = vy = 0; schedule(); }
 
+function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
+function render() {
+  const it = currentDots(), r = stage.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
+  const ctx = cv.getContext('2d'), t = viewT();
+  ctx.setTransform(dpr * t.k, 0, 0, dpr * t.k, dpr * t.x, dpr * t.y);
+  ctx.shadowColor = 'rgb(0 0 0 / .12)'; ctx.shadowBlur = 6 * dpr; ctx.shadowOffsetY = dpr;
+  ctx.fillStyle = S.paper; ctx.fillRect(0, 0, AW, AH);
+  ctx.shadowColor = 'transparent';
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, AW, AH); ctx.clip();
+  draw(ctx, it);
+  ctx.restore();
+  $('#zoom-fit').textContent = Math.round(zoom * 100) + '%';
+  $('#stats').textContent = `${(it.length / 2).toLocaleString('es')} puntos · exporta a ${AW * RES} × ${AH * RES} px`;
+}
+new ResizeObserver(schedule).observe(stage);
+
+// Hand: drag moves the content (it stays whole inside the frame). Lupa: click zooms in, Alt-click out,
+// drag pans the view. Space held, or the middle button, pans the view with either tool. Wheel zooms.
+let drag = null, space = false;
+function setTool(t) { tool = t; stage.dataset.tool = t; document.querySelectorAll('.tools [data-tool]').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t)); }
+stage.addEventListener('pointerdown', e => {
+  if (e.target.closest('.tools') || (e.button !== 0 && e.button !== 1)) return;
+  stage.setPointerCapture(e.pointerId);
+  const view = space || e.button === 1 || tool === 'zoom';
+  drag = { view, x: e.clientX, y: e.clientY, moved: false, a: toArt(e), px: panX, py: panY, vx, vy, alt: e.altKey };
+  stage.classList.add(view ? 'panning' : 'dragging');
+});
+stage.addEventListener('pointermove', e => {
+  stage.classList.toggle('alt', e.altKey);
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (Math.hypot(dx, dy) > 3) drag.moved = true;
+  if (drag.view) { if (zoom > 1) { vx = drag.vx + dx; vy = drag.vy + dy; } }
+  else { const a = toArt(e); panX = drag.px + a[0] - drag.a[0]; panY = drag.py + a[1] - drag.a[1]; clampPan(); }
+  schedule();
+});
+const endDrag = e => {
+  if (!drag) return;
+  if (tool === 'zoom' && !space && !drag.moved && e.type === 'pointerup') {
+    const r = stage.getBoundingClientRect();
+    zoomAt(drag.alt || e.altKey ? .5 : 2, e.clientX - r.left, e.clientY - r.top);
+  }
+  drag = null; stage.classList.remove('dragging'); if (!space) stage.classList.remove('panning');
+};
+stage.addEventListener('pointerup', endDrag);
+stage.addEventListener('pointercancel', endDrag);
+stage.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = stage.getBoundingClientRect();
+  zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? .01 : .002)), e.clientX - r.left, e.clientY - r.top);
+}, { passive: false });
+document.querySelectorAll('.tools [data-tool]').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+$('#zoom-fit').addEventListener('click', fitView);
+
+// ---------- Controls ----------
 const pct = v => Math.round(v * 100) + '%';
 const SLIDERS = {
-  scale: { label: 'Escala', min: .1, max: 1, step: .01, fmt: pct },
-  offX: { label: 'Posición horizontal', min: -.5, max: .5, step: .005, fmt: pct },
-  offY: { label: 'Posición vertical', min: -.5, max: .5, step: .005, fmt: pct },
-  bulbs: { label: 'Bulbos', min: 1, max: 8, step: 1, fmt: String, emph: true },
-  width: { label: 'Ancho', min: .1, max: 1, step: .01, fmt: pct },
+  contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
+  threshold: { label: 'Umbral', min: 0, max: .99, step: .01, fmt: pct },
+  bulbs: { label: 'Bulbos', min: 1, max: 8, step: 1, fmt: String },
   waist: { label: 'Cintura', min: 0, max: 1, step: .01, fmt: pct },
-  ripple: { label: 'Ondulación del borde', min: 0, max: 1, step: .01, fmt: pct },
-  petals: { label: 'Frecuencia del borde', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
-  fold: { label: 'Pliegues', min: 0, max: 1, step: .01, fmt: pct, emph: true },
+  fold: { label: 'Pliegues', min: 0, max: 1, step: .01, fmt: pct },
   droop: { label: 'Caída', min: -1, max: 1, step: .01, fmt: pct },
   twist: { label: 'Torsión', min: -1, max: 1, step: .01, fmt: pct },
-  curve: { label: 'Curvatura del tallo', min: 0, max: 1, step: .01, fmt: pct },
-  tilt: { label: 'Inclinación', min: -80, max: 80, step: 1, fmt: v => v + '°' },
   yaw: { label: 'Giro', min: 0, max: 360, step: 1, fmt: v => v + '°' },
-  persp: { label: 'Perspectiva', min: 0, max: 1, step: .01, fmt: pct },
-  order: { label: 'Orden de las filas', min: 0, max: 1, step: .01, fmt: pct },
-  contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
-  threshold: { label: 'Umbral', min: 0, max: .99, step: .01, fmt: pct, emph: true },
-  count: { label: 'Círculos', min: 200, max: 80000, step: 100, fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k' },
-  size: { label: 'Diámetro', min: 1, max: 80, step: .5, fmt: v => v + ' px' },
-  mod: { label: 'Tamaño según tono', min: 0, max: 1, step: .01, fmt: pct },
-  variation: { label: 'Variación', min: 0, max: 1, step: .01, fmt: pct },
-  overlap: { label: 'Superposición', min: 0, max: 1, step: .01, fmt: pct, emph: true },
-  brush: { label: 'Tamaño del pincel', min: 10, max: 500, step: 5, fmt: v => v + ' px' },
-  soft: { label: 'Suavidad', min: 0, max: 1, step: .01, fmt: pct },
-  strength: { label: 'Fuerza por pasada', min: .05, max: 1.5, step: .01, fmt: pct, emph: true },
-  amount: { label: 'Desprendimiento', min: 0, max: 1, step: .01, fmt: pct },
-  frag: { label: 'Fragmentación', min: 0, max: 1, step: .01, fmt: pct },
-  dist: { label: 'Distancia por pasada', min: 0, max: .6, step: .005, fmt: pct, emph: true },
-  spread: { label: 'Apertura', min: 0, max: 1, step: .01, fmt: pct },
-  turb: { label: 'Turbulencia', min: 0, max: 1, step: .01, fmt: pct },
-  irreg: { label: 'Irregularidad', min: 0, max: 1, step: .01, fmt: pct },
-  grain: { label: 'Variación de tono', min: 0, max: .2, step: .005, fmt: pct },
-  fillOp: { label: 'Opacidad', min: 0, max: 1, step: .01, fmt: pct },
-  strokeW: { label: 'Grosor', min: .1, max: 12, step: .1, fmt: v => v.toFixed(1) + ' px', emph: true },
-  strokeMod: { label: 'Grosor según tamaño', min: 0, max: 1, step: .01, fmt: pct },
-  strokeOp: { label: 'Opacidad', min: 0, max: 1, step: .01, fmt: pct },
+  count: { label: 'Cantidad', min: 1000, max: 80000, step: 500, fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k' },
+  size: { label: 'Diámetro', min: 1, max: 40, step: .5, fmt: v => v + ' px' },
+  overlap: { label: 'Superposición', min: 0, max: 1, step: .01, fmt: pct },
+  strokeW: { label: 'Grosor del trazo', min: .1, max: 8, step: .1, fmt: v => v.toFixed(1) + ' px' },
 };
 for (const [key, d] of Object.entries(SLIDERS)) {
   const host = $('#sl-' + key);
-  host.className = 'slider' + (d.emph ? ' emph' : '');
+  host.className = 'slider';
   host.innerHTML = `<label for="in-${key}">${d.label}</label><output id="out-${key}"></output><input type="range" id="in-${key}" min="${d.min}" max="${d.max}" step="${d.step}" title="Doble clic para restablecer">`;
   const input = host.querySelector('input');
   input.addEventListener('input', () => { S[key] = +input.value; sync(); });
@@ -823,41 +521,38 @@ for (const [key, d] of Object.entries(SLIDERS)) {
 }
 document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  const key = seg.dataset.key;
-  if (key === 'source' && b.dataset.v === 'image' && !src) { $('#file').click(); return; }
-  if ((key === 'source' || key === 'format') && S[key] !== b.dataset.v) { S[key] = b.dataset.v; setFormat(); resetPasses(); }
-  S[key] = b.dataset.v; sync();
+  if (seg.dataset.key === 'source' && b.dataset.v === 'image' && !src) { $('#file').click(); return; }
+  S[seg.dataset.key] = b.dataset.v; panX = panY = 0; sync();
 }));
-// A new seed plus fresh values for every shape setting, within ranges that stay recognisable.
-const SHUFFLE = { bulbs: [2, 6], width: [.25, .6], waist: [.35, .9], ripple: [.1, .7], petals: [.6, 2.4], fold: [.1, .7], droop: [-.4, .7], twist: [-.6, .6], curve: [0, .7], tilt: [-35, 35], yaw: [0, 360] };
-$('#shuffle').addEventListener('click', () => {
-  for (const [k, [a, b]] of Object.entries(SHUFFLE)) { const d = SLIDERS[k]; S[k] = Math.round(lerp(a, b, Math.random()) / d.step) * d.step; }
-  S.width = Math.round(S.width * 100) / 100; S.seed = Math.floor(Math.random() * 1e6);
-  resetPasses(); sync();
-});
 document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('#reseed').addEventListener('click', reseed);
-$('#undo').addEventListener('click', undo);
-$('#reset').addEventListener('click', resetPasses);
+// A new seed plus fresh values for every shape setting, within ranges that stay recognisable.
+const SHUFFLE = { bulbs: [2, 6], waist: [.35, .9], fold: [.15, .75], droop: [-.4, .7], twist: [-.6, .6], yaw: [0, 360] };
+$('#shuffle').addEventListener('click', () => {
+  for (const [k, [a, b]] of Object.entries(SHUFFLE)) S[k] = Math.round(lerp(a, b, Math.random()) / SLIDERS[k].step) * SLIDERS[k].step;
+  reseed();
+});
 addEventListener('keydown', e => {
-  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+  if (e.code === 'Space' && !e.target.closest('input, textarea, button')) { e.preventDefault(); space = true; stage.classList.add('panning'); return; }
   if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
   const k = e.key.toLowerCase();
   if (k === 'r') reseed();
-  else if (k === 'b') { S.tool = 'paint'; sync(); }
-  else if (k === 'e') { S.tool = 'erase'; sync(); }
-  else if (k === 'g') { S.tool = 'gradient'; sync(); }
-  else if (k === 'i' && S.source === 'image') { S.invert = !S.invert; sync(); }
-  else if (k === '[' || k === ']') { const d = SLIDERS.brush; S.brush = clamp(Math.round(S.brush * (k === ']' ? 1.15 : 1 / 1.15) / 5) * 5, d.min, d.max); sync(); }
+  else if (k === 'h' || k === 'v') setTool('move');
+  else if (k === 'z') setTool('zoom');
+  else if (k === '0') fitView();
+  else if (k === '+' || k === '=') { const r = stage.getBoundingClientRect(); zoomAt(2, r.width / 2, r.height / 2); }
+  else if (k === '-') { const r = stage.getBoundingClientRect(); zoomAt(.5, r.width / 2, r.height / 2); }
 });
+addEventListener('keyup', e => { if (e.code === 'Space') { space = false; if (!drag) stage.classList.remove('panning'); } });
 
-function paintSwatch(el, hex) {
+function paintSwatch(el, hex, on) {
   el.querySelector('i').style.background = hex;
   el.querySelector('[data-hex]').textContent = hex.toUpperCase();
   const inp = el.querySelector('input'); if (inp.value !== hex) inp.value = hex;
+  el.classList.toggle('off', !on);
 }
 function sync() {
   for (const key of Object.keys(SLIDERS)) {
@@ -869,139 +564,23 @@ function sync() {
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
-  const mono = S.style === 'mono', grad = S.tool === 'gradient';
-  $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-frag').hidden = mono;
   const shape = S.source === 'shape';
   $('#shape-section').hidden = !shape;
   $('#image-controls').hidden = shape;
-  $('#sl-overlap').hidden = shape || S.pattern === 'grid';
-  $('#sl-count').hidden = !shape && S.pattern === 'grid';
-  $('#out-mod').previousElementSibling.textContent = shape ? 'Tamaño según profundidad' : 'Tamaño según tono';
-  document.querySelectorAll('[data-src-label]').forEach(b => b.textContent = shape ? 'Profundidad' : 'Imagen');
-  $('#stack-row').hidden = S.fillMode === 'none' || S.strokeMode === 'none';
-  $('#fill-row').hidden = S.fillMode !== 'color';
-  $('#sl-grain').hidden = mono || S.fillMode !== 'color';
-  $('#sl-fillOp').hidden = S.fillMode === 'none';
-  $('#stroke-row').hidden = S.strokeMode !== 'color';
-  $('#sl-strokeW').hidden = $('#sl-strokeMod').hidden = $('#sl-strokeOp').hidden = S.strokeMode === 'none';
-  $('#sl-brush').hidden = $('#sl-soft').hidden = grad;
-  frame.classList.toggle('gradient', grad);
-  if (grad) cursor.hidden = true;
-  cursor.classList.toggle('erase', S.tool === 'erase');
-  document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
-  lut = buildLut(S);
+  $('#sl-overlap').hidden = shape;
+  $('#sl-strokeW').hidden = !S.stroke;
+  paintSwatch($('[data-color=fillColor]').closest('.swatch'), S.fillColor, S.fill);
+  paintSwatch($('[data-color=strokeColor]').closest('.swatch'), S.strokeColor, S.stroke);
+  paintSwatch($('[data-color=paper]').closest('.swatch'), S.paper, true);
+  if (dots) clampPan();
   schedule();
 }
-
-function fit() {
-  const r = stage.getBoundingClientRect();
-  const k = Math.max(0, Math.min((r.width - 64) / AW, (r.height - 96) / AH));
-  return { w: Math.round(AW * k), h: Math.round(AH * k) };
-}
-function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
-// The frame always holds every circle: when any (with its stroke) crosses the edge, everything is
-// scaled down about the content's centre until it fits inside a small margin. Exports use the same
-// framing. It holds still during a stroke and catches up on release, so the canvas doesn't swim.
-let cam = { k: 1, tx: 0, ty: 0 };
-function framing(it, st) {
-  const sw = st.strokeMode === 'none' ? 0 : st.strokeW * (1 + st.strokeMod * 2) / 2;
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (let i = 0; i < it.length; i += STRIDE) {
-    const r = it[i + 2] / 2 + sw;
-    if (it[i] - r < x0) x0 = it[i] - r; if (it[i] + r > x1) x1 = it[i] + r;
-    if (it[i + 1] - r < y0) y0 = it[i + 1] - r; if (it[i + 1] + r > y1) y1 = it[i + 1] + r;
-  }
-  if (!(x1 > x0) || (x0 >= 0 && y0 >= 0 && x1 <= AW && y1 <= AH)) return { k: 1, tx: 0, ty: 0 };
-  const m = Math.min(AW, AH) * .03, k = Math.min(1, (AW - 2 * m) / (x1 - x0), (AH - 2 * m) / (y1 - y0));
-  return { k, tx: AW / 2 - (x0 + x1) / 2 * k, ty: AH / 2 - (y0 + y1) / 2 * k };
-}
-function render() {
-  view = committed();
-  if (live) view = applyPass(view, live.s, live.f, strokes.length);
-  const { w, h } = fit();
-  frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.paper;
-  const dpr = devicePixelRatio || 1;
-  cv.width = Math.max(1, Math.round(w * dpr)); cv.height = Math.max(1, Math.round(h * dpr));
-  const ctx = cv.getContext('2d');
-  if (!live) cam = framing(view, S);
-  const sx = cv.width / AW, sy = cv.height / AH;
-  ctx.setTransform(sx, 0, 0, sy, 0, 0);
-  ctx.clearRect(0, 0, AW, AH);
-  ctx.setTransform(sx * cam.k, 0, 0, sy * cam.k, sx * cam.tx, sy * cam.ty);
-  draw(ctx, view, S, lut);
-  let loose = 0;
-  for (let o = 7; o < view.length; o += STRIDE) loose += view[o];
-  const n = strokes.length;
-  $('#stats').textContent = `${(view.length / STRIDE).toLocaleString('es')} círculos · ${loose.toLocaleString('es')} sueltos · ${n} ${n === 1 ? 'pasada' : 'pasadas'} · exporta a ${AW * RES} × ${AH * RES} px${cam.k < .999 ? ` · encuadre ${Math.round(cam.k * 100)}%` : ''}`;
-}
-new ResizeObserver(schedule).observe(stage);
-
-// ---------- Painting ----------
-function toImage(e) {
-  const r = frame.getBoundingClientRect();
-  return [((e.clientX - r.left) / r.width * AW - cam.tx) / cam.k, ((e.clientY - r.top) / r.height * AH - cam.ty) / cam.k];
-}
-function moveCursor(e) {
-  if (S.tool === 'gradient') return;
-  const r = frame.getBoundingClientRect(), d = 2 * S.brush * cam.k * r.width / AW;
-  cursor.hidden = false;
-  cursor.style.width = cursor.style.height = d + 'px';
-  cursor.style.left = (e.clientX - r.left) + 'px'; cursor.style.top = (e.clientY - r.top) + 'px';
-}
-function showGuide(a, b) {
-  const r = frame.getBoundingClientRect(), s = r.width / AW, g = $('#guide');
-  const [ax, ay] = [(a[0] * cam.k + cam.tx) * s, (a[1] * cam.k + cam.ty) * s], [bx, by] = [(b[0] * cam.k + cam.tx) * s, (b[1] * cam.k + cam.ty) * s];
-  g.hidden = false;
-  $('#guide-line').setAttribute('x1', ax); $('#guide-line').setAttribute('y1', ay);
-  $('#guide-line').setAttribute('x2', bx); $('#guide-line').setAttribute('y2', by);
-  $('#guide-a').setAttribute('cx', ax); $('#guide-a').setAttribute('cy', ay);
-  $('#guide-b').setAttribute('cx', bx); $('#guide-b').setAttribute('cy', by);
-}
-frame.addEventListener('pointerdown', e => {
-  if (e.button !== 0) return;
-  frame.setPointerCapture(e.pointerId);
-  const p = toImage(e);
-  if (S.tool === 'gradient') { live = { s: { tool: 'gradient', a: p, b: p }, f: newField() }; showGuide(p, p); }
-  else {
-    const s = { tool: S.tool, brush: S.brush, soft: S.soft, pts: [p] };
-    live = { s, f: fieldOf(s) };
-    moveCursor(e);
-  }
-  schedule();
-});
-frame.addEventListener('pointermove', e => {
-  moveCursor(e);
-  if (!live) return;
-  const p = toImage(e), s = live.s;
-  if (s.tool === 'gradient') { s.b = p; live.f = fieldOf(s); showGuide(s.a, p); }
-  else {
-    const prev = s.pts[s.pts.length - 1];
-    if (Math.hypot(p[0] - prev[0], p[1] - prev[1]) < s.brush * .05) return;
-    addSegment(live.f, s, prev, p); s.pts.push(p);
-  }
-  schedule();
-});
-// Releasing commits the pass: the result becomes the new starting point.
-const endStroke = () => {
-  if (!live) return;
-  const { s, f } = live;
-  live = null; $('#guide').hidden = true;
-  if (s.tool !== 'gradient' || s.a[0] !== s.b[0] || s.a[1] !== s.b[1]) {
-    const next = applyPass(committed(), s, f, strokes.length);
-    strokes.push(s); histVer++;
-    state = next; stateKey = settingsKey() + '|' + histVer;
-  }
-  schedule();
-};
-frame.addEventListener('pointerup', endStroke);
-frame.addEventListener('pointercancel', endStroke);
-frame.addEventListener('pointerleave', () => { if (!live) cursor.hidden = true; });
 
 // ---------- Input ----------
 function openFile(file) {
   if (!file || !file.type.startsWith('image/')) return toast('Eso no parece una imagen.');
   const img = new Image(), url = URL.createObjectURL(file);
-  img.onload = () => { URL.revokeObjectURL(url); loadImage(img); S.source = 'image'; resetPasses(); sync(); toast('Imagen cargada. Pintá para dispersar.'); };
+  img.onload = () => { URL.revokeObjectURL(url); loadImage(img); S.source = 'image'; panX = panY = 0; dotsKey = ''; sync(); toast('Imagen cargada.'); };
   img.onerror = () => { URL.revokeObjectURL(url); toast('No se pudo leer la imagen.'); };
   img.src = url;
 }
@@ -1038,15 +617,13 @@ $('#png').addEventListener('click', () => {
   const c = document.createElement('canvas'); c.width = AW * RES; c.height = AH * RES;
   const ctx = c.getContext('2d');
   ctx.setTransform(RES, 0, 0, RES, 0, 0);
-  if (S.bgExport) { ctx.fillStyle = S.paper; ctx.fillRect(0, 0, AW, AH); }
-  ctx.setTransform(RES * cam.k, 0, 0, RES * cam.k, RES * cam.tx, RES * cam.ty);
-  draw(ctx, view, S, lut);
+  if (!S.transparent) { ctx.fillStyle = S.paper; ctx.fillRect(0, 0, AW, AH); }
+  draw(ctx, currentDots());
   c.toBlob(b => b ? download(`d3-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
 });
-$('#svg').addEventListener('click', () => download(`d3-${S.seed}.svg`, new Blob([toSvg(view, S, lut)], { type: 'image/svg+xml' })));
+$('#svg').addEventListener('click', () => download(`d3-${S.seed}.svg`, new Blob([toSvg(currentDots())], { type: 'image/svg+xml' })));
 
-// Start with a generated shape, untouched.
-setFormat();
+setTool('move');
 sync();
 </script>
 </body>
