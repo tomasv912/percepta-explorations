@@ -208,6 +208,10 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <label class="swatch"><i></i><b data-hex></b><input type="color" data-color="strokeColor" aria-label="Color del trazo"></label>
         </div>
         <div id="sl-strokeW"></div>
+        <div style="display:flex;gap:6px">
+          <button class="btn" id="swap" style="flex:1" title="Intercambia los colores del relleno y del trazo">Relleno ⇄ trazo</button>
+          <button class="btn" id="negate" style="flex:1" title="Invierte relleno, trazo y fondo">Invertir colores</button>
+        </div>
         <div class="row" style="grid-template-columns:64px 1fr">
           <span>Fondo</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="paper" aria-label="Fondo"></label>
         </div>
@@ -498,15 +502,105 @@ function draw(ctx, it) {
     fill ? ctx.fill() : ctx.stroke();
   }
 }
+// The SVG is one unified outline: the dots are rendered as a coverage mask at a few times the artboard
+// resolution, its 50% contour is traced (marching squares, sub-pixel edges) and simplified into a
+// single even-odd path, like Union + Outline stroke in Figma. With a fill, the path is the union of the
+// discs (filled, and outlined with the stroke if it's on); with only a stroke, it's the union of the rings.
 function toSvg(it) {
   const n = v => Math.round(v * 100) / 100, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW} ${AH}">`);
   if (!S.transparent) out.push(`<rect width="100%" height="100%" fill="${S.paper}"/>`);
-  const stroke = S.stroke && S.strokeW > 0;
-  out.push(`<g fill="${S.fill ? S.fillColor : 'none'}" stroke="${stroke ? S.strokeColor : 'none'}"${stroke ? ` stroke-width="${S.strokeW}"` : ''}>`);
-  for (let i = 0; i < it.length; i += 2) if (it[i] === it[i]) out.push(`<circle cx="${n(it[i] + panX)}" cy="${n(it[i + 1] + panY)}" r="${n(S.size / 2)}"/>`);
-  out.push('</g>', '</svg>');
+  const stroke = S.stroke && S.strokeW > 0, ring = !S.fill && stroke;
+  if (S.fill || ring) {
+    const d = unionPath(it, S.size / 2, ring ? S.strokeW / 2 : 0);
+    out.push(S.fill
+      ? `<path fill="${S.fillColor}" fill-rule="evenodd"${stroke ? ` stroke="${S.strokeColor}" stroke-width="${S.strokeW}" stroke-linejoin="round"` : ''} d="${d}"/>`
+      : `<path fill="${S.strokeColor}" fill-rule="evenodd" d="${d}"/>`);
+  }
+  out.push('</svg>');
   return out.join('\n');
+}
+
+function unionPath(it, r, half) {
+  const outer = r + half + 1, k = clamp(6 / Math.max(.5, r), 1.5, 5);
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let i = 0; i < it.length; i += 2) {
+    const x = it[i] + panX, y = it[i + 1] + panY;
+    if (x !== x) continue;
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  if (x0 > x1) return '';
+  x0 -= outer; y0 -= outer;
+  const w = Math.ceil((x1 + outer - x0) * k) + 2, h = Math.ceil((y1 + outer - y0) * k) + 2, m = new Uint8Array(w * h);
+  // Coverage of each pixel centre, from its distance to the circle (or ring) edge.
+  for (let i = 0; i < it.length; i += 2) {
+    if (it[i] !== it[i]) continue;
+    const cx = (it[i] + panX - x0) * k, cy = (it[i + 1] + panY - y0) * k, R = (r + half) * k + 1;
+    for (let y = Math.max(0, Math.floor(cy - R)); y <= Math.min(h - 1, Math.ceil(cy + R)); y++) for (let x = Math.max(0, Math.floor(cx - R)); x <= Math.min(w - 1, Math.ceil(cx + R)); x++) {
+      const dist = Math.hypot(x - cx, y - cy) / k, e = half && !S.fill ? half - Math.abs(dist - r) : r - dist;
+      const v = Math.round(clamp(e * k + .5) * 255), o = y * w + x;
+      if (v > m[o]) m[o] = v;
+    }
+  }
+  let d = '';
+  for (const loop of contours(m, w, h)) {
+    const pts = simplify(loop, .3);
+    if (pts.length < 3) continue;
+    d += 'M' + pts.map(([x, y]) => `${Math.round((x / k + x0) * 100) / 100} ${Math.round((y / k + y0) * 100) / 100}`).join('L') + 'Z';
+  }
+  return d;
+}
+// Closed iso-contours of a coverage mask at 50% (from Text Dissolve).
+function contours(data, w, h) {
+  const T = 128, v = (x, y) => data[y * w + x];
+  const pos = new Map(), links = new Map();
+  const at = (id, xa, ya, xb, yb) => {
+    if (!pos.has(id)) { const a = v(xa, ya), t = (T - a) / (v(xb, yb) - a); pos.set(id, [xa + (xb - xa) * t, ya + (yb - ya) * t]); }
+    return id;
+  };
+  const link = (a, b) => { (links.get(a) || links.set(a, []).get(a)).push(b); (links.get(b) || links.set(b, []).get(b)).push(a); };
+  for (let y = 0; y < h - 1; y++) for (let x = 0; x < w - 1; x++) {
+    const tl = v(x, y) >= T, tr = v(x + 1, y) >= T, br = v(x + 1, y + 1) >= T, bl = v(x, y + 1) >= T;
+    const c = tl * 8 + tr * 4 + br * 2 + bl;
+    if (c === 0 || c === 15) continue;
+    const Tp = () => at((y * w + x) * 2, x, y, x + 1, y), Bp = () => at(((y + 1) * w + x) * 2, x, y + 1, x + 1, y + 1);
+    const Lp = () => at((y * w + x) * 2 + 1, x, y, x, y + 1), Rp = () => at((y * w + x + 1) * 2 + 1, x + 1, y, x + 1, y + 1);
+    const centre = (v(x, y) + v(x + 1, y) + v(x + 1, y + 1) + v(x, y + 1)) / 4 >= T;
+    switch (c) {
+      case 1: case 14: link(Lp(), Bp()); break;
+      case 2: case 13: link(Bp(), Rp()); break;
+      case 3: case 12: link(Lp(), Rp()); break;
+      case 4: case 11: link(Tp(), Rp()); break;
+      case 6: case 9: link(Tp(), Bp()); break;
+      case 7: case 8: link(Lp(), Tp()); break;
+      case 5: if (centre) { link(Lp(), Tp()); link(Bp(), Rp()); } else { link(Tp(), Rp()); link(Lp(), Bp()); } break;
+      case 10: if (centre) { link(Tp(), Rp()); link(Lp(), Bp()); } else { link(Lp(), Tp()); link(Bp(), Rp()); } break;
+    }
+  }
+  const loops = [], seen = new Set();
+  for (const start of links.keys()) {
+    if (seen.has(start)) continue;
+    const loop = [];
+    for (let prev = -1, cur = start; cur !== undefined && !seen.has(cur);) {
+      seen.add(cur); loop.push(pos.get(cur));
+      const nb = links.get(cur), next = nb[0] !== prev ? nb[0] : nb[1];
+      prev = cur; cur = next;
+    }
+    loops.push(loop);
+  }
+  return loops;
+}
+function simplify(pts, eps) {
+  if (pts.length < 4) return pts;
+  const keep = new Uint8Array(pts.length); keep[0] = keep[pts.length - 1] = 1;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop(), [ax, ay] = pts[a], [bx, by] = pts[b], dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1;
+    let far = -1, fd = eps;
+    for (let i = a + 1; i < b; i++) { const d = Math.abs((pts[i][0] - ax) * dy - (pts[i][1] - ay) * dx) / len; if (d > fd) { fd = d; far = i; } }
+    if (far >= 0) { keep[far] = 1; stack.push([a, far], [far, b]); }
+  }
+  return pts.filter((_, i) => keep[i]);
 }
 
 // ---------- View ----------
@@ -646,17 +740,20 @@ const SLIDERS = {
   droop: { label: 'Caída', min: -1, max: 1, step: .01, fmt: pct },
   twist: { label: 'Torsión', min: -1, max: 1, step: .01, fmt: pct },
   yaw: { label: 'Giro', min: 0, max: 360, step: 1, fmt: v => v + '°' },
-  count: { label: 'Cantidad', min: 1000, max: 80000, step: 500, fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k' },
+  count: { label: 'Cantidad', values: [...Array.from({ length: 10 }, (_, i) => (i + 1) * 100), ...Array.from({ length: 158 }, (_, i) => 1500 + i * 500)], fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k' },
   size: { label: 'Diámetro', min: 1, max: 40, step: .5, fmt: v => v + ' px' },
   overlap: { label: 'Superposición', min: 0, max: 1, step: .01, fmt: pct },
   strokeW: { label: 'Grosor del trazo', min: .1, max: 8, step: .1, fmt: v => v.toFixed(1) + ' px' },
 };
+// A slider with a values list moves through it (uneven steps), otherwise through min..max by step.
+const pos = (d, v) => d.values ? d.values.reduce((b, x, i) => Math.abs(x - v) < Math.abs(d.values[b] - v) ? i : b, 0) : v;
 for (const [key, d] of Object.entries(SLIDERS)) {
+  if (d.values) Object.assign(d, { min: 0, max: d.values.length - 1, step: 1 });
   const host = $('#sl-' + key);
   host.className = 'slider';
   host.innerHTML = `<label for="in-${key}">${d.label}</label><output id="out-${key}"></output><input type="range" id="in-${key}" min="${d.min}" max="${d.max}" step="${d.step}" title="Doble clic para restablecer">`;
   const input = host.querySelector('input');
-  input.addEventListener('input', () => { S[key] = +input.value; sync(); });
+  input.addEventListener('input', () => { S[key] = d.values ? d.values[+input.value] : +input.value; sync(); });
   input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
 }
 document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
@@ -667,6 +764,9 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
 document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
+$('#swap').addEventListener('click', () => { [S.fillColor, S.strokeColor] = [S.strokeColor, S.fillColor]; sync(); });
+const negHex = h => '#' + (0xFFFFFF ^ parseInt(h.slice(1), 16)).toString(16).padStart(6, '0');
+$('#negate').addEventListener('click', () => { for (const k of ['fillColor', 'strokeColor', 'paper']) S[k] = negHex(S[k]); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('#reseed').addEventListener('click', reseed);
 // A new seed plus fresh values for every shape setting, within ranges that stay recognisable.
@@ -703,8 +803,9 @@ function paintSwatch(el, hex, on) {
 function sync() {
   for (const key of Object.keys(SLIDERS)) {
     const input = $('#in-' + key), d = SLIDERS[key];
-    if (+input.value !== S[key]) input.value = S[key];
-    input.style.setProperty('--p', ((S[key] - d.min) / (d.max - d.min) * 100) + '%');
+    const at = pos(d, S[key]);
+    if (+input.value !== at) input.value = at;
+    input.style.setProperty('--p', ((at - d.min) / (d.max - d.min) * 100) + '%');
     $('#out-' + key).textContent = d.fmt(S[key]);
   }
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
@@ -767,7 +868,10 @@ $('#png').addEventListener('click', () => {
   draw(ctx, currentDots());
   c.toBlob(b => b ? download(`d3-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
 });
-$('#svg').addEventListener('click', () => download(`d3-${S.seed}.svg`, new Blob([toSvg(currentDots())], { type: 'image/svg+xml' })));
+$('#svg').addEventListener('click', () => {
+  toast('Unificando el SVG…');
+  setTimeout(() => download(`d3-${S.seed}.svg`, new Blob([toSvg(currentDots())], { type: 'image/svg+xml' })), 30);
+});
 
 setTool('move');
 sync();
