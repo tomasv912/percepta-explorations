@@ -112,6 +112,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .palette input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 .btns { display: flex; gap: 6px; }
 #img-up { flex: 1; }
+.btns .btn.icon { flex: none; }
 .thumbs { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
 .thumbs canvas { width: 100%; aspect-ratio: 1; border-radius: 4px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); }
 .drop { position: absolute; inset: 12px; display: grid; place-items: center; border-radius: 12px; border: 1.5px dashed var(--text-2); background: color-mix(in srgb, var(--stage) 85%, transparent); color: var(--text); font-weight: 500; pointer-events: none; z-index: 4; }
@@ -183,14 +184,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-size"></div>
         <div id="sl-variation"></div>
         <div id="sl-speedSize"></div>
-        <div class="seg" data-key="fill" aria-label="Relleno">
-          <button data-v="color">Color</button><button data-v="image">Imágenes</button>
-        </div>
-        <div id="img-box">
-          <div class="btns"><button class="btn" id="img-up">Subir .zip o imágenes</button><button class="btn icon" id="img-mix" title="Repartir las imágenes de nuevo" aria-label="Repartir las imágenes de nuevo"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg></button></div>
-          <input type="file" id="img-file" accept="image/*,.zip,application/zip" multiple hidden>
-          <div class="thumbs" id="thumbs"></div>
-        </div>
       </section>
 
       <section>
@@ -209,7 +202,12 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section>
         <h2>Color</h2>
         <div class="seg" data-key="colorMode" aria-label="Color de los cubos">
-          <button data-v="ink">Tinta</button><button data-v="palette">Paleta alternada</button>
+          <button data-v="ink">Tinta</button><button data-v="palette">Paleta alternada</button><button data-v="image">Imágenes</button>
+        </div>
+        <div id="img-box">
+          <div class="btns"><button class="btn" id="img-up">Sumar fotos (.zip)</button><button class="btn icon" id="img-mix" title="Mezclar las imágenes de nuevo" aria-label="Mezclar las imágenes de nuevo"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg></button></div>
+          <input type="file" id="img-file" accept="image/*,.zip,application/zip" multiple hidden>
+          <div class="thumbs" id="thumbs"></div>
         </div>
         <div class="palette" id="palette-row" aria-label="Paleta, en orden"></div>
         <div class="row" id="ink-row" style="grid-template-columns:56px 1fr">
@@ -240,7 +238,7 @@ const DEFAULTS = {
   style: 'mono', size: 16, variation: .3, speedSize: 0,
   life: 2.5, permanent: true,
   colorMode: 'palette', palette: ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B'],
-  depth: false, depthBlur: 14, fill: 'color', vp: true, vpDepth: false, vpCount: 16, vpGap: 0,
+  depth: false, depthBlur: 14, vp: true, vpDepth: false, vpCount: 16, vpGap: 0,
   ink: '#1a1714', grain: .05, paper: '#ede6da', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -328,11 +326,13 @@ function lifeScale(c, now) {
 }
 
 // ---------- Images ----------
-// Relleno "Imágenes": each row takes one photo from the uploaded set (by its id, so it keeps it), and every
-// cube of the row is that photo, square-cropped. Photos come in loose or inside a .zip, read in the browser.
+// Color "Imágenes": every cube is a photo, square-cropped, picked at random from the set for each cube (by its
+// drop number, so it keeps its photo). The set is fotos/ (loaded at start); more can be added, loose or in a
+// .zip read in the browser.
 const IMG = 256;
 let images = [], imgSeed = 0;
-const imageOf = g => images.length ? Math.floor(hashUnit(g * 7919 + imgSeed * 104729) * images.length) : -1;
+const imageOf = n => Math.floor(hashUnit(n * 7919 + imgSeed * 104729) * images.length);
+const FOTOS = Array.from({ length: 12 }, (_, i) => `fotos/${String(i + 1).padStart(2, '0')}.jpg`);
 // Just enough of a zip reader for photo folders: central directory, stored or deflated entries.
 async function unzip(buf) {
   const v = new DataView(buf), out = [], dec = new TextDecoder();
@@ -350,7 +350,12 @@ async function unzip(buf) {
   }
   return out;
 }
-async function addImages(files) {
+async function loadFotos() {
+  const got = await Promise.all(FOTOS.map(u => fetch(u).then(r => r.ok ? r.blob() : null).catch(() => null)));
+  const files = got.filter(Boolean).map((b, i) => new File([b], FOTOS[i], { type: b.type || 'image/jpeg' }));
+  if (files.length) await addImages(files, true);
+}
+async function addImages(files, quiet) {
   const blobs = [];
   for (const f of files) {
     if (/\.zip$/i.test(f.name) || f.type.includes('zip')) { try { blobs.push(...await unzip(await f.arrayBuffer())); } catch { toast(`No se pudo abrir ${f.name}.`); } }
@@ -367,7 +372,8 @@ async function addImages(files) {
     } catch { /* not a readable image */ }
   }
   if (!added) return toast('No encontré imágenes.');
-  S.fill = 'image'; sync();
+  if (quiet) return sync();
+  S.colorMode = 'image'; sync();
   toast(`${added} ${added === 1 ? 'imagen cargada' : 'imágenes cargadas'} · ${images.length} en total`);
 }
 
@@ -380,9 +386,9 @@ function rowsOf(now, st, lut) {
   let row = null;
   for (const c of cubes) {
     const k = lifeScale(c, now); if (k <= 0) continue;
-    if (!row || row.g !== c.g) rows.push(row = { g: c.g, items: [], sum: 0, img: st.fill === 'image' ? imageOf(c.g) : -1 });
+    if (!row || row.g !== c.g) rows.push(row = { g: c.g, items: [], sum: 0 });
     const [s, shade] = look(c, st);
-    row.items.push([c.x, c.y, s * k, shadesFor(c, st, lut).base[shade]]);
+    row.items.push([c.x, c.y, s * k, shadesFor(c, st, lut).base[shade], st.colorMode === 'image' && images.length ? imageOf(c.n) : -1]);
     row.sum += s;
   }
   for (const r of rows) r.size = r.sum / r.items.length;
@@ -391,10 +397,10 @@ function rowsOf(now, st, lut) {
 // Depth: a row is blurred by how much smaller it is than the largest row.
 function blurOf(row, maxSize, st) { return st.depth ? st.depthBlur * (1 - row.size / maxSize) : 0; }
 // Squares go down in drop order so each new one sits on top; consecutive squares of the same colour share a fill.
-function paintItems(ctx, items, img = -1) {
-  if (img >= 0) { const c = images[img].canvas; for (const [x, y, s] of items) ctx.drawImage(c, x - s / 2, y - s / 2, s, s); return; }
+function paintItems(ctx, items) {
   let color = null;
-  for (const [x, y, s, col] of items) {
+  for (const [x, y, s, col, img] of items) {
+    if (img >= 0) { if (color) { ctx.fill(); color = null; } ctx.drawImage(images[img].canvas, x - s / 2, y - s / 2, s, s); continue; }
     if (col !== color) { if (color) ctx.fill(); ctx.fillStyle = color = col; ctx.beginPath(); }
     ctx.rect(x - s / 2, y - s / 2, s, s);
   }
@@ -405,7 +411,7 @@ function draw(ctx, now, st, lut) {
   const rows = rowsOf(now, st, lut), maxSize = Math.max(0, ...rows.map(r => r.size)), t = ctx.getTransform(), ppu = t.a;
   for (const row of rows) {
     const blur = blurOf(row, maxSize, st) * ppu;
-    if (blur < .3 || !('filter' in ctx)) { paintItems(ctx, row.items, row.img); continue; }
+    if (blur < .3 || !('filter' in ctx)) { paintItems(ctx, row.items); continue; }
     // Blurred rows are painted on their own layer (sized to the row) and composited through a blur.
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [x, y, s] of row.items) { x0 = Math.min(x0, x - s / 2); y0 = Math.min(y0, y - s / 2); x1 = Math.max(x1, x + s / 2); y1 = Math.max(y1, y + s / 2); }
@@ -413,7 +419,7 @@ function draw(ctx, now, st, lut) {
     layer.width = Math.max(1, Math.ceil((x1 - x0 + 2 * pad) * ppu)); layer.height = Math.max(1, Math.ceil((y1 - y0 + 2 * pad) * ppu));
     const lx = layer.getContext('2d');
     lx.setTransform(ppu, 0, 0, ppu, -bx * ppu, -by * ppu);
-    paintItems(lx, row.items, row.img);
+    paintItems(lx, row.items);
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.filter = `blur(${blur}px)`;
     ctx.drawImage(layer, bx * ppu + t.e, by * ppu + t.f);
     ctx.restore();
@@ -441,8 +447,10 @@ function toSvg(now, st, lut) {
     }
     out.push(`<g id="trazo-${i + 1}"${blur >= .15 ? ` filter="url(#${id})"` : ''}>`);
     // Photos are image fills (a pattern over each square, as Figma writes them), so they import as such.
-    const fill = row.img >= 0 ? (used.add(row.img), `url(#pattern${row.img})`) : null;
-    for (const [x, y, s, col] of row.items) out.push(`<rect id="cubo-${++nCube}" x="${r(x - s / 2)}" y="${r(y - s / 2)}" width="${r(s)}" height="${r(s)}" fill="${fill || col}"/>`);
+    for (const [x, y, s, col, img] of row.items) {
+      if (img >= 0) used.add(img);
+      out.push(`<rect id="cubo-${++nCube}" x="${r(x - s / 2)}" y="${r(y - s / 2)}" width="${r(s)}" height="${r(s)}" fill="${img >= 0 ? `url(#pattern${img})` : col}"/>`);
+    }
     out.push('</g>');
   });
   for (const k of used) {
@@ -488,7 +496,6 @@ for (const [key, d] of Object.entries(SLIDERS)) {
 document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   S[seg.dataset.key] = b.dataset.v; sync();
-  if (seg.dataset.key === 'fill' && b.dataset.v === 'image' && !images.length) $('#img-file').click();
 }));
 document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
 $('#palette-row').innerHTML = S.palette.map((_, i) => `<label title="Color ${i + 1}"><input type="color" data-pal="${i}" aria-label="Color ${i + 1}"></label>`).join('');
@@ -530,7 +537,7 @@ function sync() {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   $('#sl-life').hidden = S.permanent;
   $('#sl-depthBlur').hidden = !S.depth;
-  $('#img-box').hidden = S.fill !== 'image';
+  $('#img-box').hidden = S.colorMode !== 'image';
   const th = $('#thumbs');
   if (th.childElementCount !== Math.min(16, images.length)) th.replaceChildren(...images.slice(0, 16).map(im => { const c = document.createElement('canvas'); c.width = c.height = 48; c.getContext('2d').drawImage(im.canvas, 0, 0, 48, 48); return c; }));
   $('#vp-all').hidden = $('#vpDepth-row').hidden = !S.vp;
@@ -538,7 +545,7 @@ function sync() {
   $('#sl-variation').hidden = $('#sl-speedSize').hidden = $('#sl-grain').hidden = S.style === 'mono';
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   const pal = S.colorMode === 'palette';
-  $('#palette-row').hidden = !pal; $('#ink-row').hidden = pal;
+  $('#palette-row').hidden = !pal; $('#ink-row').hidden = pal || S.colorMode === 'image';
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal].toLowerCase(); if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
   lut = buildLut(S);
   updateSel();
@@ -877,6 +884,7 @@ $('#svg').addEventListener('click', () => download(`pixel-trail-${stamp()}.svg`,
 sync();
 setTool('draw');
 generate();
+loadFotos();
 </script>
 </body>
 </html>
