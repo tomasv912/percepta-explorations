@@ -6,10 +6,6 @@
 <title>Pixel Rise</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
-/* The bundled serif (shared with Text Dissolve) for the wordmark; Trust 3A takes over when its Adobe kit is loaded. */
-@font-face { font-family: 'EB Garamond'; font-weight: 400; src: url('../text-dissolve/vendor/eb-garamond-latin-400-normal.woff') format('woff'); }
-@font-face { font-family: 'EB Garamond'; font-weight: 500; src: url('../text-dissolve/vendor/eb-garamond-latin-500-normal.woff') format('woff'); }
-@font-face { font-family: 'EB Garamond'; font-weight: 700; src: url('../text-dissolve/vendor/eb-garamond-latin-700-normal.woff') format('woff'); }
 :root {
   --page: #f4f2ee;
   --stage: #e9e6e0;
@@ -107,16 +103,15 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
 
     <div class="group">
       <div class="lbl">Fuente</div>
-      <div class="seg" id="source" style="grid-template-columns:repeat(2,1fr)"></div>
-      <input class="text" id="text" aria-label="Texto" spellcheck="false">
-      <div class="file" id="fileRow" hidden><span id="fileName"></span><button class="btn sm" id="change">Cambiar</button></div>
+      <div class="file"><span id="fileName"></span><button class="btn sm" id="change">Subir SVG o imagen</button></div>
+      <p class="note">También podés soltarla sobre el lienzo o pegar el código de un SVG.</p>
     </div>
 
     <!-- Dispersion controls, in the same place as Gradient Shapes' "Gesto" group. -->
     <div class="group">
       <div class="lbl">Dispersión</div>
       <div class="seg" id="mode" style="grid-template-columns:repeat(2,1fr)"></div>
-      <p class="note" id="nodeNote">Mové los dos nodos sobre el lienzo: el blanco marca dónde arranca la dispersión y el negro dónde la forma queda concreta.</p>
+      <p class="note" id="nodeNote">Mové los dos nodos sobre el lienzo: el blanco marca dónde arranca la dispersión y el negro dónde la forma queda concreta. Con Shift, la línea se traba cada 15°.</p>
       <div class="row"><span>Dispersión</span><span class="v" id="dispV"></span><input type="range" id="disp" min="0" max="1" step="0.01"></div>
       <div class="row"><span>Sueltos</span><span class="v" id="looseV"></span><input type="range" id="loose" min="0" max="1" step="0.01"></div>
       <div class="row"><span>Definición</span><span class="v" id="defV"></span><input type="range" id="def" min="0" max="1" step="0.01"></div>
@@ -126,12 +121,13 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     <div class="group">
       <div class="lbl">Píxeles</div>
       <div class="row"><span>Tamaño</span><span class="v" id="cellV"></span><input type="range" id="cell" min="1" max="16" step="0.5"></div>
+      <label class="tg" for="pixelate"><span>Pixelar antes de dispersar</span><input type="checkbox" id="pixelate"></label>
     </div>
 
     <div class="group">
       <div class="lbl">Color</div>
       <div class="swatches"><span>Tinta</span><input type="color" id="ink"><span>Fondo</span><input type="color" id="paper"></div>
-      <label class="tg" id="imageColorsRow" for="imageColors"><span>Colores de la imagen</span><input type="checkbox" id="imageColors"></label>
+      <label class="tg" for="imageColors"><span>Colores de la fuente</span><input type="checkbox" id="imageColors"></label>
       <label class="tg" for="transparent"><span>PNG transparente</span><input type="checkbox" id="transparent"></label>
     </div>
 
@@ -153,9 +149,9 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
       <button class="node" id="nodeA" title="Inicio: dispersión máxima" aria-label="Inicio de la dispersión"></button>
       <button class="node" id="nodeB" title="Fin: forma concreta" aria-label="Fin de la dispersión"></button>
     </div></div>
-    <div class="meta"><span id="meta"></span><span>Soltá una imagen acá · exporta PNG al doble</span></div>
+    <div class="meta"><span id="meta"></span><span>Soltá un SVG o una imagen acá · exporta PNG al doble</span></div>
   </main>
-  <input type="file" id="file" accept="image/*" hidden>
+  <input type="file" id="file" accept=".svg,image/svg+xml,image/*" hidden>
 </div>
 <div class="toast" id="toast" role="status" hidden></div>
 
@@ -164,7 +160,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
 const SIZES = { '3:2': [1800, 1200], '4:3': [1800, 1350], '1:1': [1500, 1500], '4:5': [1440, 1800], '16:9': [1920, 1080] };
 const RES = 2; // raster and export at 2x
 const DEFAULTS = {
-  seed: 1, source: 'text', text: 'Percepta', mode: 'prog',
+  seed: 1, mode: 'prog', pixelate: false,
   disp: .85, loose: .25, def: .35, irreg: .5, cell: 3,
   ink: '#141414', paper: '#f4f3f1', imageColors: true, transparent: false, aspect: '3:2',
   A: [.5, .08], B: [.5, .7],
@@ -201,28 +197,46 @@ function hash(a, b) {
 }
 
 // ---------- Source ----------
-// Text (the wordmark) or an image, drawn at 2x and placed in the lower part of the plate so the
-// dispersion has room to rise. Trust 3A is used when the Adobe Fonts kit saved by Text Dissolve loads.
-let img = null, imgName = '', srcKey = '', src = null, family = '"EB Garamond", serif', nodesMoved = false;
+// An SVG or an image, drawn at 2x and placed in the lower part of the plate so the dispersion has room
+// to rise. SVGs are rasterized from the vector at that size, so they stay crisp.
+const SVGNS = 'http://www.w3.org/2000/svg';
+let img = null, imgName = '', srcId = 0, srcKey = '', src = null, nodesMoved = false;
+const SAMPLE_SVG = `<svg xmlns="${SVGNS}" viewBox="0 0 1200 800" width="1200" height="800">
+  <circle cx="830" cy="330" r="210" fill="#e4572e"/>
+  <g transform="translate(470 420)">
+    <path d="M0 -260 L225 -130 L0 0 L-225 -130Z" fill="#8a8278"/>
+    <path d="M-225 -130 L0 0 L0 260 L-225 130Z" fill="#1a1714"/>
+    <path d="M0 0 L225 -130 L225 130 L0 260Z" fill="#4a443d"/>
+  </g>
+  <rect x="160" y="700" width="880" height="24" fill="#1a1714"/>
+</svg>`;
+async function loadSvgText(text, name) {
+  if (!/xmlns\s*=\s*["']http:\/\/www\.w3\.org\/2000\/svg/.test(text)) text = text.replace(/<svg\b/, `<svg xmlns="${SVGNS}"`);
+  const doc = new DOMParser().parseFromString(text, 'image/svg+xml'), root = doc.documentElement;
+  if (doc.querySelector('parsererror') || root.localName !== 'svg') throw new Error('svg inválido');
+  const num = a => { const v = root.getAttribute(a); return v && !v.trim().endsWith('%') ? parseFloat(v) : NaN; };
+  const w = num('width'), h = num('height');
+  let vb = (root.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+  if (vb.length !== 4 || vb.some(isNaN) || vb[2] <= 0 || vb[3] <= 0) { vb = [0, 0, w > 0 ? w : 300, h > 0 ? h : 150]; root.setAttribute('viewBox', vb.join(' ')); }
+  const ar = w > 0 && h > 0 ? w / h : vb[2] / vb[3];
+  root.setAttribute('width', ar >= 1 ? 1000 : Math.round(1000 * ar)); root.setAttribute('height', ar >= 1 ? Math.round(1000 / ar) : 1000);
+  const el = new Image(); el.src = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(root)], { type: 'image/svg+xml' }));
+  await el.decode();
+  img = el; imgName = name; srcId++;
+}
+async function loadRaster(file) {
+  const el = new Image(); el.src = URL.createObjectURL(file); await el.decode();
+  img = el; imgName = file.name; srcId++;
+}
 function buildSource(W, H) {
   const c = document.createElement('canvas'); c.width = W * RES; c.height = H * RES;
   const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.scale(RES, RES);
-  let box;
-  if (S.source === 'image' && img) {
-    const bw = W * .84, bh = H * .62, k = Math.min(bw / img.width, bh / img.height), w = img.width * k, h = img.height * k;
-    box = { x: (W - w) / 2, y: H * .92 - h, w, h };
-    ctx.imageSmoothingQuality = 'high'; ctx.drawImage(img, box.x, box.y, w, h);
-  } else {
-    const t = S.text.trim() || ' ';
-    ctx.font = `500 100px ${family}`;
-    const m = ctx.measureText(t), k = Math.min(W * .72 / Math.max(1, m.width), H * .32 / 100), size = 100 * k;
-    ctx.font = `500 ${size}px ${family}`; ctx.fillStyle = '#000'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-    const base = H * .74; ctx.fillText(t, W / 2, base);
-    const mm = ctx.measureText(t);
-    box = { x: W / 2 - mm.actualBoundingBoxLeft, y: base - mm.actualBoundingBoxAscent, w: mm.actualBoundingBoxLeft + mm.actualBoundingBoxRight, h: mm.actualBoundingBoxAscent + mm.actualBoundingBoxDescent };
-  }
-  return { canvas: c, data: ctx.getImageData(0, 0, c.width, c.height).data, box, isText: !(S.source === 'image' && img) };
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const bw = W * .84, bh = H * .62, k = Math.min(bw / iw, bh / ih), w = iw * k, h = ih * k;
+  const box = { x: (W - w) / 2, y: H * .92 - h, w, h };
+  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(img, box.x, box.y, w, h);
+  return { canvas: c, data: ctx.getImageData(0, 0, c.width, c.height).data, box };
 }
 
 // ---------- Dispersion ----------
@@ -235,7 +249,7 @@ function buildSource(W, H) {
 // and appear with probability = its coverage, so the dispersed part is made of the source itself.
 function disperse(W, H) {
   const { data, box } = src, d = S.cell, PW = W * RES, PH = H * RES;
-  const cols = Math.ceil(W / d), rows = Math.ceil(H / d), cut = new Uint8Array(cols * rows), pix = [];
+  const cols = Math.ceil(W / d), rows = Math.ceil(H / d), cut = new Uint8Array(cols * rows), pix = [], cells = [];
   const n = perlin(rng(S.seed * 7919 + 13)), sf = 5 / Math.min(W, H), sb = S.seed * 131;
   const A = [S.A[0] * W, S.A[1] * H], B = [S.B[0] * W, S.B[1] * H], gx = B[0] - A[0], gy = B[1] - A[1], gl = gx * gx + gy * gy || 1;
   let dx = 0, dy = -1;
@@ -253,11 +267,10 @@ function disperse(W, H) {
     }
     const cov = sA / (9 * 255);
     if (cov < .02) continue;
-    const cx = x0 + d / 2, cy = y0 + d / 2, D = localD(cx, cy);
-    if (D <= .002) continue;
+    const cx = x0 + d / 2, cy = y0 + d / 2, D = localD(cx, cy), col = Math.round(sR / sA) << 16 | Math.round(sG / sA) << 8 | Math.round(sB / sA);
     const id = j * cols + i, streak = clamp(.55 + n(cx * sf, cy * sf) * 1.8, .05, 1.4);
-    const chance = Math.pow(D, .5 + S.def * 2.5) * (1 + (streak - 1) * S.irreg);
-    if (hash(id, sb) >= chance) continue;
+    const chance = D <= .002 ? 0 : Math.pow(D, .5 + S.def * 2.5) * (1 + (streak - 1) * S.irreg);
+    if (hash(id, sb) >= chance) { if (S.pixelate) cells.push(x0, y0, col, cov); continue; }
     cut[id] = 1;
     if (hash(id, sb + 1) >= cov) continue;
     const loose = hash(id, sb + 2) < S.loose * .35;
@@ -265,34 +278,50 @@ function disperse(W, H) {
     const a = (hash(id, sb + 5) - .5) * (.12 + S.irreg * .5 + (loose ? .9 : 0)), ca = Math.cos(a), sa = Math.sin(a);
     const wob = n(cx * sf * 3 + 40, cy * sf * 3) * S.irreg * dist * .12;
     const x = cx + (dx * ca - dy * sa) * dist - dy * wob, y = cy + (dx * sa + dy * ca) * dist + dx * wob;
-    pix.push(x, y, Math.round(sR / sA) << 16 | Math.round(sG / sA) << 8 | Math.round(sB / sA));
+    pix.push(x, y, col);
   }
-  return { cols, rows, d, cut, pix };
+  return { cols, rows, d, cut, pix, cells };
 }
 
 // ---------- Rendering ----------
 const hex = c => '#' + (c & 0xF8F8F8).toString(16).padStart(6, '0');
 function draw(ctx, W, H, scale, withBg) {
   if (withBg) { ctx.fillStyle = S.paper; ctx.fillRect(0, 0, W, H); }
-  const tintText = src.isText || !S.imageColors;
-  // The source on its own layer: tinted, minus the cells that left.
-  const layer = document.createElement('canvas'); layer.width = Math.round(W * scale); layer.height = Math.round(H * scale);
-  const lx = layer.getContext('2d'); lx.scale(scale, scale);
-  lx.imageSmoothingQuality = 'high'; lx.drawImage(src.canvas, 0, 0, W, H);
-  if (tintText) { lx.globalCompositeOperation = 'source-in'; lx.fillStyle = S.ink; lx.fillRect(0, 0, W, H); }
-  lx.globalCompositeOperation = 'destination-out'; lx.beginPath();
-  const { cols, rows, d, cut } = gen;
-  for (let j = 0; j < rows; j++) for (let i = 0; i < cols;) {
-    if (!cut[j * cols + i]) { i++; continue; }
-    let e = i; while (e < cols && cut[j * cols + e]) e++;
-    lx.rect(i * d, j * d, (e - i) * d, d); i = e;
+  const tint = !S.imageColors, { d } = gen;
+  if (S.pixelate) {
+    // Every cell that stays is one square of its average colour, its coverage as opacity.
+    const groups = new Map(), c = gen.cells;
+    for (let k = 0; k < c.length; k += 4) {
+      const key = (tint ? S.ink : hex(c[k + 2])) + '|' + Math.max(1, Math.round(c[k + 3] * 8));
+      let l = groups.get(key); if (!l) groups.set(key, l = []); l.push(k);
+    }
+    for (const [key, ks] of groups) {
+      const [color, a] = key.split('|');
+      ctx.globalAlpha = a / 8; ctx.fillStyle = color; ctx.beginPath();
+      for (const k of ks) ctx.rect(c[k], c[k + 1], d, d);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  } else {
+    // The source on its own layer, tinted if asked, minus the cells that left.
+    const layer = document.createElement('canvas'); layer.width = Math.round(W * scale); layer.height = Math.round(H * scale);
+    const lx = layer.getContext('2d'); lx.scale(scale, scale);
+    lx.imageSmoothingQuality = 'high'; lx.drawImage(src.canvas, 0, 0, W, H);
+    if (tint) { lx.globalCompositeOperation = 'source-in'; lx.fillStyle = S.ink; lx.fillRect(0, 0, W, H); }
+    lx.globalCompositeOperation = 'destination-out'; lx.beginPath();
+    const { cols, rows, cut } = gen;
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols;) {
+      if (!cut[j * cols + i]) { i++; continue; }
+      let e = i; while (e < cols && cut[j * cols + e]) e++;
+      lx.rect(i * d, j * d, (e - i) * d, d); i = e;
+    }
+    lx.fill();
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(layer, 0, 0); ctx.restore();
   }
-  lx.fill();
-  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(layer, 0, 0); ctx.restore();
   // Dispersed pixels, batched per colour.
   const groups = new Map(), p = gen.pix;
   for (let k = 0; k < p.length; k += 3) {
-    const c = tintText ? S.ink : hex(p[k + 2]);
+    const c = tint ? S.ink : hex(p[k + 2]);
     let l = groups.get(c); if (!l) groups.set(c, l = []); l.push(k);
   }
   for (const [c, ks] of groups) {
@@ -322,13 +351,12 @@ function seg(el, options, key, onPick) {
     el.append(b);
   }
 }
-seg($('source'), [['text', 'Texto'], ['image', 'Imagen']], 'source', v => { if (v === 'image' && !img) { $('file').click(); return false; } });
 seg($('mode'), [['libre', 'Libre'], ['prog', 'Progresivo']], 'mode');
 seg($('aspect'), Object.keys(SIZES).map(k => [k, k]), 'aspect');
-$('text').addEventListener('input', e => { S.text = e.target.value; sync(); });
 $('ink').addEventListener('input', e => { S.ink = e.target.value; sync(); });
 $('paper').addEventListener('input', e => { S.paper = e.target.value; sync(); });
 $('imageColors').addEventListener('change', e => { S.imageColors = e.target.checked; sync(); });
+$('pixelate').addEventListener('change', e => { S.pixelate = e.target.checked; sync(); });
 $('transparent').addEventListener('change', e => { S.transparent = e.target.checked; });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('reseed').addEventListener('click', reseed);
@@ -339,11 +367,9 @@ addEventListener('keydown', e => {
 
 function sync() {
   for (const [key, fmt] of Object.entries(SLIDERS)) { if (+$(key).value !== S[key]) $(key).value = S[key]; $(key + 'V').textContent = fmt(S[key]); }
-  for (const id of ['source', 'mode', 'aspect']) [...$(id).children].forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S[id])));
-  if ($('text').value !== S.text) $('text').value = S.text;
-  $('ink').value = S.ink; $('paper').value = S.paper; $('imageColors').checked = S.imageColors; $('transparent').checked = S.transparent;
-  const image = S.source === 'image' && img;
-  $('text').hidden = !!image; $('fileRow').hidden = !image; $('fileName').textContent = imgName; $('imageColorsRow').hidden = !image;
+  for (const id of ['mode', 'aspect']) [...$(id).children].forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S[id])));
+  $('ink').value = S.ink; $('paper').value = S.paper; $('imageColors').checked = S.imageColors; $('pixelate').checked = S.pixelate; $('transparent').checked = S.transparent;
+  $('fileName').textContent = imgName;
   const prog = S.mode === 'prog';
   $('nodeNote').hidden = !prog; $('nodeA').hidden = $('nodeB').hidden = $('guide').hidden = !prog;
   $('seedTag').textContent = '#' + S.seed;
@@ -351,8 +377,9 @@ function sync() {
 }
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
 function render() {
+  if (!img) return;
   const [W, H] = SIZES[S.aspect];
-  const sk = JSON.stringify([S.aspect, S.source, S.text, imgName, family]);
+  const sk = JSON.stringify([S.aspect, srcId]);
   if (sk !== srcKey) {
     src = buildSource(W, H); srcKey = sk;
     // Until the nodes are moved by hand they span the shape: white at its top, black at its base.
@@ -386,7 +413,14 @@ for (const [id, key] of [['nodeA', 'A'], ['nodeB', 'B']]) {
     el.setPointerCapture(e.pointerId);
     const move = ev => {
       const r = plate.getBoundingClientRect();
-      S[key] = [clamp((ev.clientX - r.left) / r.width), clamp((ev.clientY - r.top) / r.height)]; nodesMoved = true;
+      let p = [(ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height];
+      if (ev.shiftKey) {
+        // Snap the angle (in plate pixels, so 45° looks like 45°) to 15° steps, keeping the length.
+        const o = S[key === 'A' ? 'B' : 'A'], dx = (p[0] - o[0]) * r.width, dy = (p[1] - o[1]) * r.height;
+        const step = Math.PI / 12, a = Math.round(Math.atan2(dy, dx) / step) * step, l = Math.hypot(dx, dy);
+        p = [o[0] + Math.cos(a) * l / r.width, o[1] + Math.sin(a) * l / r.height];
+      }
+      S[key] = [clamp(p[0]), clamp(p[1])]; nodesMoved = true;
       schedule();
     };
     const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); };
@@ -401,12 +435,12 @@ for (const [id, key] of [['nodeA', 'A'], ['nodeB', 'B']]) {
 }
 
 // ---------- Input ----------
-function openFile(file) {
-  if (!file || !file.type.startsWith('image/')) return toast('Ese archivo no es una imagen.');
-  const el = new Image(), url = URL.createObjectURL(file);
-  el.onload = () => { img = el; imgName = file.name; S.source = 'image'; sync(); };
-  el.onerror = () => { URL.revokeObjectURL(url); toast('No se pudo leer la imagen.'); };
-  el.src = url;
+async function openFile(file) {
+  if (!file) return;
+  const isSvg = file.type === 'image/svg+xml' || /\.svg$/i.test(file.name);
+  if (!isSvg && !file.type.startsWith('image/')) return toast('Ese archivo no es un SVG ni una imagen.');
+  try { if (isSvg) await loadSvgText(await file.text(), file.name); else await loadRaster(file); sync(); }
+  catch { toast('No se pudo leer el archivo.'); }
 }
 $('file').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
 $('change').addEventListener('click', () => $('file').click());
@@ -416,7 +450,9 @@ stage.addEventListener('drop', e => { e.preventDefault(); stage.classList.remove
 addEventListener('paste', e => {
   if (e.target.closest('input, textarea')) return;
   const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
-  if (item) openFile(item.getAsFile());
+  if (item) return openFile(item.getAsFile());
+  const text = e.clipboardData?.getData('text/plain')?.trim();
+  if (text && /^(<\?xml[^>]*>\s*)?<svg\b/i.test(text)) loadSvgText(text, 'SVG pegado').then(sync, () => toast('No se pudo leer el SVG.'));
 });
 
 // ---------- Export ----------
@@ -434,21 +470,8 @@ $('png').addEventListener('click', () => {
   }, 'image/png');
 });
 
-// ---------- Fonts ----------
-// Reuse the Adobe Fonts kit Text Dissolve remembers (same site), so the wordmark can be in Trust 3A.
-function useTrustIfAvailable() {
-  const faces = [...document.fonts].filter(f => /trust/i.test(f.family));
-  Promise.allSettled(faces.map(f => f.load())).then(() => {
-    const ok = faces.find(f => f.status === 'loaded');
-    if (ok) { family = `"${ok.family.replace(/["']/g, '')}", "EB Garamond", serif`; schedule(); }
-  });
-}
-try {
-  const kit = localStorage.getItem('text-dissolve:adobe-kit');
-  if (kit) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = `https://use.typekit.net/${kit}.css`; l.onload = useTrustIfAvailable; document.head.append(l); }
-} catch {}
-document.fonts.load(`500 100px "EB Garamond"`).finally(() => { srcKey = ''; sync(); });
 sync();
+loadSvgText(SAMPLE_SVG, 'Ejemplo').then(sync);
 </script>
 </body>
 </html>
