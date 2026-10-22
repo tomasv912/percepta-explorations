@@ -124,6 +124,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .sel i[data-h="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
 .sel i[data-h="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
 .sel i[data-h="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+.tip { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #fff; border: 2px solid #0d99ff; z-index: 2; cursor: grab; }
+.vp { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; z-index: 2; pointer-events: none; color: #0d99ff; }
+.frame.select .vp { pointer-events: auto; cursor: move; }
 .sel b { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 6px); background: #0d99ff; color: #fff; font: 500 10px var(--mono); padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
 </style>
 </head>
@@ -139,8 +142,10 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
     </div>
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Rastro de cubos que deja el puntero"></canvas>
       <div class="sel" id="sel" hidden><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i><b id="sel-size"></b></div>
+      <i class="tip" id="tip" hidden title="Arrastrá para redireccionar el trazo"></i>
+      <div class="vp" id="vp" hidden title="Punto de fuga: arrastralo con el cursor, doble clic para centrarlo"><svg viewBox="0 0 26 26" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="13" cy="13" r="6"/><path d="M13 1v7M13 18v7M1 13h7M18 13h7"/></svg></div>
     </div>
-    <div class="hud"><span id="stats">Hacé clic y arrastrá sobre la mesa</span><span class="dim"><kbd>B</kbd> pincel · <kbd>V</kbd> cursor · <kbd>⌘Z</kbd> deshacer · <kbd>Shift</kbd> línea</span></div>
+    <div class="hud"><span id="stats">Hacé clic y arrastrá sobre la mesa</span><span class="dim"><kbd>B</kbd> pincel · <kbd>V</kbd> cursor (arrastrá el último cubo para redireccionar) · <kbd>⌘Z</kbd> deshacer · <kbd>Shift</kbd> línea</span></div>
   </main>
 
   <aside>
@@ -181,6 +186,13 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       </section>
 
       <section>
+        <h2>Punto de fuga</h2>
+        <p class="hint">Con el cursor, arrastrá el último cubo de un trazo para redireccionarlo: más lejos agrega cubos, más cerca los quita. Con el punto de fuga activo, el trazo apunta al punto y sus cubos se achican y se juntan en perspectiva.</p>
+        <label class="check"><input type="checkbox" data-check="vp"> Punto de fuga</label>
+        <button class="btn" id="vp-all">Llevar todo al punto</button>
+      </section>
+
+      <section>
         <h2>Color</h2>
         <div class="seg" data-key="colorMode" aria-label="Color de los cubos">
           <button data-v="ink">Tinta</button><button data-v="palette">Paleta alternada</button>
@@ -214,7 +226,7 @@ const DEFAULTS = {
   style: 'mono', size: 16, variation: .3, speedSize: 0,
   life: 2.5, permanent: true,
   colorMode: 'ink', palette: ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B'],
-  depth: false, depthBlur: 14,
+  depth: false, depthBlur: 14, vp: false,
   ink: '#1a1714', grain: .05, paper: '#ede6da', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -291,7 +303,8 @@ function drop(x, y, t) {
   wake();
 }
 // Mono: every cube at the set size in the exact color; Variación keeps each cube's own size and shade.
-const look = (c, st) => st.style === 'mono' ? [st.size * scaleOf(c.g), MONO_SHADE] : [c.s * scaleOf(c.g), c.k];
+// `p` is the perspective factor a cube gets when its row is redirected toward the vanishing point.
+const look = (c, st) => st.style === 'mono' ? [st.size * scaleOf(c.g) * (c.p ?? 1), MONO_SHADE] : [c.s * scaleOf(c.g) * (c.p ?? 1), c.k];
 // Size multiplier from age: full for most of its life, then it shrinks away.
 function lifeScale(c, now) {
   if (S.permanent) return 1;
@@ -428,6 +441,8 @@ function sync() {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   $('#sl-life').hidden = S.permanent;
   $('#sl-depthBlur').hidden = !S.depth;
+  $('#vp-all').hidden = !S.vp;
+  placeVp();
   $('#sl-variation').hidden = $('#sl-speedSize').hidden = $('#sl-grain').hidden = S.style === 'mono';
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   const pal = S.colorMode === 'palette';
@@ -502,6 +517,7 @@ frame.addEventListener('pointerdown', e => {
 });
 frame.addEventListener('pointermove', e => {
   if (drag) return selectMove(e);
+  if (tool === 'select') frame.style.cursor = tipAt(toArt(e)) != null ? 'grab' : '';
   if (!pressed) return;
   if (line) { layLine(toArt(e), e.timeStamp); return; }
   const evs = e.getCoalescedEvents?.() || [];
@@ -529,6 +545,7 @@ function setTool(t) {
   tool = t;
   if (t === 'select' && !S.permanent) { S.permanent = true; sync(); toast('Permanente activado para poder editar las filas.'); }
   if (t === 'draw') select(null);
+  frame.style.cursor = '';
   $('#tool-draw').setAttribute('aria-pressed', t === 'draw'); $('#tool-select').setAttribute('aria-pressed', t === 'select');
   frame.classList.toggle('select', t === 'select');
 }
@@ -549,10 +566,13 @@ function rowBox(g) {
 function select(g) { selected = g; updateSel(); }
 function updateSel() {
   const el = $('#sel'), b = selected == null ? null : rowBox(selected);
-  if (!b) { el.hidden = true; if (selected != null) selected = null; return; }
+  if (!b) { el.hidden = $('#tip').hidden = true; if (selected != null) selected = null; return; }
   const k = frame.getBoundingClientRect().width / AW;
   el.hidden = false;
   Object.assign(el.style, { left: b.x0 * k + 'px', top: b.y0 * k + 'px', width: (b.x1 - b.x0) * k + 'px', height: (b.y1 - b.y0) * k + 'px' });
+  const lastC = cubes.findLast(c => c.g === selected), many = cubes.some(c => c.g === selected && c !== lastC);
+  $('#tip').hidden = !many || tool !== 'select';
+  if (many) Object.assign($('#tip').style, { left: lastC.x * k + 'px', top: lastC.y * k + 'px' });
   $('#sel-size').textContent = `${Math.round(b.x1 - b.x0)} × ${Math.round(b.y1 - b.y0)}`;
 }
 function rowAt([x, y]) {
@@ -564,6 +584,14 @@ function rowAt([x, y]) {
 }
 function selectDown(e) {
   const p = toArt(e), handle = e.target.closest('.sel i')?.dataset.h;
+  if (e.target.closest('.vp')) { drag = { mode: 'vp' }; return; }
+  const tipG = e.target.closest('.tip') ? selected : tipAt(p);
+  if (tipG != null) {
+    select(tipG);
+    const idx = cubes.reduce((a, c, i) => (c.g === tipG && a.push(i), a), []);
+    drag = { mode: 'tip', i0: idx[0], count: idx.length, o: idx.map(i => ({ ...cubes[i] })) };
+    return;
+  }
   let b = selected == null ? null : rowBox(selected);
   if (!handle && !(b && p[0] >= b.x0 && p[0] <= b.x1 && p[1] >= b.y0 && p[1] <= b.y1)) {
     select(rowAt(p)); b = selected == null ? null : rowBox(selected);
@@ -579,8 +607,10 @@ function selectDown(e) {
 }
 function selectMove(e) {
   const p = toArt(e), d = drag;
+  if (d.mode === 'vp') { vpPos = [clamp(p[0], 0, AW), clamp(p[1], 0, AH)]; placeVp(); return; }
   if (!d.saved) { snapshot(); d.saved = true; }
-  if (d.mode === 'move') {
+  if (d.mode === 'tip') d.count = relay(d.o, d.i0, d.count, p);
+  else if (d.mode === 'move') {
     const dx = p[0] - d.from[0], dy = p[1] - d.from[1];
     d.idx.forEach((i, j) => { cubes[i].x = d.orig[j][0] + dx; cubes[i].y = d.orig[j][1] + dy; });
   } else {
@@ -601,7 +631,84 @@ addEventListener('keydown', e => {
     e.preventDefault(); snapshot(); cubes = cubes.filter(c => c.g !== selected); rowScale.delete(selected); select(null); wake();
   } else if (k === 'escape') select(null);
 });
-new ResizeObserver(updateSel).observe(frame);
+new ResizeObserver(() => { updateSel(); placeVp(); }).observe(frame);
+
+// ---------- Redirect / vanishing point ----------
+// The last cube of a row is its tip: dragging it turns and stretches the drawn shape (around the first cube)
+// so it ends at the pointer, and the cube count follows the new length so the rhythm of the spacing stays.
+let vpPos = [AW / 2, AH / 2];
+function placeVp() {
+  const el = $('#vp'), k = frame.getBoundingClientRect().width / AW;
+  el.hidden = !S.vp;
+  Object.assign(el.style, { left: vpPos[0] * k + 'px', top: vpPos[1] * k + 'px' });
+}
+$('#vp').addEventListener('dblclick', () => { vpPos = [AW / 2, AH / 2]; placeVp(); });
+function tipAt([x, y]) {
+  const seen = new Set();
+  for (let i = cubes.length - 1; i >= 0; i--) {
+    const c = cubes[i]; if (seen.has(c.g)) continue;
+    seen.add(c.g);
+    const h = Math.max(look(c, S)[0] / 2, 6) + 4;
+    if (Math.abs(c.x - x) <= h && Math.abs(c.y - y) <= h && cubes[i - 1]?.g === c.g) return c.g;
+  }
+  return null;
+}
+// Re-lays a row (its cubes as they were when the drag began, `o`, sitting at cubes[i0 .. i0+count)) so it ends
+// at `p`; returns the new count. With the vanishing point on, the end slides along the line from the first cube
+// to the point, and the cubes are spaced in perspective: equal steps in depth, so they close up and shrink
+// (to nothing at the point itself) as they approach it.
+function relay(o, i0, count, p) {
+  const n = o.length - 1, x0 = o[0].x, y0 = o[0].y;
+  const ax = o[n].x - x0, ay = o[n].y - y0, aa = ax * ax + ay * ay;
+  if (n < 1 || aa < 1) return count;
+  let ex = p[0], ey = p[1], fe = 0;
+  if (S.vp) {
+    const wx = vpPos[0] - x0, wy = vpPos[1] - y0, D2 = wx * wx + wy * wy || 1;
+    fe = clamp(((p[0] - x0) * wx + (p[1] - y0) * wy) / D2, .02, .95);
+    ex = x0 + wx * fe; ey = y0 + wy * fe;
+  }
+  // Turn + stretch taking the old end onto the new one: the complex ratio new/old.
+  const bx = ex - x0, by = ey - y0, rc = (bx * ax + by * ay) / aa, rs = (by * ax - bx * ay) / aa;
+  const put = (x, y) => [x0 + (x - x0) * rc - (y - y0) * rs, y0 + (x - x0) * rs + (y - y0) * rc];
+  const lerp = (j, fr) => { const a = o[j], b = o[Math.min(n, j + 1)]; return put(a.x + (b.x - a.x) * fr, a.y + (b.y - a.y) * fr); };
+  const out = [];
+  const add = (xy, src, i, pp) => out.push({ ...src, x: xy[0], y: xy[1], n: o[0].n + i, p: pp });
+  if (!S.vp) {
+    // Sampled by cube index, so dense and sparse stretches keep their place along the stroke.
+    const m = clamp(Math.round(n * Math.hypot(rc, rs)), 1, 4000);
+    for (let i = 0; i <= m; i++) { const u = i / m * n, j = Math.floor(u); add(lerp(j, u - j), o[Math.round(u)], i, o[Math.round(u)].p); }
+  } else {
+    // Sampled by arc length: depth z in equal steps, seen at fraction z/(1+z) of the way to the point.
+    const L = [0];
+    for (let j = 1; j <= n; j++) L.push(L[j - 1] + Math.hypot(o[j].x - o[j - 1].x, o[j].y - o[j - 1].y));
+    const D = Math.hypot(vpPos[0] - x0, vpPos[1] - y0), ze = fe / (1 - fe);
+    const m = clamp(Math.round(ze * D / Math.max(1, L[n] / n)), 1, 4000);
+    let j = 0;
+    for (let i = 0; i <= m; i++) {
+      const z = i / m * ze, f = z / (1 + z), s = f / fe * L[n];
+      while (j < n - 1 && L[j + 1] < s) j++;
+      const fr = clamp((s - L[j]) / ((L[j + 1] - L[j]) || 1));
+      add(lerp(j, fr), o[fr < .5 ? j : j + 1], i, 1 - f);
+    }
+  }
+  cubes.splice(i0, count, ...out);
+  updateSel(); wake();
+  return out.length;
+}
+// Every row toward the vanishing point, each keeping its length (up to most of the way there).
+$('#vp-all').addEventListener('click', () => {
+  const rows = [];
+  cubes.forEach((c, i) => { const r = rows[rows.length - 1]; if (r && r.g === c.g) r.count++; else rows.push({ g: c.g, i0: i, count: 1 }); });
+  if (!rows.some(r => r.count > 1)) return toast('No hay trazos para llevar al punto.');
+  snapshot();
+  for (const r of rows.reverse()) {
+    if (r.count < 2) continue;
+    const o = cubes.slice(r.i0, r.i0 + r.count).map(c => ({ ...c })), a = o[0], z = o[o.length - 1];
+    const len = Math.hypot(z.x - a.x, z.y - a.y), wx = vpPos[0] - a.x, wy = vpPos[1] - a.y, D = Math.hypot(wx, wy) || 1;
+    const t = Math.min(len, D * .9) / D;
+    relay(o, r.i0, r.count, [a.x + wx * t, a.y + wy * t]);
+  }
+});
 
 // ---------- Export ----------
 let toastT = 0;
