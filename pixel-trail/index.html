@@ -361,20 +361,29 @@ function draw(ctx, now, st, lut) {
   }
 }
 function toSvg(now, st, lut) {
-  const r = v => Math.round(v * 100) / 100, out = [];
-  out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW} ${AH}">`);
-  if (st.bgExport) out.push(`<rect width="100%" height="100%" fill="${st.paper}"/>`);
+  // Written in export pixels (1:1 with the 2x PNG), so a blur means the same thing in every app.
+  const r = v => Math.round(v * RES * 100) / 100, out = [], defs = [];
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW * RES} ${AH * RES}" fill="none">`);
+  if (st.bgExport) out.push(`<rect width="${AW * RES}" height="${AH * RES}" fill="${st.paper}"/>`);
   // One group per stroke (row), one element per cube, so ungrouping leaves loose cubes. Depth blur is
-  // a gaussian filter on the row's group.
+  // a gaussian filter on the row's group, written the way Figma exports a layer blur so it imports as one.
   const rows = rowsOf(now, st, lut), maxSize = Math.max(0, ...rows.map(r => r.size));
   let nCube = 0;
   rows.forEach((row, i) => {
-    const blur = blurOf(row, maxSize, st);
-    if (blur >= .15) out.push(`<filter id="blur-${i + 1}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${r(blur)}"/></filter>`);
-    out.push(`<g id="trazo-${i + 1}"${blur >= .15 ? ` filter="url(#blur-${i + 1})"` : ''}>`);
+    const blur = blurOf(row, maxSize, st), id = `filter${i}_f_trazo`;
+    if (blur >= .15) {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const [x, y, s] of row.items) { x0 = Math.min(x0, x - s / 2); y0 = Math.min(y0, y - s / 2); x1 = Math.max(x1, x + s / 2); y1 = Math.max(y1, y + s / 2); }
+      const pad = blur * 3;
+      defs.push(`<filter id="${id}" x="${r(x0 - pad)}" y="${r(y0 - pad)}" width="${r(x1 - x0 + 2 * pad)}" height="${r(y1 - y0 + 2 * pad)}" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">` +
+        `<feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>` +
+        `<feGaussianBlur stdDeviation="${r(blur)}" result="effect1_foregroundBlur"/></filter>`);
+    }
+    out.push(`<g id="trazo-${i + 1}"${blur >= .15 ? ` filter="url(#${id})"` : ''}>`);
     for (const [x, y, s, col] of row.items) out.push(`<rect id="cubo-${++nCube}" x="${r(x - s / 2)}" y="${r(y - s / 2)}" width="${r(s)}" height="${r(s)}" fill="${col}"/>`);
     out.push('</g>');
   });
+  if (defs.length) out.push(`<defs>${defs.join('')}</defs>`);
   out.push('</svg>');
   return out.join('');
 }
