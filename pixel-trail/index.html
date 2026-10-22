@@ -151,8 +151,16 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
   <aside>
     <div class="controls">
       <section>
+        <h2>Punto de fuga</h2>
+        <label class="check"><input type="checkbox" data-check="vp"> Punto de fuga</label>
+        <label class="check" id="vpDepth-row"><input type="checkbox" data-check="vpDepth"> Perspectiva (el tamaño crece hacia el frente)</label>
+        <div id="sl-vpCount"></div>
+        <div id="sl-vpGap"></div>
+        <div class="btns"><button class="btn" id="vp-all">Llevar al punto</button><button class="btn" id="vp-gen">Generar</button></div>
+      </section>
+
+      <section>
         <h2>Trazo</h2>
-        <p class="hint">Hacé clic y arrastrá. Lento deja muchos cubos juntos; rápido los separa. Con <kbd>Shift</kbd>, una línea recta de cubos equidistantes; mientras la sostenés, el scroll agrega o quita cubos.</p>
         <div id="sl-response"></div>
         <div id="sl-gap"></div>
         <div id="sl-maxGap"></div>
@@ -180,18 +188,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
       <section>
         <h2>Profundidad</h2>
-        <p class="hint">Con el cursor de la barra seleccionás una fila y la escalás desde las esquinas. Las filas más chicas se ven más desenfocadas.</p>
         <label class="check"><input type="checkbox" data-check="depth"> Desenfocar según tamaño</label>
         <div id="sl-depthBlur"></div>
-      </section>
-
-      <section>
-        <h2>Punto de fuga</h2>
-        <p class="hint">Con el cursor, arrastrá el último cubo de un trazo para redireccionarlo: más lejos agrega cubos, más cerca los quita. Al activar el punto de fuga, todos los trazos se vuelven líneas rectas hacia él (la mira; por defecto el centro), con los cubos del mismo tamaño. Con Perspectiva, el cubo de atrás de todo es el más chico y la punta, adelante, la más grande; desde ahí, redireccionar o hacer una línea con <kbd>Shift</kbd> siempre apunta al punto.</p>
-        <label class="check"><input type="checkbox" data-check="vp"> Punto de fuga</label>
-        <label class="check" id="vpDepth-row"><input type="checkbox" data-check="vpDepth"> Perspectiva (el tamaño crece hacia el frente)</label>
-        <div id="sl-vpCount"></div>
-        <div class="btns"><button class="btn" id="vp-all">Llevar al punto</button><button class="btn" id="vp-gen">Generar</button></div>
       </section>
 
       <section>
@@ -227,8 +225,8 @@ const DEFAULTS = {
   response: .5, gap: .7, maxGap: 220, scatter: .25, lineGap: 2, snap: false,
   style: 'mono', size: 16, variation: .3, speedSize: 0,
   life: 2.5, permanent: true,
-  colorMode: 'ink', palette: ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B'],
-  depth: false, depthBlur: 14, vp: false, vpDepth: false, vpCount: 16,
+  colorMode: 'palette', palette: ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B'],
+  depth: false, depthBlur: 14, vp: true, vpDepth: false, vpCount: 16, vpGap: 0,
   ink: '#1a1714', grain: .05, paper: '#ede6da', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -271,13 +269,14 @@ const scaleOf = g => rowScale.get(g) ?? 1;
 // Undo: a snapshot of the cubes and row scales is taken before each stroke, move, scale, delete or clear.
 const history = [];
 function snapshot() {
-  history.push({ cubes: cubes.map(c => ({ ...c })), scale: new Map(rowScale) });
+  history.push({ cubes: cubes.map(c => ({ ...c })), scale: new Map(rowScale), gen: gen.slice(), count: S.vpCount, gap: S.vpGap });
   if (history.length > 80) history.shift();
 }
 function undo() {
   const h = history.pop();
   if (!h) return toast('No hay nada para deshacer.');
   cubes = h.cubes; rowScale.clear(); h.scale.forEach((v, k) => rowScale.set(k, v));
+  gen = h.gen; S.vpCount = h.count; S.vpGap = h.gap; sync();
   updateSel(); wake();
 }
 function addPoint(p, t) {
@@ -406,7 +405,8 @@ const SLIDERS = {
   speedSize: { label: 'Tamaño según velocidad', min: -1, max: 1, step: .01, fmt: v => (v > 0 ? '+' : '') + Math.round(v * 100) + '%' },
   life: { label: 'Duración', min: .2, max: 15, step: .1, fmt: v => v.toFixed(1) + ' s' },
   grain: { label: 'Variación de tono', min: 0, max: .2, step: .005, fmt: pct },
-  vpCount: { label: 'Trails al generar', min: 2, max: 80, step: 1, fmt: v => v },
+  vpCount: { label: 'Trails', min: 1, max: 80, step: 1, fmt: v => v, on: () => syncGen() },
+  vpGap: { label: 'Alejar del centro', min: 0, max: 700, step: 5, fmt: v => v + ' px', on: () => { gen.forEach(sp => layGen(sp)); updateSel(); wake(); } },
   depthBlur: { label: 'Desenfoque máximo', min: 1, max: 60, step: 1, fmt: v => v + ' px' },
 };
 for (const [key, d] of Object.entries(SLIDERS)) {
@@ -414,8 +414,9 @@ for (const [key, d] of Object.entries(SLIDERS)) {
   host.className = 'slider' + (d.emph ? ' emph' : '');
   host.innerHTML = `<label for="in-${key}">${d.label}</label><output id="out-${key}"></output><input type="range" id="in-${key}" min="${d.min}" max="${d.max}" step="${d.step}" title="Doble clic para restablecer">`;
   const input = host.querySelector('input');
-  input.addEventListener('input', () => { S[key] = +input.value; sync(); });
-  input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
+  input.addEventListener('input', () => { if (d.on && !d.busy) { snapshot(); d.busy = true; } S[key] = +input.value; sync(); d.on?.(); });
+  input.addEventListener('change', () => d.busy = false);
+  input.addEventListener('dblclick', () => { if (d.on) snapshot(); S[key] = DEFAULTS[key]; sync(); d.on?.(); });
 }
 document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -425,7 +426,7 @@ document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('i
 $('#palette-row').innerHTML = S.palette.map((_, i) => `<label title="Color ${i + 1}"><input type="color" data-pal="${i}" aria-label="Color ${i + 1}"></label>`).join('');
 document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('input', () => { S.palette[+inp.dataset.pal] = inp.value; sync(); }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
-const clear = () => { if (cubes.length) snapshot(); cubes = []; rowScale.clear(); select(null); wake(); };
+const clear = () => { if (cubes.length) snapshot(); cubes = []; rowScale.clear(); gen = []; select(null); wake(); };
 $('#clear').addEventListener('click', clear);
 addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
@@ -723,34 +724,44 @@ function relay(o, i0, count, p) {
 $('#vp-all').addEventListener('click', vpAll);
 $('[data-check="vp"]').addEventListener('change', () => { if (S.vp && cubes.length) vpAll(); });
 $('[data-check="vpDepth"]').addEventListener('change', () => { if (S.vp && cubes.length) vpAll(); });
-// Generar: a random composition around a centred vanishing point. Straight trails start anywhere on the board
-// and run toward the centre; each gets its own size, so with the depth blur on the small ones (drawn
-// first, behind) come out soft and the big ones sharp.
-$('#vp-gen').addEventListener('click', () => {
-  snapshot();
+// Generar: a random composition around a centred vanishing point. Each generated trail keeps its recipe
+// (angle, reach, length, size), so the count and distance sliders add, drop or move trails live. Angles step
+// by the golden angle, which stays evenly spread for any count; each trail gets its own size, and smaller
+// ones sit behind (drawn first), so with the depth blur they come out soft and the big ones sharp.
+let gen = [], genTurn = 0;
+const genScale = new Map(); // g → size, for draw order
+function genSpec(i) {
+  const R = Math.random, k = .25 + R() ** 1.5 * 1.75;
+  return { g: ++strokes, a: genTurn + i * 2.39996 + (R() - .5) * .3, d: .5 + R() * .5, f: .25 + R() * .6, k,
+    gp: S.size * k * (1 + R() * .8), n: Math.floor(R() * 5) };
+}
+// Straight from its outer start toward the point; `vpGap` pushes the whole trail away from the centre.
+function layGen(sp, add) {
+  let i0 = cubes.findIndex(c => c.g === sp.g), count = 0;
+  if (i0 >= 0) { while (cubes[i0 + count]?.g === sp.g) count++; }
+  else if (!add) return;
+  else { i0 = cubes.findIndex(c => (genScale.get(c.g) ?? -1) > sp.k); if (i0 < 0) i0 = cubes.length; }
+  const [cx, cy] = vpPos, ox = Math.cos(sp.a) * AW / 2 * sp.d, oy = Math.sin(sp.a) * AH / 2 * sp.d, push = 1 + S.vpGap / Math.hypot(ox, oy);
+  const t = performance.now(), c0 = { s: S.size, k: MONO_SHADE, n: sp.n, g: sp.g, t, gp: sp.gp };
+  const o = [{ ...c0, x: cx + ox * push, y: cy + oy * push }, { ...c0, x: cx + ox * (push - sp.f), y: cy + oy * (push - sp.f) }];
+  cubes.splice(i0, count, ...o);
+  rowScale.set(sp.g, sp.k); genScale.set(sp.g, sp.k);
+  const vp = S.vp; S.vp = true; // laid as a vanishing-point trail even if the point was turned off since
+  relay(o.map(c => ({ ...c })), i0, 2, [o[1].x, o[1].y]);
+  S.vp = vp;
+}
+function syncGen() {
+  while (gen.length < S.vpCount) { const sp = genSpec(gen.length); gen.push(sp); layGen(sp, true); }
+  while (gen.length > S.vpCount) { const g = gen.pop().g; cubes = cubes.filter(c => c.g !== g); rowScale.delete(g); }
+  updateSel(); wake();
+}
+function generate() {
   S.vp = S.depth = S.permanent = true; vpPos = [AW / 2, AH / 2]; sync();
-  cubes = []; rowScale.clear(); select(null);
-  const R = Math.random, cx = AW / 2, cy = AH / 2, count = S.vpCount, turn = R() * Math.PI * 2;
-  const scales = Array.from({ length: count }, () => .25 + R() ** 1.5 * 1.75).sort((a, b) => a - b);
-  // Angles spread evenly around the point (shuffled against size), so the composition radiates.
-  const angles = scales.map((_, i) => turn + (i + R() * .8) / count * Math.PI * 2).sort(() => R() - .5);
-  scales.forEach((k, j) => {
-    const g = ++strokes, a = angles[j], d = .5 + R() * .5;
-    const x0 = cx + Math.cos(a) * AW / 2 * d, y0 = cy + Math.sin(a) * AH / 2 * d;
-    const D = Math.hypot(cx - x0, cy - y0), ux = (cx - x0) / D, uy = (cy - y0) / D, len = D * (.25 + R() * .6);
-    const gp = S.size * k * (1 + R() * .8), N = 48;
-    const o = [];
-    for (let i = 0; i <= N; i++) {
-      const t = i / N;
-      o.push({ x: x0 + ux * len * t, y: y0 + uy * len * t, s: S.size, k: Math.floor(R() * SHADES), n: dropped + i, g, t: performance.now(), gp });
-    }
-    dropped += N + 1;
-    rowScale.set(g, k);
-    const i0 = cubes.length; cubes.push(...o);
-    relay(o.map(c => ({ ...c })), i0, o.length, [x0 + ux * len, y0 + uy * len]);
-  });
-  wake();
-});
+  cubes = []; rowScale.clear(); genScale.clear(); select(null);
+  gen = []; genTurn = Math.random() * Math.PI * 2;
+  syncGen();
+}
+$('#vp-gen').addEventListener('click', () => { snapshot(); generate(); });
 function vpAll() {
   const rows = [];
   cubes.forEach((c, i) => { const r = rows[rows.length - 1]; if (r && r.g === c.g) r.count++; else rows.push({ g: c.g, i0: i, count: 1 }); });
@@ -786,6 +797,7 @@ $('#svg').addEventListener('click', () => download(`pixel-trail-${stamp()}.svg`,
 
 sync();
 setTool('draw');
+generate();
 </script>
 </body>
 </html>
