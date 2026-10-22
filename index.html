@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cube Noise</title>
+<title>Pixel Waves</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
 :root {
@@ -650,9 +650,9 @@ $('#png').addEventListener('click', () => {
   const ctx = c.getContext('2d');
   if (S.bgExport) { ctx.fillStyle = PAPER; ctx.fillRect(0, 0, gen.W, gen.H); }
   draw(ctx, S);
-  c.toBlob(b => b ? download(`cube-noise-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
+  c.toBlob(b => b ? download(`pixel-waves-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
 });
-$('#svg').addEventListener('click', () => download(`cube-noise-${S.seed}.svg`, new Blob([toSvg(S)], { type: 'image/svg+xml' })));
+$('#svg').addEventListener('click', () => download(`pixel-waves-${S.seed}.svg`, new Blob([toSvg(S)], { type: 'image/svg+xml' })));
 
 sync();
 </script>

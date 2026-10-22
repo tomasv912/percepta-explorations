@@ -2,9 +2,10 @@
 // add it to the list below and it shows up on every page. Retired tools go under Descartes.
 (() => {
   const EXPLORATIONS = [
-    { name: 'Cube Noise', path: '' },
+    { name: 'Pixel Waves', path: '' },
     { name: 'Pixel Trail', path: 'pixel-trail/' },
     { name: 'Photo Preset', path: 'photo-preset/' },
+    { name: 'Pixel Rise', path: 'pixel-rise/' },
     {
       name: 'Descartes', path: 'descartes/', children: [
         { name: 'Cube Dispersion', path: 'cube-dispersion/' },
