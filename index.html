@@ -105,12 +105,24 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .palette label { position: relative; height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); cursor: pointer; }
 .palette input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 #palette-box { display: flex; flex-direction: column; }
+.tools { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; padding: 4px; z-index: 3;
+  background: var(--surface); border-radius: 10px; box-shadow: 0 0 0 1px var(--line), 0 4px 18px rgb(0 0 0 / .1); }
+.tools button { appearance: none; border: 0; background: none; color: var(--text); width: 34px; height: 34px; border-radius: 7px; display: grid; place-items: center; cursor: pointer; }
+.tools button:hover { background: var(--fill); }
+.tools button[aria-pressed="true"] { background: var(--text); color: var(--surface); }
+.tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.frame.rotate { cursor: grab; }
+.frame.rotate:active { cursor: grabbing; }
 </style>
 </head>
 <body>
 <script src="toolbar.js"></script>
 <div class="app">
   <main id="stage">
+    <div class="tools" id="tools" role="toolbar" aria-label="Herramientas">
+      <button id="tool-brush" title="Pincel de dispersión (B)" aria-label="Pincel de dispersión"><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke-dasharray="2 2.4"/><circle cx="11" cy="11" r="2"/></svg></button>
+      <button id="tool-rotate" title="Rotar la imagen (G): arrastrá; con Shift, gira en el plano" aria-label="Rotar"><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 8.5A7 7 0 1 0 18 13"/><path d="M18 4v4.5h-4.5"/></svg></button>
+    </div>
     <div class="frame" id="frame">
       <canvas id="cv" role="img" aria-label="Olas o imagen formadas por cubos"></canvas>
       <div class="cursor" id="cursor" hidden></div>
@@ -145,6 +157,11 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <div id="sl-contrast"></div>
           <div id="sl-threshold"></div>
           <label class="check"><input type="checkbox" data-check="invert"> Invertir luces y sombras</label>
+          <label class="check"><input type="checkbox" data-check="grid"> Puntos en cuadrícula</label>
+          <div id="sl-gridCols"></div>
+          <div id="sl-rotX"></div>
+          <div id="sl-rotY"></div>
+          <div id="sl-rotZ"></div>
         </div>
         <div class="row">
           <span>Semilla</span>
@@ -170,7 +187,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section>
         <h2>Color</h2>
         <div class="seg" data-key="colorMode" aria-label="Color de los cubos">
-          <button data-v="single">Un color</button><button data-v="random">Al azar</button><button data-v="image" id="cm-image">Imagen</button>
+          <button data-v="single">Un color</button><button data-v="random">Al azar</button><button data-v="combo">Combinados</button><button data-v="image" id="cm-image">Imagen</button>
         </div>
         <div class="row" id="ink-row" style="grid-template-columns:56px 1fr">
           <span>Color</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="ink" aria-label="Color de los cubos"></label>
@@ -193,6 +210,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <h2>Dispersión</h2>
         <p class="hint">Mantené el clic sobre la imagen: los cubos de esa zona se dispersan y siguen derivando. Los que salen del cuadro desaparecen.</p>
         <div id="sl-radius"></div>
+        <div id="sl-soft"></div>
         <div id="sl-force"></div>
         <div id="sl-drift"></div>
         <button class="btn" id="reform">Recomponer</button>
@@ -220,13 +238,15 @@ const PAPER = '#FFFFFF';
 const DEFAULTS = {
   seed: 1, aspect: '3:2', source: 'waves',
   layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5,
-  contrast: 1.2, threshold: .1, invert: false,
+  contrast: 1.2, threshold: .1, invert: false, grid: false, gridCols: 140, rotX: 0, rotY: 0, rotZ: 0,
   style: 'mono', count: 45000, size: 3.5, mod: .6, variation: .35, grain: .12,
   colorMode: 'single', ink: '#000000', palette: ['#111111', '#f15bb5', '#fee440', '#00bbf9', '#00f5d4'],
   trail: 0, trailAngle: 180, trailJitter: .3,
-  radius: 220, force: .9, drift: .5,
+  radius: 220, soft: .6, force: .9, drift: .5,
 };
 const S = structuredClone(DEFAULTS);
+// Combinados: each cube takes one of these at random.
+const COMBO = ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B'];
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
 
@@ -285,7 +305,9 @@ function loadImage(el) {
 // out where it faces the camera; the far edge and the ends fade. Image: cubes follow the darkness.
 // Either way the result is fitted inside the frame, every cube included, so nothing is ever cut.
 function generate(st) {
-  const [W, H] = SIZES[st.aspect], r = rng(st.seed), n = st.count, mono = st.style === 'mono';
+  const [W, H] = SIZES[st.aspect], r = rng(st.seed), mono = st.style === 'mono', image = st.source === 'image' && img;
+  const gridRows = image ? Math.max(1, Math.round(st.gridCols / img.ar)) : 0, grid = image && st.grid;
+  const n = grid ? st.gridCols * gridRows : st.count;
   const px = new Float32Array(n), py = new Float32Array(n), size = new Float32Array(n), shade = new Uint8Array(n);
   const pal = new Uint8Array(n), rgb = new Uint32Array(n), tlen = new Float32Array(n);
   let got = 0;
@@ -297,7 +319,7 @@ function generate(st) {
     tlen[got] = Math.max(0, 1 + st.trailJitter * (r() * 2 - 1));
     got++;
   };
-  if (st.source === 'image' && img) {
+  if (image) {
     const { gw, gh, lum, rgb: col } = img, cells = gw * gh, t = st.threshold, M = new Float32Array(cells), cdf = new Float64Array(cells);
     let sum = 0;
     for (let k = 0; k < cells; k++) {
@@ -305,7 +327,12 @@ function generate(st) {
       M[k] = t >= 1 ? 0 : Math.max(0, (v - t) / (1 - t));
       cdf[k] = sum += M[k] ** 1.2;
     }
-    if (sum > 0) for (let c = 0; c < n; c++) {
+    // Cuadrícula: one cube per node wherever the image is dark enough, sized by its tone.
+    if (grid) for (let j = 0; j < gridRows; j++) for (let i = 0; i < st.gridCols; i++) {
+      const u = (i + .5) / st.gridCols, v = (j + .5) / gridRows, k = Math.min(gh - 1, Math.floor(v * gh)) * gw + Math.min(gw - 1, Math.floor(u * gw));
+      if (M[k] > 0) add(u * img.ar, v, (1 - st.mod) + st.mod * Math.sqrt(Math.max(M[k], .04)), col[k]);
+    }
+    else if (sum > 0) for (let c = 0; c < n; c++) {
       const q = r() * sum; let lo = 0, hi = cells - 1;
       while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < q) lo = mid + 1; else hi = mid; }
       const i = lo % gw, j = (lo - i) / gw;
@@ -344,15 +371,35 @@ function generate(st) {
   // Trails count too, on the side they point to.
   const ta = st.trailAngle * Math.PI / 180, L = st.trail * (1 + st.trailJitter);
   const tl = Math.max(0, -Math.cos(ta)) * L, tr = Math.max(0, Math.cos(ta)) * L, tt = Math.max(0, -Math.sin(ta)) * L, tb = Math.max(0, Math.sin(ta)) * L;
-  let X0, X1, Y0, Y1;
-  if (st.source === 'image' && img) {
-    const m = .06 * Math.min(W, H) + half, k = Math.min((W - 2 * m - tl - tr) / (x1 - x0 || 1), (H - 2 * m - tt - tb) / (y1 - y0 || 1));
-    const w = (x1 - x0) * k, h = (y1 - y0) * k;
-    X0 = (W - w - tl - tr) / 2 + tl; X1 = X0 + w; Y0 = (H - h - tt - tb) / 2 + tt; Y1 = Y0 + h;
-  } else { X0 = .05 * W + half + tl; X1 = W - .05 * W - half - tr; Y0 = .14 * H + half + tt; Y1 = .86 * H - half - tb; }
-  for (let i = 0; i < got; i++) { px[i] = X0 + (px[i] - x0) / (x1 - x0 || 1) * (X1 - X0); py[i] = Y0 + (py[i] - y0) / (y1 - y0 || 1) * (Y1 - Y0); }
   const cut = a => a.slice(0, got);
+  if (image) {
+    // Kept flat here; place() turns and projects it, so rotating never regenerates.
+    const g = { W, H, n: got, lx: cut(px), ly: cut(py), bs: cut(size), fit: { x0, x1, y0, y1, half, tl, tr, tt, tb },
+      size: new Float32Array(got), dp: new Float32Array(got), hx: new Float32Array(got), hy: new Float32Array(got), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen) };
+    place(g, st);
+    return g;
+  }
+  let X0, X1, Y0, Y1;
+  { X0 = .05 * W + half + tl; X1 = W - .05 * W - half - tr; Y0 = .14 * H + half + tt; Y1 = .86 * H - half - tb; }
+  for (let i = 0; i < got; i++) { px[i] = X0 + (px[i] - x0) / (x1 - x0 || 1) * (X1 - X0); py[i] = Y0 + (py[i] - y0) / (y1 - y0 || 1) * (Y1 - Y0); }
   return { W, H, n: got, hx: cut(px), hy: cut(py), size: cut(size), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen) };
+}
+
+// An image is a flat card: fitted inside the frame unrotated (so turning it never rescales), then turned
+// (in-plane, left–right, up–down) and seen in perspective, cubes growing as they come closer.
+function place(g, st) {
+  const { x0, x1, y0, y1, half, tl, tr, tt, tb } = g.fit, { W, H } = g;
+  const m = .06 * Math.min(W, H) + half, k = Math.min((W - 2 * m - tl - tr) / (x1 - x0 || 1), (H - 2 * m - tt - tb) / (y1 - y0 || 1));
+  const ox = (W - tl - tr) / 2 + tl, oy = (H - tt - tb) / 2 + tt, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, cam = 2.2 * Math.max(x1 - x0, y1 - y0);
+  const rad = Math.PI / 180, ca = Math.cos(st.rotX * rad), sa = Math.sin(st.rotX * rad), cb = Math.cos(st.rotY * rad), sb = Math.sin(st.rotY * rad), cc = Math.cos(st.rotZ * rad), sc = Math.sin(st.rotZ * rad);
+  for (let i = 0; i < g.n; i++) {
+    const x = g.lx[i] - cx, y = g.ly[i] - cy;
+    const xr = x * cc - y * sc, yr = x * sc + y * cc;     // in-plane
+    const x2 = xr * cb, z1 = -xr * sb;                     // left–right
+    const y2 = yr * ca - z1 * sa, z2 = yr * sa + z1 * ca;  // up–down
+    const p = cam / (cam + z2);
+    g.hx[i] = ox + x2 * p * k; g.hy[i] = oy + y2 * p * k; g.size[i] = g.bs[i] * p; g.dp[i] = p;
+  }
 }
 
 // ---------- Color ----------
@@ -369,7 +416,7 @@ function colorOf(i, st) {
     const c = gen.rgb[i] & 0xF8F8F8;
     return rgbHex(c >> 16 & 255, c >> 8 & 255, c & 255);
   }
-  const base = st.colorMode === 'random' ? st.palette[gen.pal[i] % st.palette.length] : st.ink;
+  const base = st.colorMode === 'combo' ? COMBO[gen.pal[i] % COMBO.length] : st.colorMode === 'random' ? st.palette[gen.pal[i] % st.palette.length] : st.ink;
   return st.style === 'mono' ? base : tint(base, gen.shade[i], st.grain);
 }
 const randomPalette = () => Array.from({ length: 5 }, () => {
@@ -383,10 +430,10 @@ const randomPalette = () => Array.from({ length: 5 }, () => {
 // one kick outwards with a random strength, so they open into a cloud; once moving they drift along a slow
 // noise flow that only steers, and friction brings them to rest. Cubes that leave the frame are gone (they
 // never pile up on the border). "Recomponer" eases everything home.
-let gen = null, genKey = '', X = null, Y = null, VX = null, VY = null, gone = null;
+let gen = null, genKey = '', placeKey = '', moved = null, X = null, Y = null, VX = null, VY = null, gone = null;
 let active = new Set(), kicked = new Set(), pointer = null, pressing = false, reform = null, flow = null;
 function resetMotion() {
-  X = gen.hx.slice(); Y = gen.hy.slice(); VX = new Float32Array(gen.n); VY = new Float32Array(gen.n); gone = new Uint8Array(gen.n);
+  X = gen.hx.slice(); Y = gen.hy.slice(); VX = new Float32Array(gen.n); VY = new Float32Array(gen.n); gone = new Uint8Array(gen.n); moved = new Uint8Array(gen.n);
   active = new Set(); kicked = new Set(); reform = null; flow = perlin(rng(S.seed * 31 + 7));
 }
 function step(dt) {
@@ -397,10 +444,14 @@ function step(dt) {
       if (gone[i] || kicked.has(i)) continue;
       const dx = X[i] - pointer[0], dy = Y[i] - pointer[1], d2 = dx * dx + dy * dy;
       if (d2 > R2) continue;
-      const d = Math.sqrt(d2), u = Math.random(), f = kick * (1 - .5 * d / R) * (.08 + .92 * u * u);
+      // Soft edge: full strength inside the core, fading to nothing at the rim. Toward the rim a cube is only
+      // likely to go (more so the longer the brush stays), and goes with less force, like an airbrush.
+      const d = Math.sqrt(d2), w = 1 - smooth(1 - S.soft, 1, d / R);
+      if (w < 1 && Math.random() > 1 - Math.pow(1 - w * w, dt * 6)) continue;
+      const u = Math.random(), f = kick * (.3 + .7 * w) * (1 - .5 * d / R) * (.08 + .92 * u * u);
       const a = (d > 1 ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2) + (Math.random() - .5) * 1.8;
       VX[i] += Math.cos(a) * f; VY[i] += Math.sin(a) * f;
-      kicked.add(i); active.add(i);
+      kicked.add(i); active.add(i); moved[i] = 1;
     }
   }
   const fs = 2.2 / unit, steer = Math.min(1, S.drift * dt * 2.5), damp = Math.pow(.18, dt);
@@ -439,7 +490,7 @@ function eachShape(st, fn) {
     if (st.trail > 0) for (let b = TRAIL_BANDS; b >= 1; b--) {
       const polys = [];
       for (const i of idx) {
-        const L = st.trail * gen.tlen[i], s0 = (b - 1) / TRAIL_BANDS * L, s1 = b / TRAIL_BANDS * L, h = gen.size[i] / 2;
+        const L = st.trail * gen.tlen[i] * (gen.dp ? gen.dp[i] : 1), s0 = (b - 1) / TRAIL_BANDS * L, s1 = b / TRAIL_BANDS * L, h = gen.size[i] / 2;
         if (L <= 0) continue;
         const cx = X[i], cy = Y[i], nx = -dy * h, ny = dx * h;
         polys.push([cx + dx * s0 + nx, cy + dy * s0 + ny, cx + dx * s1 + nx, cy + dy * s1 + ny, cx + dx * s1 - nx, cy + dy * s1 - ny, cx + dx * s0 - nx, cy + dy * s0 - ny]);
@@ -500,6 +551,11 @@ const SLIDERS = {
   trail: { label: 'Longitud del trail', min: 0, max: 400, step: 1, fmt: v => v ? v + ' px' : 'sin trail', emph: true },
   trailAngle: { label: 'Dirección', min: 0, max: 360, step: 1, fmt: v => v + '°' },
   trailJitter: { label: 'Variación de largo', min: 0, max: 1, step: .01, fmt: pct },
+  soft: { label: 'Suavidad del borde', min: 0, max: 1, step: .01, fmt: pct },
+  gridCols: { label: 'Columnas', min: 20, max: 400, step: 1, fmt: String, emph: true },
+  rotX: { label: 'Rotación arriba–abajo', min: -85, max: 85, step: 1, fmt: v => Math.round(v) + '°' },
+  rotY: { label: 'Rotación izquierda–derecha', min: -85, max: 85, step: 1, fmt: v => Math.round(v) + '°' },
+  rotZ: { label: 'Rotación en el plano', min: -180, max: 180, step: 1, fmt: v => Math.round(v) + '°' },
   radius: { label: 'Radio', min: 30, max: 900, step: 10, fmt: v => v + ' px' },
   force: { label: 'Fuerza', min: .05, max: 2, step: .01, fmt: pct },
   drift: { label: 'Deriva', min: 0, max: 2, step: .01, fmt: pct },
@@ -527,7 +583,7 @@ const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('#reseed').addEventListener('click', reseed);
 $('#reform').addEventListener('click', () => {
   if (!gen) return;
-  active.clear(); VX.fill(0); VY.fill(0); gone.fill(0);
+  active.clear(); VX.fill(0); VY.fill(0); gone.fill(0); moved.fill(0);
   reform = { t0: performance.now(), x: X.slice(), y: Y.slice() }; wake();
 });
 addEventListener('keydown', e => {
@@ -559,11 +615,19 @@ function sync() {
   $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = mono;
   $('#ink-row').hidden = S.colorMode !== 'single'; $('#palette-box').hidden = S.colorMode !== 'random';
   $('#sl-trailAngle').hidden = $('#sl-trailJitter').hidden = !S.trail;
+  $('#sl-gridCols').hidden = !S.grid; $('#sl-count').hidden = !waves && S.grid;
+  $('#tools').hidden = waves; if (waves && tool !== 'brush') setTool('brush');
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
   const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.contrast, S.threshold, S.invert,
-    S.style, S.count, S.size, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter]);
-  if (key !== genKey) { gen = generate(S); genKey = key; resetMotion(); }
+    S.style, S.count, S.size, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
+  const pkey = [S.rotX, S.rotY, S.rotZ].join();
+  if (key !== genKey) { gen = generate(S); genKey = key; placeKey = pkey; resetMotion(); }
+  else if (pkey !== placeKey && gen.lx) {
+    // Rotating moves the cubes still at home; dispersed ones stay where they drifted.
+    placeKey = pkey; place(gen, S);
+    for (let i = 0; i < gen.n; i++) if (!moved[i]) { X[i] = gen.hx[i]; Y[i] = gen.hy[i]; }
+  }
   wake();
 }
 
@@ -603,13 +667,38 @@ function moveCursor(e) {
   cursor.style.width = cursor.style.height = d + 'px';
   cursor.style.left = (e.clientX - r.left) + 'px'; cursor.style.top = (e.clientY - r.top) + 'px';
 }
-frame.addEventListener('pointermove', e => { pointer = toArt(e); moveCursor(e); });
+// Tools: the dispersal brush, or (for an image) rotate: drag turns it left–right and up–down, Shift-drag
+// turns it in the plane.
+let tool = 'brush', turning = null;
+function setTool(t) {
+  tool = t; turning = null;
+  $('#tool-brush').setAttribute('aria-pressed', t === 'brush'); $('#tool-rotate').setAttribute('aria-pressed', t === 'rotate');
+  frame.classList.toggle('rotate', t === 'rotate'); cursor.hidden = true;
+}
+$('#tool-brush').addEventListener('click', () => setTool('brush'));
+$('#tool-rotate').addEventListener('click', () => setTool('rotate'));
+addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'b') setTool('brush'); else if (k === 'g' && S.source === 'image') setTool('rotate');
+});
+frame.addEventListener('pointermove', e => {
+  if (tool === 'rotate') {
+    if (!turning) return;
+    const dx = e.clientX - turning.x, dy = e.clientY - turning.y;
+    if (e.shiftKey) S.rotZ = ((turning.z + dx * .5 + 540) % 360) - 180;
+    else { S.rotY = clamp(turning.y0 + dx * .4, -85, 85); S.rotX = clamp(turning.x0 - dy * .4, -85, 85); }
+    return sync();
+  }
+  pointer = toArt(e); moveCursor(e);
+});
 frame.addEventListener('pointerdown', e => {
   if (e.button !== 0) return;
   frame.setPointerCapture(e.pointerId);
+  if (tool === 'rotate') { turning = { x: e.clientX, y: e.clientY, x0: S.rotX, y0: S.rotY, z: S.rotZ }; return; }
   pointer = toArt(e); pressing = true; reform = null; kicked = new Set(); moveCursor(e); wake();
 });
-const release = () => { pressing = false; kicked = new Set(); };
+const release = () => { pressing = false; kicked = new Set(); turning = null; };
 frame.addEventListener('pointerup', release);
 frame.addEventListener('pointercancel', release);
 frame.addEventListener('pointerleave', () => { if (!pressing) cursor.hidden = true; });
@@ -650,6 +739,7 @@ $('#png').addEventListener('click', () => {
 });
 $('#svg').addEventListener('click', () => download(`pixel-waves-${S.seed}.svg`, new Blob([toSvg(S)], { type: 'image/svg+xml' })));
 
+setTool('brush');
 sync();
 </script>
 </body>
