@@ -45,18 +45,21 @@ main[data-tool="move"].dragging, main.panning { cursor: grabbing; }
 main[data-tool="zoom"] { cursor: zoom-in; }
 main[data-tool="zoom"].alt { cursor: zoom-out; }
 
-.tools { position: absolute; top: 12px; left: 12px; display: flex; gap: 2px; align-items: center; background: var(--surface); border-radius: 10px; padding: 3px; box-shadow: 0 0 0 1px var(--line), 0 1px 3px rgb(0 0 0 / .06); z-index: 1; }
-.tools button { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 7px; background: transparent; color: var(--text-2); cursor: pointer; }
-.tools button:hover { background: var(--fill); color: var(--text); }
-.tools button[aria-pressed="true"] { background: var(--fill); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
-.tools .zoom { min-width: 52px; width: auto; padding: 0 8px; font: 500 12px var(--mono); font-variant-numeric: tabular-nums; }
-.tools i { width: 1px; height: 18px; background: var(--line); margin: 0 3px; }
+main[data-tool="smudge"] { cursor: none; }
+.tools { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 2px; align-items: center; padding: 4px;
+  background: var(--surface); border-radius: 10px; box-shadow: 0 0 0 1px var(--line), 0 4px 18px rgb(0 0 0 / .14); z-index: 1; }
+.tools button { display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 7px; background: transparent; color: var(--text); cursor: pointer; }
+.tools button:hover { background: var(--fill); }
+.tools button[aria-pressed="true"] { background: var(--text); color: var(--surface); }
+.tools .zoom { width: auto; min-width: 56px; padding: 0 8px; font: 500 12px var(--mono); font-variant-numeric: tabular-nums; color: var(--text-2); }
+.tools i { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+.brush { position: absolute; left: 0; top: 0; border-radius: 50%; border: 1px solid rgb(255 255 255 / .9); box-shadow: 0 0 0 1px rgb(0 0 0 / .45); pointer-events: none; transform: translate(-50%, -50%); z-index: 1; }
+.pop { position: fixed; z-index: 30; width: 230px; background: var(--surface); border-radius: 10px; box-shadow: 0 0 0 1px var(--line), 0 10px 30px rgb(0 0 0 / .18); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.pop h3 { margin: 0; font-size: 12px; font-weight: 600; }
+.pop p { margin: 0; color: var(--text-3); font-size: 12px; line-height: 1.45; }
 
 .drop { position: absolute; inset: 12px; display: grid; place-items: center; border-radius: 12px; border: 1.5px dashed var(--text-2); background: color-mix(in srgb, var(--stage) 85%, transparent); color: var(--text); font-weight: 500; pointer-events: none; z-index: 2; }
-.hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; white-space: nowrap;
-  background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
-.hud kbd { font: 500 11px var(--mono); color: var(--text); }
-.hud .dim { color: var(--text-3); }
+.hud { position: absolute; top: 12px; right: 14px; color: var(--text-3); font: 11px var(--mono); font-variant-numeric: tabular-nums; pointer-events: none; }
 
 aside { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-left: 1px solid var(--line); }
 .controls { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 24px; }
@@ -106,7 +109,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
   .app { flex: none; grid-template-columns: 1fr; grid-template-rows: minmax(300px, 55vh) auto; }
   aside { border-left: 0; border-top: 1px solid var(--line); }
   .controls { overflow: visible; }
-  .hud .dim { display: none; }
 }
 </style>
 </head>
@@ -115,18 +117,31 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <div class="app">
   <main id="stage" data-tool="move">
     <canvas id="cv" role="img" aria-label="Forma o imagen hecha de círculos por densidad"></canvas>
-    <div class="tools" role="toolbar" aria-label="Vista">
-      <button data-tool="move" title="Mover (H)" aria-label="Mover">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 8V3.2a1 1 0 0 1 2 0V7.5M7.5 7V2.2a1 1 0 0 1 2 0V7.5M9.5 7.2V3.2a1 1 0 0 1 2 0V9c0 2.8-1.8 5-4.5 5-1.6 0-2.6-.7-3.5-2L2.2 9.6a1 1 0 0 1 1.6-1.2L5.5 10"/></svg>
+    <div class="brush" id="brush" hidden></div>
+    <div class="tools" role="toolbar" aria-label="Herramientas">
+      <button data-tool="move" title="Mover la forma (H)" aria-label="Mover">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.5v13M1.5 8h13M8 1.5 6.2 3.3M8 1.5l1.8 1.8M8 14.5l-1.8-1.8M8 14.5l1.8-1.8M1.5 8l1.8-1.8M1.5 8l1.8 1.8M14.5 8l-1.8-1.8M14.5 8l-1.8 1.8"/></svg>
       </button>
-      <button data-tool="zoom" title="Lupa (Z) · Alt para alejar" aria-label="Lupa">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5M5 7h4M7 5v4"/></svg>
+      <button data-tool="zoom" title="Lupa (Z): clic acerca, Alt+clic aleja" aria-label="Lupa">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5M5 7h4M7 5v4"/></svg>
+      </button>
+      <i></i>
+      <button data-tool="smudge" title="Dedo (D): arrastrá para dispersar · clic derecho: ajustes" aria-label="Dedo">
+        <svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 13V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M11.5 10V8.5a1.5 1.5 0 0 1 3 0V11"/><path d="M14.5 10.5a1.5 1.5 0 0 1 3 0V14a5 5 0 0 1-5 5h-1.6a4 4 0 0 1-3.1-1.5l-2.6-3.3a1.5 1.5 0 0 1 2.3-1.9l1 1.2"/></svg>
+      </button>
+      <i></i>
+      <button id="undo" title="Deshacer (⌘Z)" aria-label="Deshacer">
+        <svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 8H4V4"/><path d="M4.4 8A7 7 0 1 1 5 14.5"/></svg>
+      </button>
+      <button id="clear" title="Borrar retoques" aria-label="Borrar retoques">
+        <svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7h12"/><path d="M9 7V5h4v2"/><path d="M7 7l.8 11h6.4L15 7"/></svg>
       </button>
       <i></i>
       <button class="zoom" id="zoom-fit" title="Ajustar a la vista (0)">100%</button>
     </div>
+    <div class="pop" id="pop" hidden></div>
     <div class="drop" id="drop" hidden>Soltá la imagen</div>
-    <div class="hud"><span id="stats">—</span><span class="dim"><kbd>H</kbd> mover · <kbd>Z</kbd> lupa · <kbd>Espacio</kbd> arrastrar vista · <kbd>0</kbd> ajustar · <kbd>R</kbd> otra forma</span></div>
+    <div class="hud" id="stats">—</div>
   </main>
 
   <aside>
@@ -375,17 +390,51 @@ function shapeDots(st) {
   return out;
 }
 
-// Dot centres in artboard units (before the hand's offset), cached until a setting that moves them changes.
-let dots = null, dotsKey = '';
+// Dot centres in artboard units (before the hand's offset), cached until a setting that moves them changes;
+// view is the same dots after the finger's strokes.
+let dots = null, dotsKey = '', view = null;
 function currentDots() {
   const image = S.source === 'image' && src;
   const key = JSON.stringify(image ? ['i', src.ar, src.gw, S.seed, S.invert, S.contrast, S.threshold, S.count, S.size, S.overlap]
     : ['s', S.seed, S.bulbs, S.waist, S.fold, S.droop, S.twist, S.yaw, S.count]);
-  if (key !== dotsKey) { dots = image ? imageDots(S) : shapeDots(S); dotsKey = key; clampPan(); }
-  return dots;
+  if (key !== dotsKey) { dots = image ? imageDots(S) : shapeDots(S); dotsKey = key; rebuild(); }
+  return view;
+}
+
+// ---------- Finger ----------
+// Dragging carries the dots under the finger along the stroke: each stamp moves them by the step,
+// weighted by Fuerza and a soft falloff, so they keep being picked up and smear along the path;
+// Dispersión jitters each move. Strokes are kept (in content units) and replayed when a setting
+// changes, like the finger in Gradient Shapes. Dots stay inside the frame.
+const finger = { size: .08, str: .6, scatter: .35 }; // size: brush radius as a share of the frame height
+let ops = [], cur = null;
+function rebuild() {
+  view = Float32Array.from(dots);
+  for (const op of ops) { op.done = 0; op.rng = rng(op.seed); applyOp(op); }
+  clampPan();
+}
+function applyOp(op) {
+  const R = op.size * AH, step = Math.max(1, R * .18);
+  for (let i = Math.max(1, op.done); i < op.pts.length; i++) {
+    const a = op.pts[i - 1], b = op.pts[i], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step));
+    for (let k = 1; k <= n; k++) stamp(op, lerp(a[0], b[0], (k - 1) / n), lerp(a[1], b[1], (k - 1) / n), (b[0] - a[0]) / n, (b[1] - a[1]) / n, R);
+  }
+  op.done = op.pts.length;
+}
+function stamp(op, px, py, dx, dy, R) {
+  const v = view, R2 = R * R, rnd = op.rng, j = op.scatter * (Math.hypot(dx, dy) * 1.5 + R * .04) * 2, m = S.size;
+  for (let i = 0; i < v.length; i += 2) {
+    const ex = v[i] - px, ey = v[i + 1] - py, d2 = ex * ex + ey * ey;
+    if (d2 >= R2) continue;
+    const w = Math.min(1, op.str * 1.5 * (1 - d2 / R2));
+    let mx = dx * w, my = dy * w;
+    if (j) { mx += (rnd() - .5) * j * w; my += (rnd() - .5) * j * w; }
+    v[i] = clamp(v[i] + mx, m, AW - m); v[i + 1] = clamp(v[i + 1] + my, m, AH - m);
+  }
 }
 // The hand can move the content anywhere it still fits whole inside the artboard.
 function clampPan() {
+  const dots = view;
   if (!dots || !dots.length) { panX = panY = 0; return; }
   const r = S.size / 2 + (S.stroke ? S.strokeW / 2 : 0), m = 8;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -453,23 +502,39 @@ function render() {
   draw(ctx, it);
   ctx.restore();
   $('#zoom-fit').textContent = Math.round(zoom * 100) + '%';
-  $('#stats').textContent = `${(it.length / 2).toLocaleString('es')} puntos · exporta a ${AW * RES} × ${AH * RES} px`;
+  $('#stats').textContent = `${(it.length / 2).toLocaleString('es')} puntos · ${AW * RES} × ${AH * RES} px`;
 }
 new ResizeObserver(schedule).observe(stage);
 
 // Hand: drag moves the content (it stays whole inside the frame). Lupa: click zooms in, Alt-click out,
-// drag pans the view. Space held, or the middle button, pans the view with either tool. Wheel zooms.
+// drag pans the view. Dedo: drag disperses. Space held, or the middle button, pans the view with any
+// tool. Wheel zooms. Right click opens the active tool's settings.
 let drag = null, space = false;
-function setTool(t) { tool = t; stage.dataset.tool = t; document.querySelectorAll('.tools [data-tool]').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t)); }
+const brush = $('#brush'), pop = $('#pop');
+function setTool(t) { tool = t; stage.dataset.tool = t; brush.hidden = true; document.querySelectorAll('.tools [data-tool]').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t)); }
+function showBrush(e) {
+  if (tool !== 'smudge' || space) { brush.hidden = true; return; }
+  const r = stage.getBoundingClientRect(), d = finger.size * 2 * AH * viewT().k;
+  Object.assign(brush.style, { left: e.clientX - r.left + 'px', top: e.clientY - r.top + 'px', width: d + 'px', height: d + 'px' });
+  brush.hidden = false;
+}
 stage.addEventListener('pointerdown', e => {
-  if (e.target.closest('.tools') || (e.button !== 0 && e.button !== 1)) return;
+  if (e.target.closest('.tools, .pop') || (e.button !== 0 && e.button !== 1)) return;
   stage.setPointerCapture(e.pointerId);
+  if (tool === 'smudge' && !space && e.button === 0) {
+    const a = toArt(e);
+    cur = { size: finger.size, str: finger.str, scatter: finger.scatter, seed: Math.floor(Math.random() * 1e9), pts: [[a[0] - panX, a[1] - panY]], done: 0 };
+    cur.rng = rng(cur.seed); ops.push(cur);
+    return;
+  }
   const view = space || e.button === 1 || tool === 'zoom';
   drag = { view, x: e.clientX, y: e.clientY, moved: false, a: toArt(e), px: panX, py: panY, vx, vy, alt: e.altKey };
   stage.classList.add(view ? 'panning' : 'dragging');
 });
 stage.addEventListener('pointermove', e => {
   stage.classList.toggle('alt', e.altKey);
+  showBrush(e);
+  if (cur) { const a = toArt(e); cur.pts.push([a[0] - panX, a[1] - panY]); applyOp(cur); schedule(); return; }
   if (!drag) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   if (Math.hypot(dx, dy) > 3) drag.moved = true;
@@ -478,6 +543,7 @@ stage.addEventListener('pointermove', e => {
   schedule();
 });
 const endDrag = e => {
+  if (cur) { if (cur.pts.length < 2) ops.pop(); cur = null; clampPan(); schedule(); return; }
   if (!drag) return;
   if (tool === 'zoom' && !space && !drag.moved && e.type === 'pointerup') {
     const r = stage.getBoundingClientRect();
@@ -492,8 +558,35 @@ stage.addEventListener('wheel', e => {
   const r = stage.getBoundingClientRect();
   zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? .01 : .002)), e.clientX - r.left, e.clientY - r.top);
 }, { passive: false });
+stage.addEventListener('pointerleave', () => { brush.hidden = true; });
 document.querySelectorAll('.tools [data-tool]').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
 $('#zoom-fit').addEventListener('click', fitView);
+const undo = () => { if (!ops.length) return; ops.pop(); rebuild(); schedule(); };
+$('#undo').addEventListener('click', undo);
+$('#clear').addEventListener('click', () => { if (!ops.length) return; ops = []; rebuild(); schedule(); toast('Retoques borrados'); });
+
+// Right click: settings of the active tool.
+function popField(label, obj, k, min, max, step) {
+  const row = document.createElement('div'), f = v => Math.round(v * 100) + '%';
+  row.className = 'slider';
+  row.innerHTML = `<label>${label}</label><output>${f(obj[k])}</output><input type="range" min="${min}" max="${max}" step="${step}" value="${obj[k]}">`;
+  const inp = row.querySelector('input'), out = row.querySelector('output'), paint = () => inp.style.setProperty('--p', (obj[k] - min) / (max - min) * 100 + '%');
+  inp.oninput = () => { obj[k] = +inp.value; out.textContent = f(obj[k]); paint(); };
+  paint();
+  return row;
+}
+function fillPop() {
+  pop.innerHTML = '';
+  if (tool !== 'smudge') { pop.innerHTML = '<h3>Herramientas</h3><p>Elegí el dedo en la barra de abajo; con clic derecho ajustás la herramienta activa.</p>'; return; }
+  const h = document.createElement('h3'); h.textContent = 'Dedo'; pop.append(h);
+  pop.append(popField('Tamaño', finger, 'size', .02, .3, .005), popField('Fuerza', finger, 'str', .05, 1, .01), popField('Dispersión', finger, 'scatter', 0, 1, .01));
+}
+stage.addEventListener('contextmenu', e => {
+  e.preventDefault(); fillPop(); pop.hidden = false;
+  pop.style.left = Math.min(innerWidth - pop.offsetWidth - 8, e.clientX + 4) + 'px';
+  pop.style.top = Math.min(innerHeight - pop.offsetHeight - 8, e.clientY + 4) + 'px';
+});
+addEventListener('pointerdown', e => { if (!pop.hidden && !pop.contains(e.target)) pop.hidden = true; }, true);
 
 // ---------- Controls ----------
 const pct = v => Math.round(v * 100) + '%';
@@ -536,12 +629,15 @@ $('#shuffle').addEventListener('click', () => {
   reseed();
 });
 addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+  if (e.key === 'Escape') pop.hidden = true;
   if (e.code === 'Space' && !e.target.closest('input, textarea, button')) { e.preventDefault(); space = true; stage.classList.add('panning'); return; }
   if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
   const k = e.key.toLowerCase();
   if (k === 'r') reseed();
   else if (k === 'h' || k === 'v') setTool('move');
   else if (k === 'z') setTool('zoom');
+  else if (k === 'd') setTool('smudge');
   else if (k === '0') fitView();
   else if (k === '+' || k === '=') { const r = stage.getBoundingClientRect(); zoomAt(2, r.width / 2, r.height / 2); }
   else if (k === '-') { const r = stage.getBoundingClientRect(); zoomAt(.5, r.width / 2, r.height / 2); }
@@ -572,7 +668,7 @@ function sync() {
   paintSwatch($('[data-color=fillColor]').closest('.swatch'), S.fillColor, S.fill);
   paintSwatch($('[data-color=strokeColor]').closest('.swatch'), S.strokeColor, S.stroke);
   paintSwatch($('[data-color=paper]').closest('.swatch'), S.paper, true);
-  if (dots) clampPan();
+  if (view) clampPan();
   schedule();
 }
 
