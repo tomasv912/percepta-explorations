@@ -187,8 +187,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
       <section>
         <h2>Punto de fuga</h2>
-        <p class="hint">Con el cursor, arrastrá el último cubo de un trazo para redireccionarlo: más lejos agrega cubos, más cerca los quita. Al activar el punto de fuga, todos los trazos giran hacia él (la mira; por defecto el centro) y sus cubos se achican y se juntan en perspectiva; desde ahí, redireccionar o hacer una línea con <kbd>Shift</kbd> siempre apunta al punto.</p>
+        <p class="hint">Con el cursor, arrastrá el último cubo de un trazo para redireccionarlo: más lejos agrega cubos, más cerca los quita. Al activar el punto de fuga, todos los trazos giran hacia él (la mira; por defecto el centro), con los cubos del mismo tamaño. Con Perspectiva, el cubo de atrás de todo es el más chico y la punta, adelante, la más grande; desde ahí, redireccionar o hacer una línea con <kbd>Shift</kbd> siempre apunta al punto.</p>
         <label class="check"><input type="checkbox" data-check="vp"> Punto de fuga</label>
+        <label class="check" id="vpDepth-row"><input type="checkbox" data-check="vpDepth"> Perspectiva (el tamaño crece hacia el frente)</label>
         <button class="btn" id="vp-all">Llevar todo al punto</button>
       </section>
 
@@ -226,7 +227,7 @@ const DEFAULTS = {
   style: 'mono', size: 16, variation: .3, speedSize: 0,
   life: 2.5, permanent: true,
   colorMode: 'ink', palette: ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B'],
-  depth: false, depthBlur: 14, vp: false,
+  depth: false, depthBlur: 14, vp: false, vpDepth: false,
   ink: '#1a1714', grain: .05, paper: '#ede6da', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -441,7 +442,7 @@ function sync() {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   $('#sl-life').hidden = S.permanent;
   $('#sl-depthBlur').hidden = !S.depth;
-  $('#vp-all').hidden = !S.vp;
+  $('#vp-all').hidden = $('#vpDepth-row').hidden = !S.vp;
   placeVp();
   $('#sl-variation').hidden = $('#sl-speedSize').hidden = $('#sl-grain').hidden = S.style === 'mono';
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
@@ -683,18 +684,29 @@ function relay(o, i0, count, p) {
     const m = clamp(Math.round(n * Math.hypot(rc, rs)), 1, 4000);
     for (let i = 0; i <= m; i++) { const u = i / m * n, j = Math.floor(u); add(lerp(j, u - j), o[Math.round(u)], i, o[Math.round(u)].p); }
   } else {
-    // Sampled by arc length: depth z in equal steps, seen at fraction z/(1+z) of the way to the point.
+    // Sampled by arc length. `gp` remembers the row's full-size spacing so re-laying it doesn't drift.
     const L = [0];
     for (let j = 1; j <= n; j++) L.push(L[j - 1] + Math.hypot(o[j].x - o[j - 1].x, o[j].y - o[j - 1].y));
-    const D = Math.hypot(vpPos[0] - x0, vpPos[1] - y0), ze = fe / (1 - fe);
-    const m = clamp(Math.round(ze * D / Math.max(1, L[n] / n)), 1, 4000);
+    const gp = o[0].gp ?? Math.max(1, L[n] / n), at = [], size = [];
+    if (!S.vpDepth) {
+      // Same size and even spacing all along.
+      const m = clamp(Math.round(Math.hypot(rc, rs) * L[n] / gp), 1, 4000);
+      for (let i = 0; i <= m; i++) { at.push(i / m); size.push(1); }
+    } else {
+      // Perspective: depth z in equal steps, seen at fraction z/(1+z) of the way to the point, then
+      // mirrored so the cube drawn first (at the back) is the smallest and the tip (in front) is full size.
+      const D = Math.hypot(vpPos[0] - x0, vpPos[1] - y0), ze = fe / (1 - fe);
+      const m = clamp(Math.round(ze * D / gp), 1, 4000), f = i => { const z = i / m * ze; return z / (1 + z); };
+      for (let i = 0; i <= m; i++) { const g = f(m - i); at.push(1 - g / fe); size.push(1 - g); }
+    }
     let j = 0;
-    for (let i = 0; i <= m; i++) {
-      const z = i / m * ze, f = z / (1 + z), s = f / fe * L[n];
+    at.forEach((u, i) => {
+      const s = u * L[n];
       while (j < n - 1 && L[j + 1] < s) j++;
       const fr = clamp((s - L[j]) / ((L[j + 1] - L[j]) || 1));
-      add(lerp(j, fr), o[fr < .5 ? j : j + 1], i, 1 - f);
-    }
+      add(lerp(j, fr), o[fr < .5 ? j : j + 1], i, size[i]);
+    });
+    out.forEach(c => c.gp = gp);
   }
   cubes.splice(i0, count, ...out);
   updateSel(); wake();
@@ -704,6 +716,7 @@ function relay(o, i0, count, p) {
 // point on does this right away, so the trails snap to it.
 $('#vp-all').addEventListener('click', vpAll);
 $('[data-check="vp"]').addEventListener('change', () => { if (S.vp && cubes.length) vpAll(); });
+$('[data-check="vpDepth"]').addEventListener('change', () => { if (S.vp && cubes.length) vpAll(); });
 function vpAll() {
   const rows = [];
   cubes.forEach((c, i) => { const r = rows[rows.length - 1]; if (r && r.g === c.g) r.count++; else rows.push({ g: c.g, i0: i, count: 1 }); });
