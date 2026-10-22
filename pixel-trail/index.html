@@ -187,7 +187,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
       <section>
         <h2>Punto de fuga</h2>
-        <p class="hint">Con el cursor, arrastrá el último cubo de un trazo para redireccionarlo: más lejos agrega cubos, más cerca los quita. Con el punto de fuga activo, el trazo apunta al punto y sus cubos se achican y se juntan en perspectiva.</p>
+        <p class="hint">Con el cursor, arrastrá el último cubo de un trazo para redireccionarlo: más lejos agrega cubos, más cerca los quita. Al activar el punto de fuga, todos los trazos giran hacia él (la mira; por defecto el centro) y sus cubos se achican y se juntan en perspectiva; desde ahí, redireccionar o hacer una línea con <kbd>Shift</kbd> siempre apunta al punto.</p>
         <label class="check"><input type="checkbox" data-check="vp"> Punto de fuga</label>
         <button class="btn" id="vp-all">Llevar todo al punto</button>
       </section>
@@ -489,7 +489,12 @@ let line = null;
 function layLine(to, t) {
   cubes.splice(cubes.length - line.count);
   dropped = line.n0; line.to = to;
-  const [x0, y0] = line.from, len = Math.hypot(to[0] - x0, to[1] - y0);
+  const [x0, y0] = line.from;
+  if (S.vp) { // aimed at the vanishing point: only the length follows the pointer
+    const wx = vpPos[0] - x0, wy = vpPos[1] - y0, D2 = wx * wx + wy * wy || 1, t = clamp(((to[0] - x0) * wx + (to[1] - y0) * wy) / D2, 0, .95);
+    to = [x0 + wx * t, y0 + wy * t];
+  }
+  const len = Math.hypot(to[0] - x0, to[1] - y0);
   const steps = line.steps ?? Math.max(0, Math.round(len / Math.max(1, S.size * S.lineGap)));
   for (let i = 0; i <= steps; i++) {
     const u = steps ? i / steps : 0;
@@ -552,7 +557,7 @@ function setTool(t) {
 $('#tool-draw').addEventListener('click', () => setTool('draw'));
 $('#undo').addEventListener('click', undo);
 addEventListener('keydown', e => {
-  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !e.target.closest('input, textarea')) { e.preventDefault(); undo(); }
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !e.target.closest('input:not([type=checkbox]):not([type=range]), textarea')) { e.preventDefault(); undo(); }
 });
 $('#tool-select').addEventListener('click', () => setTool('select'));
 function rowBox(g) {
@@ -695,8 +700,11 @@ function relay(o, i0, count, p) {
   updateSel(); wake();
   return out.length;
 }
-// Every row toward the vanishing point, each keeping its length (up to most of the way there).
-$('#vp-all').addEventListener('click', () => {
+// Every row toward the vanishing point, each keeping its length (up to most of the way there). Turning the
+// point on does this right away, so the trails snap to it.
+$('#vp-all').addEventListener('click', vpAll);
+$('[data-check="vp"]').addEventListener('change', () => { if (S.vp && cubes.length) vpAll(); });
+function vpAll() {
   const rows = [];
   cubes.forEach((c, i) => { const r = rows[rows.length - 1]; if (r && r.g === c.g) r.count++; else rows.push({ g: c.g, i0: i, count: 1 }); });
   if (!rows.some(r => r.count > 1)) return toast('No hay trazos para llevar al punto.');
@@ -708,7 +716,7 @@ $('#vp-all').addEventListener('click', () => {
     const t = Math.min(len, D * .9) / D;
     relay(o, r.i0, r.count, [a.x + wx * t, a.y + wy * t]);
   }
-});
+}
 
 // ---------- Export ----------
 let toastT = 0;
