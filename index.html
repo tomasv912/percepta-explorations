@@ -203,7 +203,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div class="seg" data-key="aspect" aria-label="Proporción">
           <button data-v="3:2">3:2</button><button data-v="4:3">4:3</button><button data-v="1:1">1:1</button><button data-v="4:5">4:5</button><button data-v="16:9">16:9</button>
         </div>
-        <label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo blanco al exportar</label>
       </section>
     </div>
     <footer>
@@ -226,7 +225,6 @@ const DEFAULTS = {
   colorMode: 'single', ink: '#000000', palette: ['#111111', '#f15bb5', '#fee440', '#00bbf9', '#00f5d4'],
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, force: .9, drift: .5,
-  bgExport: true,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -470,7 +468,6 @@ function draw(ctx, st) {
 function toSvg(st) {
   const r = v => Math.round(v * 10) / 10, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${gen.W}" height="${gen.H}" viewBox="0 0 ${gen.W} ${gen.H}">`);
-  if (st.bgExport) out.push(`<rect width="100%" height="100%" fill="${PAPER}"/>`);
   eachShape(st, (color, alpha, polys) => {
     const d = polys.map(p => `M${r(p[0])} ${r(p[1])}L${r(p[2])} ${r(p[3])}L${r(p[4])} ${r(p[5])}L${r(p[6])} ${r(p[7])}Z`).join('');
     out.push(`<path fill="${color}"${alpha < 1 ? ` fill-opacity="${Math.round(alpha * 1000) / 1000}"` : ''} d="${d}"/>`);
@@ -648,7 +645,6 @@ function download(name, blob) {
 $('#png').addEventListener('click', () => {
   const c = document.createElement('canvas'); c.width = gen.W; c.height = gen.H;
   const ctx = c.getContext('2d');
-  if (S.bgExport) { ctx.fillStyle = PAPER; ctx.fillRect(0, 0, gen.W, gen.H); }
   draw(ctx, S);
   c.toBlob(b => b ? download(`pixel-waves-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
 });
