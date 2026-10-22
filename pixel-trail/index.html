@@ -116,6 +116,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .tools button:hover { background: var(--fill); }
 .tools button[aria-pressed="true"] { background: var(--text); color: var(--surface); }
 .tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tools .tsep { width: 1px; height: 20px; background: var(--line); margin: 7px 4px; }
 .frame.select { cursor: default; }
 .sel { position: absolute; border: 1px solid #0d99ff; pointer-events: none; z-index: 2; }
 .sel i { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; background: #fff; border: 1px solid #0d99ff; pointer-events: auto; }
@@ -133,11 +134,13 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
     <div class="tools" role="toolbar" aria-label="Herramientas">
       <button id="tool-draw" title="Pincel (B)" aria-label="Pincel"><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.5 3.5l-8.6 8.6"/><path d="M12.4 9.6l1.9 1.9"/><path d="M9.6 12.3a2.8 2.8 0 0 0-3.9 0c-1.2 1.2-.7 3.3-2.2 4.7 2.6 1 5.6.6 6.9-.8a2.8 2.8 0 0 0-.8-3.9z"/></svg></button>
       <button id="tool-select" title="Cursor (V): seleccionar, mover y escalar filas" aria-label="Cursor"><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M5 3.5l12 7-5.2 1.3L9.6 17z"/></svg></button>
+      <span class="tsep"></span>
+      <button id="undo" title="Deshacer (⌘Z / Ctrl+Z)" aria-label="Deshacer"><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 8H4V4"/><path d="M4.4 8A7 7 0 1 1 5 14.5"/></svg></button>
     </div>
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Rastro de cubos que deja el puntero"></canvas>
       <div class="sel" id="sel" hidden><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i><b id="sel-size"></b></div>
     </div>
-    <div class="hud"><span id="stats">Hacé clic y arrastrá sobre la mesa</span><span class="dim"><kbd>B</kbd> pincel · <kbd>V</kbd> cursor · <kbd>Shift</kbd> línea · <kbd>C</kbd> limpiar</span></div>
+    <div class="hud"><span id="stats">Hacé clic y arrastrá sobre la mesa</span><span class="dim"><kbd>B</kbd> pincel · <kbd>V</kbd> cursor · <kbd>⌘Z</kbd> deshacer · <kbd>Shift</kbd> línea</span></div>
   </main>
 
   <aside>
@@ -251,6 +254,18 @@ let cubes = [], last = null, carry = 0, speed = 0, dropped = 0, strokes = 0;
 // Each stroke is a row; scaling a row from the cursor tool stores its size factor here.
 const rowScale = new Map();
 const scaleOf = g => rowScale.get(g) ?? 1;
+// Undo: a snapshot of the cubes and row scales is taken before each stroke, move, scale, delete or clear.
+const history = [];
+function snapshot() {
+  history.push({ cubes: cubes.map(c => ({ ...c })), scale: new Map(rowScale) });
+  if (history.length > 80) history.shift();
+}
+function undo() {
+  const h = history.pop();
+  if (!h) return toast('No hay nada para deshacer.');
+  cubes = h.cubes; rowScale.clear(); h.scale.forEach((v, k) => rowScale.set(k, v));
+  updateSel(); wake();
+}
 function addPoint(p, t) {
   if (!last) { last = { p, t }; carry = 0; return; }
   const dx = p[0] - last.p[0], dy = p[1] - last.p[1], d = Math.hypot(dx, dy);
@@ -385,7 +400,7 @@ document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('i
 $('#palette-row').innerHTML = S.palette.map((_, i) => `<label title="Color ${i + 1}"><input type="color" data-pal="${i}" aria-label="Color ${i + 1}"></label>`).join('');
 document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('input', () => { S.palette[+inp.dataset.pal] = inp.value; sync(); }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
-const clear = () => { cubes = []; rowScale.clear(); select(null); wake(); };
+const clear = () => { if (cubes.length) snapshot(); cubes = []; rowScale.clear(); select(null); wake(); };
 $('#clear').addEventListener('click', clear);
 addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
@@ -479,7 +494,7 @@ frame.addEventListener('pointerdown', e => {
   if (e.button !== 0) return;
   frame.setPointerCapture(e.pointerId);
   if (tool === 'select') return selectDown(e);
-  pressed = true; speed = 0; strokes++;
+  snapshot(); pressed = true; speed = 0; strokes++;
   const p = toArt(e);
   if (e.shiftKey) { line = { from: p, n0: dropped, count: 0, scroll: 0 }; layLine(p, e.timeStamp); return; }
   drop(p[0], p[1], e.timeStamp);
@@ -518,6 +533,10 @@ function setTool(t) {
   frame.classList.toggle('select', t === 'select');
 }
 $('#tool-draw').addEventListener('click', () => setTool('draw'));
+$('#undo').addEventListener('click', undo);
+addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !e.target.closest('input, textarea')) { e.preventDefault(); undo(); }
+});
 $('#tool-select').addEventListener('click', () => setTool('select'));
 function rowBox(g) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -560,6 +579,7 @@ function selectDown(e) {
 }
 function selectMove(e) {
   const p = toArt(e), d = drag;
+  if (!d.saved) { snapshot(); d.saved = true; }
   if (d.mode === 'move') {
     const dx = p[0] - d.from[0], dy = p[1] - d.from[1];
     d.idx.forEach((i, j) => { cubes[i].x = d.orig[j][0] + dx; cubes[i].y = d.orig[j][1] + dy; });
@@ -578,7 +598,7 @@ addEventListener('keydown', e => {
   if (k === 'v') setTool('select');
   else if (k === 'b') setTool('draw');
   else if ((k === 'delete' || k === 'backspace') && selected != null) {
-    e.preventDefault(); cubes = cubes.filter(c => c.g !== selected); rowScale.delete(selected); select(null); wake();
+    e.preventDefault(); snapshot(); cubes = cubes.filter(c => c.g !== selected); rowScale.delete(selected); select(null); wake();
   } else if (k === 'escape') select(null);
 });
 new ResizeObserver(updateSel).observe(frame);
