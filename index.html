@@ -586,7 +586,7 @@ const SLIDERS = {
   rfOrder: { label: 'Orden', min: 0, max: 1, step: .01, fmt: pct },
   contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
   threshold: { label: 'Umbral', min: 0, max: .99, step: .01, fmt: pct, emph: true },
-  count: { label: 'Cubos', values: steps(100, [100, 200], [200, 2000], [1000, 150000]), fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k', emph: true },
+  count: { label: 'Cubos', values: steps(10, [10, 100], [100, 200], [200, 2000], [1000, 150000]), fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño', values: steps(1, [.5, 50], [50, 200]), fmt: v => v + ' px' },
   mod: { label: 'Tamaño según profundidad o tono', min: 0, max: 1, step: .01, fmt: pct },
   variation: { label: 'Variación', min: 0, max: 1, step: .01, fmt: pct },
