@@ -6,6 +6,7 @@
     { name: 'Pixel Trail', path: 'pixel-trail/' },
     { name: 'Photo Preset', path: 'photo-preset/' },
     { name: 'Pixel Rise', path: 'pixel-rise/' },
+    { name: 'D3', path: 'd3/' },
     {
       name: 'Descartes', path: 'descartes/', children: [
         { name: 'Cube Dispersion', path: 'cube-dispersion/' },
