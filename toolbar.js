@@ -8,6 +8,7 @@
     { name: 'Photo Preset', path: 'photo-preset/' },
     { name: 'Pixel Rise', path: 'pixel-rise/' },
     { name: 'Pixel Blocks', path: 'pixel-blocks/' },
+    { name: 'Cluster', path: 'cluster/' },
     {
       name: 'Descartes', path: 'descartes/', children: [
         { name: 'Cube Dispersion', path: 'cube-dispersion/' },

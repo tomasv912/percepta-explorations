@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cluster</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --page: #f4f2ee;
+  --stage: #e9e6e0;
+  --surface: #fbfaf8;
+  --fill: #efece7;
+  --line: #dcd7cf;
+  --text: #1a1714;
+  --text-2: #5e5850;
+  --text-3: #8f887e;
+  --accent: #1a1714;
+  --accent-text: #fbfaf8;
+  --font: Inter, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+    --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+  --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; background: var(--page); color: var(--text); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
+[hidden] { display: none !important; }
+
+.app { display: grid; flex: 1; min-height: 0; grid-template-columns: 1fr 280px; }
+main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding: 24px 24px 52px; }
+.frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); }
+.frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
+.drop { position: absolute; inset: 12px; display: grid; place-items: center; border-radius: 12px; border: 1.5px dashed var(--text-2); background: color-mix(in srgb, var(--stage) 85%, transparent); color: var(--text); font-weight: 500; pointer-events: none; z-index: 2; }
+
+aside { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-left: 1px solid var(--line); }
+.controls { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 24px; }
+section { display: flex; flex-direction: column; gap: 10px; }
+h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.seg { display: flex; background: var(--fill); border-radius: 8px; padding: 2px; gap: 2px; }
+.seg button { flex: 1; border: 0; background: transparent; color: var(--text-2); font: 500 12px var(--font); height: 26px; border-radius: 6px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .08), 0 0 0 1px var(--line); }
+.seg button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.slider { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; }
+.slider label { color: var(--text-2); font-size: 12px; }
+.slider output { font: 12px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.slider input { grid-column: 1 / -1; }
+.slider.emph label { color: var(--text); font-weight: 500; }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; margin: 0; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(var(--text), var(--text)) 0 / var(--p, 50%) 100% no-repeat, var(--line); }
+input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line); }
+input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--text); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text); }
+input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text); }
+.row { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; align-items: center; }
+.row > span { color: var(--text-2); font-size: 12px; }
+.text { font: 12px var(--mono); height: 28px; min-width: 0; border-radius: 8px; border: 0; background: var(--fill); color: var(--text); padding: 0 8px; box-shadow: inset 0 0 0 1px var(--line); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 0; background: var(--fill);
+  color: var(--text); font: 500 12px var(--font); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); }
+.btn:hover { background: var(--line); }
+.btn.icon { width: 28px; padding: 0; }
+.btn.primary { background: var(--accent); color: var(--accent-text); box-shadow: none; }
+.btn.primary:hover { opacity: .9; }
+.btn.big { height: 40px; width: 100%; border-radius: 12px; }
+.check { display: flex; gap: 8px; align-items: center; color: var(--text-2); font-size: 12px; cursor: pointer; }
+.check input { accent-color: var(--text); margin: 0; }
+.swatch { position: relative; display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px 0 4px; border-radius: 8px; background: var(--fill); box-shadow: inset 0 0 0 1px var(--line); font: 12px var(--mono); min-width: 0; }
+.swatch i { width: 20px; height: 20px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); flex: none; }
+.bg-pick select { flex: 1; min-width: 0; height: 100%; border: 0; background: none; color: var(--text); font: 12px var(--font); cursor: pointer; padding: 0; }
+.bg-pick select:focus-visible { outline: none; }
+.bg-pick:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.levels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.levels button { appearance: none; border: 0; height: 26px; border-radius: 0; cursor: pointer; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .14); position: relative; }
+.levels button[aria-pressed="false"] { opacity: .25; }
+.levels button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--surface); color: var(--text); padding: 6px 12px; border-radius: 8px; box-shadow: 0 0 0 1px var(--line); font-size: 12px; z-index: 5; }
+@media (max-width: 767px) {
+  html, body { height: auto; min-height: 100%; }
+  .app { flex: none; grid-template-columns: 1fr; grid-template-rows: minmax(300px, 55vh) auto; }
+  aside { border-left: 0; border-top: 1px solid var(--line); }
+  .controls { overflow: visible; }
+}
+</style>
+</head>
+<body>
+<script src="../toolbar.js"></script>
+<div class="app">
+  <main id="stage">
+    <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Una nube de píxeles de color"></canvas></div>
+    <div class="hud" id="stats">—</div>
+  </main>
+
+  <aside>
+    <div class="controls">
+      <section>
+        <h2>Píxeles</h2>
+        <div id="sl-count"></div>
+        <div id="sl-size"></div>
+        <div id="sl-spread"></div>
+        <div id="sl-core"></div>
+        <div id="sl-clump"></div>
+        <div id="sl-rot"></div>
+        <div class="row">
+          <span>Semilla</span>
+          <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
+          <button class="btn icon" id="reseed" title="Nueva semilla (R)" aria-label="Nueva semilla">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg>
+          </button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Trail</h2>
+        <div id="sl-trail"></div>
+        <div id="sl-trailAngle"></div>
+        <div id="sl-trailJitter"></div>
+      </section>
+
+      <section>
+        <h2>Color</h2>
+        <div class="levels" id="levels" aria-label="Colores"></div>
+        <div class="row" style="grid-template-columns:56px 1fr">
+          <span>Fondo</span>
+          <label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label>
+        </div>
+        <label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label>
+      </section>
+    </div>
+    <footer>
+      <button class="btn primary big" id="png">Exportar PNG</button>
+      <button class="btn big" id="svg">Exportar SVG</button>
+    </footer>
+  </aside>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+// ---------- State ----------
+// A loose cloud of square pixels, each one of the five colours at random (as Pixel Waves' Al azar), on a
+// background of beige or one of those colours; pixels of the background's colour turn beige instead.
+const COLORS = ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B'];
+const BACKGROUNDS = [['#F2F0EA', 'Beige'], ['#D6CCF9', 'Lila'], ['#A8A5EC', 'Violeta'], ['#74A3F4', 'Celeste'], ['#5E999A', 'Verde agua'], ['#4B8D6B', 'Verde']];
+const BEIGE = '#F2F0EA', INK = '#14191F';
+const onBg = (c, bg) => c.toLowerCase() !== bg.toLowerCase() ? c : bg.toLowerCase() === BEIGE.toLowerCase() ? INK : BEIGE;
+const AW = 1600, AH = 1200, RES = 2, TRAIL_BANDS = 12;
+const DEFAULTS = {
+  count: 100, size: 16, spread: .28, core: .45, clump: .4, rot: .15, seed: 1,
+  trail: 0, trailAngle: 180, trailJitter: .3,
+  on: [true, true, true, true, true], bg: '#F2F0EA', bgExport: false,
+};
+const S = structuredClone(DEFAULTS);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+function rng(seed) {
+  let a = seed >>> 0 || 1;
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+// Stateless per-pixel random, so adding pixels never moves the ones already there.
+function hash(i, k) {
+  let t = Math.imul(i ^ 0x9E3779B9, 0x85EBCA6B) ^ Math.imul(k + 0x632BE5AB, 0xC2B2AE35);
+  t ^= t >>> 15; t = Math.imul(t, 0x2C1B3C6D); t ^= t >>> 12; t = Math.imul(t, 0x297A2D39); t ^= t >>> 15;
+  return (t >>> 0) / 4294967296;
+}
+
+// ---------- Cluster ----------
+// Pixel i is placed from its own random numbers: most fall in a soft round cloud around the centre (Dispersión
+// sets its size, Centro how much they crowd the middle); with Agrupamiento's chance a pixel sits right next
+// to an earlier one, so they gather into little clumps of two, three or four touching squares. Each pixel
+// leans a little (Rotación) and keeps its colour; more pixels only add to the cloud.
+function build(st) {
+  const s = st.size, R = Math.min(AW, AH) * (.06 + st.spread * .5), sb = st.seed * 977, out = [];
+  const colors = COLORS.map((c, i) => st.on[i] ? c : null).filter(Boolean);
+  for (let i = 0; i < st.count; i++) {
+    const h = k => hash(i, sb + k);
+    let x, y;
+    if (i > 0 && h(0) < st.clump) {
+      const j = Math.floor(h(1) * i), d = Math.floor(h(2) * 4), ax = [1, -1, 0, 0][d], ay = [0, 0, 1, -1][d];
+      x = out[j].x + ax * s * (.92 + h(3) * .3) + (h(4) - .5) * s * .35;
+      y = out[j].y + ay * s * (.92 + h(3) * .3) + (h(5) - .5) * s * .35;
+    } else {
+      const a = h(6) * Math.PI * 2, r = R * Math.pow(h(7), .5 + st.core * 1.2);
+      x = AW / 2 + Math.cos(a) * r * 1.15; y = AH / 2 + Math.sin(a) * r * .95;
+    }
+    const color = colors.length ? colors[Math.floor(h(8) * colors.length)] : COLORS[0];
+    out.push({ x, y, a: (h(9) - .5) * st.rot * Math.PI / 2, color, t: Math.max(0, 1 + st.trailJitter * (h(10) * 2 - 1)) });
+  }
+  return out;
+}
+// Square corners, and the trail as TRAIL_BANDS strips from full opacity next to the pixel to nothing.
+function corners(p, s) {
+  const c = Math.cos(p.a) * s / 2, n = Math.sin(p.a) * s / 2;
+  return [p.x - c + n, p.y - n - c, p.x + c + n, p.y + n - c, p.x + c - n, p.y + n + c, p.x - c - n, p.y - n + c];
+}
+function shapes(st, pts, fn) {
+  const a = st.trailAngle * Math.PI / 180, dx = Math.cos(a), dy = Math.sin(a), h = st.size / 2;
+  for (const p of pts) {
+    const color = onBg(p.color, st.bg), L = st.trail * p.t;
+    if (L > 0) for (let b = TRAIL_BANDS; b >= 1; b--) {
+      const s0 = (b - 1) / TRAIL_BANDS * L, s1 = b / TRAIL_BANDS * L, nx = -dy * h, ny = dx * h;
+      fn(color, 1 - (b - .5) / TRAIL_BANDS, [p.x + dx * s0 + nx, p.y + dy * s0 + ny, p.x + dx * s1 + nx, p.y + dy * s1 + ny, p.x + dx * s1 - nx, p.y + dy * s1 - ny, p.x + dx * s0 - nx, p.y + dy * s0 - ny]);
+    }
+    fn(color, 1, corners(p, st.size));
+  }
+}
+function bounds(st, pts) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  shapes(st, pts, (c, al, q) => { for (let k = 0; k < 8; k += 2) { x0 = Math.min(x0, q[k]); x1 = Math.max(x1, q[k]); y0 = Math.min(y0, q[k + 1]); y1 = Math.max(y1, q[k + 1]); } });
+  return x0 > x1 ? null : { x0: Math.floor(x0), y0: Math.floor(y0), x1: Math.ceil(x1), y1: Math.ceil(y1) };
+}
+function draw(ctx, st, pts) {
+  shapes(st, pts, (color, alpha, q) => {
+    ctx.globalAlpha = alpha; ctx.fillStyle = color; ctx.beginPath();
+    ctx.moveTo(q[0], q[1]); ctx.lineTo(q[2], q[3]); ctx.lineTo(q[4], q[5]); ctx.lineTo(q[6], q[7]); ctx.closePath(); ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+}
+
+// ---------- UI ----------
+const $ = s => document.querySelector(s);
+const cv = $('#cv'), frame = $('#frame'), stage = $('#stage');
+let pts = null, raf = 0;
+const pct = v => Math.round(v * 100) + '%';
+const SLIDERS = {
+  count: { label: 'Cantidad', min: 100, max: 1000, step: 20, fmt: String, emph: true },
+  size: { label: 'Tamaño del píxel', min: 16, max: 80, step: 4, fmt: v => v + ' px', emph: true },
+  spread: { label: 'Dispersión', min: 0, max: 1, step: .01, fmt: pct },
+  core: { label: 'Centro', min: 0, max: 1, step: .01, fmt: pct },
+  clump: { label: 'Agrupamiento', min: 0, max: .9, step: .01, fmt: pct },
+  rot: { label: 'Rotación', min: 0, max: 1, step: .01, fmt: pct },
+  trail: { label: 'Longitud del trail', min: 0, max: 600, step: 1, fmt: v => v ? v + ' px' : 'sin trail', emph: true },
+  trailAngle: { label: 'Dirección', min: 0, max: 360, step: 1, fmt: v => v + '°' },
+  trailJitter: { label: 'Variación de largo', min: 0, max: 1, step: .01, fmt: pct },
+};
+for (const [key, d] of Object.entries(SLIDERS)) {
+  const host = $('#sl-' + key);
+  host.className = 'slider' + (d.emph ? ' emph' : '');
+  host.innerHTML = `<label for="in-${key}">${d.label}</label><output id="out-${key}"></output><input type="range" id="in-${key}" min="${d.min}" max="${d.max}" step="${d.step}" title="Doble clic para restablecer">`;
+  const input = host.querySelector('input');
+  input.addEventListener('input', () => { S[key] = +input.value; sync(); });
+  input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
+}
+$('#levels').innerHTML = COLORS.map((c, i) => `<button data-i="${i}" style="background:${c}" title="${c} (clic para usarlo o no)" aria-label="${c}"></button>`).join('');
+$('#levels').addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (!b) return; S.on[+b.dataset.i] = !S.on[+b.dataset.i]; sync(); });
+$('#bg').innerHTML = BACKGROUNDS.map(([h, n]) => `<option value="${h}">${n} · ${h}</option>`).join('');
+$('#bg').addEventListener('change', e => { S.bg = e.target.value; sync(); });
+document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
+$('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
+const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
+$('#reseed').addEventListener('click', reseed);
+addEventListener('keydown', e => { if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.target.closest('input, textarea, select') && e.key.toLowerCase() === 'r') reseed(); });
+
+function sync() {
+  for (const key of Object.keys(SLIDERS)) {
+    const input = $('#in-' + key), d = SLIDERS[key];
+    if (+input.value !== S[key]) input.value = S[key];
+    input.style.setProperty('--p', ((S[key] - d.min) / (d.max - d.min) * 100) + '%');
+    $('#out-' + key).textContent = d.fmt(S[key]);
+  }
+  document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
+  document.querySelectorAll('#levels [data-i]').forEach(b => b.setAttribute('aria-pressed', S.on[+b.dataset.i]));
+  $('#bg').value = S.bg; $('#bg-chip').style.background = S.bg;
+  $('#sl-trailAngle').hidden = $('#sl-trailJitter').hidden = !S.trail;
+  const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
+  pts = build(S);
+  schedule();
+}
+function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
+function render() {
+  const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 48) / AW, (r.height - 84) / AH));
+  const w = Math.round(AW * k), h = Math.round(AH * k), dpr = devicePixelRatio || 1;
+  frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(cv.width / AW, 0, 0, cv.height / AH, 0, 0);
+  draw(ctx, S, pts);
+  const b = bounds(S, pts);
+  $('#stats').textContent = `${pts.length} píxeles · exporta ${b ? `${(b.x1 - b.x0) * RES} × ${(b.y1 - b.y0) * RES}` : '—'} px (recortado)`;
+}
+new ResizeObserver(() => pts && schedule()).observe(stage);
+
+// ---------- Export ----------
+// Cropped to the pixels and their trails; the background goes in only when asked.
+let toastT = 0;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2400); }
+function download(name, blob) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast(name + ' descargado');
+}
+function toSvg() {
+  const b = bounds(S, pts); if (!b) return null;
+  const w = (b.x1 - b.x0) * RES, h = (b.y1 - b.y0) * RES, n = v => Math.round(v * 100) / 100, out = [];
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
+  if (S.bgExport) out.push(`<rect width="${w}" height="${h}" fill="${S.bg}"/>`);
+  // One element per pixel (and per trail strip), in drawing order, so overlaps stay as on screen.
+  shapes(S, pts, (color, alpha, q) => {
+    const p = []; for (let k = 0; k < 8; k += 2) p.push(`${n((q[k] - b.x0) * RES)} ${n((q[k + 1] - b.y0) * RES)}`);
+    out.push(`<path fill="${color}"${alpha < 1 ? ` fill-opacity="${Math.round(alpha * 1000) / 1000}"` : ''} d="M${p.join('L')}Z"/>`);
+  });
+  out.push('</svg>');
+  return out.join('');
+}
+$('#png').addEventListener('click', () => {
+  const b = bounds(S, pts); if (!b) return;
+  const c = document.createElement('canvas'); c.width = (b.x1 - b.x0) * RES; c.height = (b.y1 - b.y0) * RES;
+  const ctx = c.getContext('2d'); ctx.setTransform(RES, 0, 0, RES, -b.x0 * RES, -b.y0 * RES);
+  if (S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); }
+  draw(ctx, S, pts);
+  c.toBlob(bl => bl ? download(`cluster-${S.seed}.png`, bl) : toast('No se pudo generar el PNG.'), 'image/png');
+});
+$('#svg').addEventListener('click', () => { const s = toSvg(); if (s) download(`cluster-${S.seed}.svg`, new Blob([s], { type: 'image/svg+xml' })); });
+
+sync();
+</script>
+</body>
+</html>

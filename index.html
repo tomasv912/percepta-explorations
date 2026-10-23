@@ -83,6 +83,9 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 
 .btn:disabled { opacity: .5; cursor: default; }
 
 .swatch { position: relative; display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px 0 4px; border-radius: 8px; background: var(--fill); box-shadow: inset 0 0 0 1px var(--line); font: 12px var(--mono); min-width: 0; }
+.bg-pick select { flex: 1; min-width: 0; height: 100%; border: 0; background: none; color: var(--text); font: 12px var(--font); cursor: pointer; padding: 0; }
+.bg-pick select:focus-visible { outline: none; }
+.bg-pick:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
 .swatch i { width: 20px; height: 20px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); flex: none; }
 .swatch input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 .check { display: flex; gap: 8px; align-items: center; color: var(--text-2); font-size: 12px; cursor: pointer; }
@@ -197,6 +200,11 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <div class="palette" id="palette"></div>
           <button class="btn" id="shuffle">Restablecer paleta</button>
         </div>
+        <div class="row" style="grid-template-columns:56px 1fr">
+          <span>Fondo</span>
+          <label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label>
+        </div>
+        <label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label>
       </section>
 
       <section>
@@ -235,7 +243,11 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <script>
 // ---------- State ----------
 const SIZES = { '3:2': [3000, 2000], '4:3': [3000, 2250], '1:1': [3000, 3000], '4:5': [2400, 3000], '16:9': [3200, 1800] };
-const PAPER = '#FFFFFF';
+// Background: beige or one of the palette colours. Cubes of the background's colour would vanish into it,
+// so they turn beige instead (beige cubes on beige turn ink).
+const BACKGROUNDS = [['#F2F0EA', 'Beige'], ['#D6CCF9', 'Lila'], ['#A8A5EC', 'Violeta'], ['#74A3F4', 'Celeste'], ['#5E999A', 'Verde agua'], ['#4B8D6B', 'Verde']];
+const BEIGE = '#F2F0EA', INK = '#14191F';
+const onBg = (c, bg) => c.toLowerCase() !== bg.toLowerCase() ? c : bg.toLowerCase() === BEIGE.toLowerCase() ? INK : BEIGE;
 const DEFAULTS = {
   seed: 1, aspect: '3:2', source: 'waves',
   layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5,
@@ -245,6 +257,7 @@ const DEFAULTS = {
   colorMode: 'single', ink: '#272727', palette: ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B'],
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
+  bg: '#F2F0EA', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -446,7 +459,7 @@ function colorOf(i, st) {
     const c = gen.rgb[i] & 0xF8F8F8;
     return rgbHex(c >> 16 & 255, c >> 8 & 255, c & 255);
   }
-  const base = st.colorMode === 'random' ? st.palette[gen.pal[i] % st.palette.length] : st.ink;
+  const base = onBg(st.colorMode === 'random' ? st.palette[gen.pal[i] % st.palette.length] : st.ink, st.bg);
   return st.style === 'mono' ? base : tint(base, gen.shade[i], st.grain);
 }
 
@@ -547,6 +560,7 @@ function draw(ctx, st) {
 function toSvg(st) {
   const r = v => Math.round(v * 10) / 10, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${gen.W}" height="${gen.H}" viewBox="0 0 ${gen.W} ${gen.H}">`);
+  if (st.bgExport) out.push(`<rect width="${gen.W}" height="${gen.H}" fill="${st.bg}"/>`);
   eachShape(st, (color, alpha, polys) => {
     const d = polys.map(q => q.map((v, k) => v + (k % 2 ? panY : panX))).map(p => `M${r(p[0])} ${r(p[1])}L${r(p[2])} ${r(p[3])}L${r(p[4])} ${r(p[5])}L${r(p[6])} ${r(p[7])}Z`).join('');
     out.push(`<path fill="${color}"${alpha < 1 ? ` fill-opacity="${Math.round(alpha * 1000) / 1000}"` : ''} d="${d}"/>`);
@@ -625,6 +639,8 @@ document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('inp
 const INKS = ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B', '#272727', '#F6F5F4'];
 $('#inks').innerHTML = INKS.map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join('');
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
+$('#bg').innerHTML = BACKGROUNDS.map(([h, n]) => `<option value="${h}">${n} · ${h}</option>`).join('');
+$('#bg').addEventListener('change', e => { S.bg = e.target.value; sync(); });
 $('#shuffle').addEventListener('click', () => { S.palette = DEFAULTS.palette.slice(); sync(); });
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
@@ -664,6 +680,7 @@ function sync() {
   $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = mono;
   $('#ink-row').hidden = $('#inks').hidden = S.colorMode !== 'single';
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase())); $('#palette-box').hidden = S.colorMode !== 'random';
+  $('#bg').value = S.bg; $('#bg-chip').style.background = S.bg;
   $('#sl-trailAngle').hidden = $('#sl-trailJitter').hidden = !S.trail;
   $('#sl-gridCols').hidden = !S.grid; $('#sl-count').hidden = image && S.grid;
   $('.rt-bar [data-tool="rotate"]').hidden = !image; if (!image && tools.tool === 'rotate') tools.setTool('scatter');
@@ -692,7 +709,7 @@ function frameLoop(now) {
   const dt = last ? Math.min(.05, (now - last) / 1000) : 1 / 60; last = now;
   step(dt);
   const { w, h } = fit();
-  frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = PAPER;
+  frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
   // Zoomed in with the lupa, the canvas renders at the zoomed size so it stays sharp.
   const dpr = (devicePixelRatio || 1) * Math.min(tools?.zoom || 1, 8192 / Math.max(1, w * (devicePixelRatio || 1)));
   const pw = Math.max(1, Math.round(w * dpr)), ph = Math.max(1, Math.round(h * dpr));
@@ -817,6 +834,7 @@ function download(name, blob) {
 $('#png').addEventListener('click', () => {
   const c = document.createElement('canvas'); c.width = gen.W; c.height = gen.H;
   const ctx = c.getContext('2d');
+  if (S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, gen.W, gen.H); }
   ctx.translate(panX, panY);
   draw(ctx, S);
   c.toBlob(b => b ? download(`pixel-waves-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
