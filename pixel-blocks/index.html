@@ -164,7 +164,7 @@ const BLACK = '#14191F', WHITE = '#F2F0EA';
 const RES = 2; // export at 2x
 const DEFAULTS = {
   threshold: .18, contrast: 1.3, gamma: 1, invert: false,
-  height: 12, minW: 2, maxW: 7, gapX: 3, gapY: 4, holes: .12, mix: .25, seed: 1,
+  height: 10, minW: 1, maxW: 6, gapX: 2, gapY: 2, holes: .12, mix: .25, seed: 1,
   on: [true, true, true, true, true, true], bg: 'dark', bgExport: false, width: 1200,
 };
 const S = structuredClone(DEFAULTS);
@@ -213,19 +213,20 @@ function sample() {
 }
 
 // ---------- Blocks ----------
-// Rows of Alto, Separación vertical apart. Along a row, blocks of Ancho mín–máx units (a unit is half the
-// height, so widths stay on whole pixels) with Separación horizontal between them; Huecos leaves some out.
+// The unit is one square pixel of Tamaño del píxel. Rows are one pixel tall, Separación vertical apart;
+// along a row, blocks are runs of Ancho mín–máx whole pixels (a single square at the least), Separación
+// horizontal apart; Huecos leaves some out.
 // Each block takes the image's mean lightness under it; Mezcla nudges it by up to a tone either way, so
 // neighbouring tones interleave as in the reference. Only the tones that are on are used.
 function build(st) {
-  const W = st.width, H = Math.round(W / src.ar), r = rng(st.seed), h = st.height, unit = Math.max(1, Math.round(h / 2));
+  const W = st.width, H = Math.round(W / src.ar), r = rng(st.seed), h = st.height, unit = h;
   const tones = TONES.map((c, i) => st.on[i] ? c : null).filter(Boolean), n = tones.length, out = [];
   if (!n) return { W, H, blocks: out };
   for (let y = 0; y + h <= H; y += h + st.gapY) {
-    for (let x = Math.floor(r() * unit * st.minW) * -1; x < W;) {
+    for (let x = 0; x < W;) {
       const w = unit * (st.minW + Math.floor(r() * (st.maxW - st.minW + 1)));
       const x0 = Math.max(0, x), x1 = Math.min(W, x + w);
-      if (x1 - x0 >= unit && r() >= st.holes) {
+      if (x0 === x && x1 === x + w && r() >= st.holes) {
         let v = mean(x0 / W, y / H, x1 / W, (y + h) / H);
         if (st.invert) v = 1 - v;
         v = clamp((v - .5) * st.contrast + .5) ** st.gamma;
@@ -264,9 +265,9 @@ const SLIDERS = {
   threshold: { label: 'Umbral', min: 0, max: .95, step: .01, fmt: pct, emph: true },
   contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
   gamma: { label: 'Gamma', min: .3, max: 3, step: .05, fmt: v => v.toFixed(2) },
-  height: { label: 'Alto del bloque', min: 2, max: 60, step: 1, fmt: px, emph: true },
-  minW: { label: 'Ancho mínimo', min: 1, max: 20, step: 1, fmt: v => '×' + v },
-  maxW: { label: 'Ancho máximo', min: 1, max: 30, step: 1, fmt: v => '×' + v },
+  height: { label: 'Tamaño del píxel', min: 2, max: 60, step: 1, fmt: px, emph: true },
+  minW: { label: 'Ancho mínimo', min: 1, max: 20, step: 1, fmt: v => v + (v === 1 ? ' píxel' : ' píxeles') },
+  maxW: { label: 'Ancho máximo', min: 1, max: 30, step: 1, fmt: v => v + (v === 1 ? ' píxel' : ' píxeles') },
   gapX: { label: 'Separación horizontal', min: 0, max: 30, step: 1, fmt: px },
   gapY: { label: 'Separación vertical', min: 0, max: 30, step: 1, fmt: px },
   holes: { label: 'Huecos', min: 0, max: .9, step: .01, fmt: pct },
