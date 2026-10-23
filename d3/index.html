@@ -193,6 +193,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-yaw"></div>
         <div id="sl-shade"></div>
         <div id="sl-light"></div>
+        <label class="check"><input type="checkbox" data-check="hide"> Ocultar lo de atrás</label>
       </section>
 
       <section>
@@ -200,6 +201,11 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-count"></div>
         <div id="sl-size"></div>
         <div id="sl-overlap"></div>
+        <label class="check"><input type="checkbox" data-check="grid"> Grilla</label>
+        <div id="sl-pitch"></div>
+        <label class="check"><input type="checkbox" data-check="am"> Amplitud modulada</label>
+        <div id="sl-dmin"></div>
+        <div id="sl-dmax"></div>
       </section>
 
       <section>
@@ -249,7 +255,7 @@ const DEFAULTS = {
   source: 'shape', seed: 1,
   bulbs: 4, waist: .45, fold: .45, droop: .35, twist: .25, yaw: 0, shade: .6, light: 135,
   invert: false, contrast: 1.2, threshold: .15,
-  count: 18000, size: 4.5, overlap: .5,
+  count: 18000, size: 4.5, overlap: .5, hide: false, grid: false, pitch: 6, am: false, dmin: 1.5, dmax: 8,
   palette: 'off', p0: '#ffef99', p1: '#ccefec', p2: '#ffb2cf', p3: '#d9b7f6',
   fill: true, fillColor: '#f4f1ea', stroke: true, strokeColor: '#0c0c0c', strokeW: .8,
   paper: '#0c0c0c',
@@ -324,9 +330,10 @@ function imageDots(st) {
     M[k] = t >= 1 ? -1 : (v - t) / (1 - t);
     cdf[k] = sum += M[k] > 0 ? M[k] ** 1.2 : 0;
   }
-  const rand = rng(st.seed), d = st.size, keep = 1 - st.overlap, cell = Math.max(1, d), cells = new Map(), out = [];
+  const rand = rng(st.seed), keep = 1 - st.overlap, cell = Math.max(1, st.am ? st.dmax : st.size), cells = new Map(), out = [], tone = [];
+  const diam = m => st.am ? lerp(st.dmin, st.dmax, clamp(m)) : st.size;
   const fits = (x, y, m) => {
-    const min = d * keep / Math.sqrt(Math.max(m, .05)), reach = Math.ceil(min / cell);
+    const min = diam(m) * keep / Math.sqrt(Math.max(m, .05)), reach = Math.ceil(min / cell);
     const gx = Math.floor(x / cell), gy = Math.floor(y / cell);
     for (let v = gy - reach; v <= gy + reach; v++) for (let u = gx - reach; u <= gx + reach; u++) {
       const list = cells.get(v * 65536 + u); if (!list) continue;
@@ -345,9 +352,9 @@ function imageDots(st) {
       let list = cells.get(key); if (!list) cells.set(key, list = []);
       list.push(out.length);
     }
-    out.push(x, y); c++;
+    out.push(x, y); tone.push(clamp(M[lo])); c++;
   }
-  return Float32Array.from(out);
+  return { xy: Float32Array.from(out), tone: Float32Array.from(tone) };
 }
 
 // ---------- Shape ----------
@@ -404,7 +411,9 @@ function membraneMesh(st) {
 // Even rows of dots over the mesh, then the camera; returned far to near so near dots cover far ones.
 // Light: each dot keeps a chance that falls with how little its side of the surface faces the light
 // (two-sided, since the veil shows both), so lit faces stay dense and the rest thins into shadow.
-// Extra dots are laid first so the total stays near Cantidad.
+// Extra dots are laid first so the total stays near Cantidad. Ocultar lo de atrás keeps only the dots
+// nearest the camera: the mesh is rasterised into a depth buffer and a dot behind it is dropped, so the
+// shape reads as its visible skin. Each dot's tone (for amplitud modulada) is how much it faces the light.
 function shapeDots(st) {
   const P = membraneMesh(st), rand = rng(st.seed * 131 + 5);
   const dist = (o1, o2) => Math.hypot(P[o1] - P[o2], P[o1 + 1] - P[o2 + 1], P[o1 + 2] - P[o2 + 2]);
@@ -415,7 +424,7 @@ function shapeDots(st) {
     let d = 0; for (let j = 0; j < NA; j++) d += dist((i * NA + j) * 3, ((i - 1) * NA + j) * 3);
     Sm[i] = Sm[i - 1] + d / NA; area += (L[i] + L[i - 1]) / 2 * (d / NA);
   }
-  const h = Math.sqrt(area / (st.count / (1 - st.shade * .6))), jit = 1 - ORDER, pts = [], at3 = [];
+  const h = Math.sqrt(area / (st.count / (1 - st.shade * .6) * (st.hide ? 2.2 : 1))), jit = 1 - ORDER, pts = [], at3 = [];
   const ring = new Float32Array(NA * 3), arc = new Float64Array(NA + 1);
   for (let s = h / 2, row = 0; s < Sm[NT]; s += h * (1 + (rand() - .5) * jit * .8), row++) {
     let i = 1; while (i < NT && Sm[i] < s) i++;
@@ -437,18 +446,47 @@ function shapeDots(st) {
   // Light in view space: from the Luz angle around the frame, a bit towards the camera.
   const la = st.light * Math.PI / 180, lx = Math.cos(la), ly = Math.sin(la), lz = -.6, ll = Math.hypot(lx, ly, lz);
   const vtx = (i, j) => (Math.min(NT, Math.max(0, i)) * NA + (j + NA) % NA) * 3;
-  const all = pts.length / 3, X = new Float32Array(all), Y = new Float32Array(all), Z = new Float32Array(all);
+  const proj = (x, y, z) => { const [xr, y2, z2] = rot(x, y, z), p = 1 / (1 + PERSP * .45 * z2); return [xr * p, -y2 * p, z2]; };
+  let visible = () => true;
+  if (st.hide) {
+    const nv = (NT + 1) * NA, V = new Float32Array(nv * 3);
+    let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+    for (let v = 0; v < nv; v++) {
+      const [a, b, c] = proj(P[v * 3], P[v * 3 + 1], P[v * 3 + 2]);
+      V[v * 3] = a; V[v * 3 + 1] = b; V[v * 3 + 2] = c;
+      if (a < bx0) bx0 = a; if (a > bx1) bx1 = a; if (b < by0) by0 = b; if (b > by1) by1 = b;
+    }
+    const sc = 900 / Math.max(bx1 - bx0, by1 - by0), zw = Math.ceil((bx1 - bx0) * sc) + 2, zh = Math.ceil((by1 - by0) * sc) + 2, zb = new Float32Array(zw * zh).fill(Infinity);
+    const tri = (a, b, c) => {
+      const ax = (V[a] - bx0) * sc, ay = (V[a + 1] - by0) * sc, bx = (V[b] - bx0) * sc, by = (V[b + 1] - by0) * sc, cx = (V[c] - bx0) * sc, cy = (V[c + 1] - by0) * sc;
+      const den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
+      if (Math.abs(den) < 1e-9) return;
+      for (let y = Math.max(0, Math.floor(Math.min(ay, by, cy))); y <= Math.min(zh - 1, Math.ceil(Math.max(ay, by, cy))); y++)
+        for (let x = Math.max(0, Math.floor(Math.min(ax, bx, cx))); x <= Math.min(zw - 1, Math.ceil(Math.max(ax, bx, cx))); x++) {
+          const px = x + .5, py = y + .5, u = ((by - cy) * (px - cx) + (cx - bx) * (py - cy)) / den, v = ((cy - ay) * (px - cx) + (ax - cx) * (py - cy)) / den, w = 1 - u - v;
+          if (u < -.02 || v < -.02 || w < -.02) continue;
+          const z = u * V[a + 2] + v * V[b + 2] + w * V[c + 2], o = y * zw + x;
+          if (z < zb[o]) zb[o] = z;
+        }
+    };
+    for (let i = 0; i < NT; i++) for (let j = 0; j < NA; j++) {
+      const a = (i * NA + j) * 3, b = (i * NA + (j + 1) % NA) * 3, c = ((i + 1) * NA + (j + 1) % NA) * 3, d = ((i + 1) * NA + j) * 3;
+      tri(a, b, c); tri(a, c, d);
+    }
+    visible = (x, y, z) => { const o = Math.min(zh - 1, Math.max(0, Math.floor((y - by0) * sc))) * zw + Math.min(zw - 1, Math.max(0, Math.floor((x - bx0) * sc))); return z <= zb[o] + .03; };
+  }
+  const all = pts.length / 3, X = new Float32Array(all), Y = new Float32Array(all), Z = new Float32Array(all), T = new Float32Array(all);
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, n = 0;
   for (let q = 0; q < all; q++) {
-    if (st.shade > 0) {
-      const i = at3[q * 2], j = at3[q * 2 + 1], a = vtx(i, j + 1), b = vtx(i, j - 1), c = vtx(i + 1, j), d = vtx(i - 1, j);
-      const ux = P[a] - P[b], uy = P[a + 1] - P[b + 1], uz = P[a + 2] - P[b + 2], vx = P[c] - P[d], vy = P[c + 1] - P[d + 1], vz = P[c + 2] - P[d + 2];
-      const [nx, ny, nz] = rot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx), nl = Math.hypot(nx, ny, nz) || 1;
-      const lit = Math.abs(nx * lx + ny * ly + nz * lz) / (nl * ll);
-      if (rand() > 1 - st.shade + st.shade * lit ** 1.4) continue;
-    }
-    const k = n++, [xr, y2, z2] = rot(pts[q * 3], pts[q * 3 + 1], pts[q * 3 + 2]), p = 1 / (1 + PERSP * .45 * z2);
-    X[k] = xr * p; Y[k] = -y2 * p; Z[k] = z2;
+    const i = at3[q * 2], j = at3[q * 2 + 1], a = vtx(i, j + 1), b = vtx(i, j - 1), c = vtx(i + 1, j), d = vtx(i - 1, j);
+    const ux = P[a] - P[b], uy = P[a + 1] - P[b + 1], uz = P[a + 2] - P[b + 2], vx = P[c] - P[d], vy = P[c + 1] - P[d + 1], vz = P[c + 2] - P[d + 2];
+    const [nx, ny, nz] = rot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx), nl = Math.hypot(nx, ny, nz) || 1;
+    const lit = Math.abs(nx * lx + ny * ly + nz * lz) / (nl * ll);
+    if (st.shade > 0 && rand() > 1 - st.shade + st.shade * lit ** 1.4) continue;
+    const [px, py, pz] = proj(pts[q * 3], pts[q * 3 + 1], pts[q * 3 + 2]);
+    if (!visible(px, py, pz)) continue;
+    const k = n++;
+    X[k] = px; Y[k] = py; Z[k] = pz; T[k] = lit;
     x0 = Math.min(x0, X[k]); x1 = Math.max(x1, X[k]); y0 = Math.min(y0, Y[k]); y1 = Math.max(y1, Y[k]);
   }
   const rect = box((x1 - x0) / Math.max(1e-9, y1 - y0)), k = Math.min(rect.w / (x1 - x0), rect.h / (y1 - y0));
@@ -456,20 +494,54 @@ function shapeDots(st) {
   // Never more than Cantidad: a uniform pick keeps the light's proportions.
   const idx = Array.from({ length: n }, (_, i) => i), m = Math.min(n, st.count);
   for (let i = 0; i < m && m < n; i++) { const j = i + Math.floor(rand() * (n - i)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
-  const out = new Float32Array(m * 2);
-  idx.slice(0, m).sort((a, b) => Z[b] - Z[a]).forEach((i, o) => { out[o * 2] = ox + X[i] * k; out[o * 2 + 1] = oy + Y[i] * k; });
-  return out;
+  const out = new Float32Array(m * 2), tone = new Float32Array(m);
+  idx.slice(0, m).sort((a, b) => Z[b] - Z[a]).forEach((i, o) => { out[o * 2] = ox + X[i] * k; out[o * 2 + 1] = oy + Y[i] * k; tone[o] = T[i]; });
+  return { xy: out, tone };
 }
 
 // Dot centres in artboard units (before the hand's offset), cached until a setting that moves them changes;
 // view is the same dots after the brush strokes.
-let dots = null, dotsKey = '', view = null;
+let dots = null, tones = null, dotsKey = '', view = null;
 function currentDots() {
   const image = S.source === 'image' && src;
-  const key = JSON.stringify(image ? ['i', src.ar, src.gw, S.seed, S.invert, S.contrast, S.threshold, S.count, S.size, S.overlap]
-    : ['s', S.seed, S.bulbs, S.waist, S.fold, S.droop, S.twist, S.yaw, S.shade, S.light, S.count]);
-  if (key !== dotsKey) { dots = image ? imageDots(S) : shapeDots(S); dotsKey = key; rebuild(); }
+  const key = JSON.stringify([image ? ['i', src.id, S.invert, S.contrast, S.threshold, S.size, S.overlap, S.am, S.dmin, S.dmax]
+    : ['s', S.bulbs, S.waist, S.fold, S.droop, S.twist, S.yaw, S.shade, S.light, S.hide], S.seed, S.count, S.grid, S.pitch]);
+  if (key !== dotsKey) {
+    const g = image ? imageDots(S) : shapeDots(S), snapped = S.grid ? gridify(g.xy, g.tone, S.pitch) : g;
+    dots = snapped.xy; tones = snapped.tone; dotsKey = key; rebuild();
+  }
   return view;
+}
+// Grilla: every dot moves to the centre of its cell on a square grid (centred on the frame) and each
+// cell keeps one, the last drawn (the nearest, on the shape); its tone is the cell's average.
+function gridify(xy, tone, p) {
+  const cells = new Map(), ox = AW / 2 % p, oy = AH / 2 % p;
+  for (let q = 0; q < tone.length; q++) {
+    const gx = Math.floor((xy[q * 2] - ox) / p), gy = Math.floor((xy[q * 2 + 1] - oy) / p), key = gy * 65536 + gx, c = cells.get(key);
+    if (c) { c.q = q; c.t += tone[q]; c.n++; } else cells.set(key, { q, gx, gy, t: tone[q], n: 1 });
+  }
+  const list = [...cells.values()].sort((a, b) => a.q - b.q), out = new Float32Array(list.length * 2), t = new Float32Array(list.length);
+  list.forEach((c, o) => { out[o * 2] = ox + (c.gx + .5) * p; out[o * 2 + 1] = oy + (c.gy + .5) * p; t[o] = c.t / c.n; });
+  return { xy: out, tone: t };
+}
+// Radius of each dot: fixed, or with amplitud modulada from the tone where it was born (between the
+// smallest and the largest dot). Dots the pincel added take the tone under them on an image, the middle
+// size on the shape.
+const maxR = () => (S.am ? Math.max(S.dmin, S.dmax) : S.size) / 2;
+function radii(it) {
+  const n = it.length / 2, r = new Float32Array(n), home = tones.length;
+  if (!S.am) return r.fill(S.size / 2);
+  for (let q = 0; q < n; q++) {
+    let t = .5;
+    if (q < home) t = tones[q];
+    else if (S.source === 'image' && src && it[q * 2] === it[q * 2]) {
+      const b = box(src.ar), i = clamp(Math.floor((it[q * 2] - b.x) / b.w * src.gw), 0, src.gw - 1), j = clamp(Math.floor((it[q * 2 + 1] - b.y) / b.h * src.gh), 0, src.gh - 1), k = j * src.gw + i;
+      const v = clamp(((S.invert ? src.lum[k] : 1 - src.lum[k]) - .5) * S.contrast + .5);
+      t = clamp((v - S.threshold) / (1 - S.threshold));
+    }
+    r[q] = lerp(S.dmin, S.dmax, t) / 2;
+  }
+  return r;
 }
 
 // ---------- Brushes ----------
@@ -502,7 +574,7 @@ function stamp(op, px, py, dx, dy, R) {
   const v = view, R2 = R * R, rnd = op.rng, t = op.tool;
   if (t === 'paint') {
     // About Fuerza × 15% of the dots that would tile the brush at one diameter apart, per stamp.
-    const n = op.str * Math.PI * R2 / (S.size * 2.2) ** 2 * .15;
+    const n = op.str * Math.PI * R2 / ((S.am ? (S.dmin + S.dmax) / 2 : S.size) * 2.2) ** 2 * .15;
     for (let q = Math.floor(n + rnd()); q > 0; q--) {
       const a = rnd() * Math.PI * 2, rr = R * Math.sqrt(rnd());
       if (rnd() < (rr / R) ** 2) continue; // thinner towards the edge
@@ -511,7 +583,7 @@ function stamp(op, px, py, dx, dy, R) {
     return;
   }
   // Frame edges in content units: past them a dot is gone.
-  const r = S.size / 2, x0 = r - panX, x1 = AW - r - panX, y0 = r - panY, y1 = AH - r - panY;
+  const r = maxR(), x0 = r - panX, x1 = AW - r - panX, y0 = r - panY, y1 = AH - r - panY;
   const j = t === 'smudge' ? op.scatter * (Math.hypot(dx, dy) * 1.5 + R * .04) * 2 : R * .12 * op.str;
   for (let i = 0; i < v.length; i += 2) {
     const ex = v[i] - px, ey = v[i + 1] - py, d2 = ex * ex + ey * ey;
@@ -536,7 +608,7 @@ function stamp(op, px, py, dx, dy, R) {
 function clampPan() {
   const dots = view;
   if (!dots || !dots.length) { panX = panY = 0; return; }
-  const r = S.size / 2 + (S.stroke ? S.strokeW / 2 : 0);
+  const r = maxR() + (S.stroke ? S.strokeW / 2 : 0);
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (let i = 0; i < dots.length; i += 2) {
     const x = dots[i], y = dots[i + 1];
@@ -611,7 +683,7 @@ function colorsOf(it) {
 // With fill and stroke, each circle is filled then outlined in order, so it covers the outlines below.
 // With the palette on, it colours the fill (or the stroke, when there's no fill).
 function draw(ctx, it) {
-  const r = S.size / 2, fill = S.fill, stroke = S.stroke && S.strokeW > 0, cols = colorsOf(it), pal = PAL();
+  const R = radii(it), fill = S.fill, stroke = S.stroke && S.strokeW > 0, cols = colorsOf(it), pal = PAL();
   ctx.fillStyle = S.fillColor; ctx.strokeStyle = S.strokeColor; ctx.lineWidth = S.strokeW;
   if (!fill && !stroke) return;
   if ((fill && stroke) || cols) {
@@ -619,13 +691,13 @@ function draw(ctx, it) {
     for (let i = 0; i < it.length; i += 2) {
       if (it[i] !== it[i]) continue;
       if (cols) fill ? ctx.fillStyle = pal[cols[i >> 1]] : ctx.strokeStyle = pal[cols[i >> 1]];
-      ctx.beginPath(); ctx.arc(it[i] + panX, it[i + 1] + panY, r, 0, Math.PI * 2);
+      ctx.beginPath(); ctx.arc(it[i] + panX, it[i + 1] + panY, R[i >> 1], 0, Math.PI * 2);
       if (fill) ctx.fill();
       if (stroke) ctx.stroke();
     }
   } else {
     ctx.beginPath();
-    for (let i = 0; i < it.length; i += 2) { if (it[i] !== it[i]) continue; ctx.moveTo(it[i] + panX + r, it[i + 1] + panY); ctx.arc(it[i] + panX, it[i + 1] + panY, r, 0, Math.PI * 2); }
+    for (let i = 0; i < it.length; i += 2) { if (it[i] !== it[i]) continue; const r = R[i >> 1]; ctx.moveTo(it[i] + panX + r, it[i + 1] + panY); ctx.arc(it[i] + panX, it[i + 1] + panY, r, 0, Math.PI * 2); }
     fill ? ctx.fill() : ctx.stroke();
   }
 }
@@ -640,7 +712,7 @@ function toSvg(it) {
   // With the palette, one unified path per colour.
   if (S.fill || ring) for (let g = 0; g < (cols ? 4 : 1); g++) {
     const part = cols ? it.map((v, i) => cols[i >> 1] === g ? v : NaN) : it;
-    const d = unionPath(part, S.size / 2, ring ? S.strokeW / 2 : 0);
+    const d = unionPath(part, radii(it), ring ? S.strokeW / 2 : 0);
     if (!d) continue;
     out.push(S.fill
       ? `<path fill="${cols ? pal[g] : S.fillColor}" fill-rule="evenodd"${stroke ? ` stroke="${S.strokeColor}" stroke-width="${S.strokeW}" stroke-linejoin="round"` : ''} d="${d}"/>`
@@ -650,8 +722,10 @@ function toSvg(it) {
   return out.join('\n');
 }
 
-function unionPath(it, r, half) {
-  const outer = r + half + 1, k = clamp(6 / Math.max(.5, r), 1.5, 5);
+function unionPath(it, R, half) {
+  let rmin = Infinity, rmax = 0;
+  for (const v of R) { if (v < rmin) rmin = v; if (v > rmax) rmax = v; }
+  const outer = rmax + half + 1, k = clamp(6 / Math.max(.5, rmin), 1.5, 5);
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (let i = 0; i < it.length; i += 2) {
     const x = it[i] + panX, y = it[i + 1] + panY;
@@ -664,8 +738,8 @@ function unionPath(it, r, half) {
   // Coverage of each pixel centre, from its distance to the circle (or ring) edge.
   for (let i = 0; i < it.length; i += 2) {
     if (it[i] !== it[i]) continue;
-    const cx = (it[i] + panX - x0) * k, cy = (it[i + 1] + panY - y0) * k, R = (r + half) * k + 1;
-    for (let y = Math.max(0, Math.floor(cy - R)); y <= Math.min(h - 1, Math.ceil(cy + R)); y++) for (let x = Math.max(0, Math.floor(cx - R)); x <= Math.min(w - 1, Math.ceil(cx + R)); x++) {
+    const r = R[i >> 1], cx = (it[i] + panX - x0) * k, cy = (it[i + 1] + panY - y0) * k, Rk = (r + half) * k + 1;
+    for (let y = Math.max(0, Math.floor(cy - Rk)); y <= Math.min(h - 1, Math.ceil(cy + Rk)); y++) for (let x = Math.max(0, Math.floor(cx - Rk)); x <= Math.min(w - 1, Math.ceil(cx + Rk)); x++) {
       const dist = Math.hypot(x - cx, y - cy) / k, e = half && !S.fill ? half - Math.abs(dist - r) : r - dist;
       const v = Math.round(clamp(e * k + .5) * 255), o = y * w + x;
       if (v > m[o]) m[o] = v;
@@ -873,6 +947,9 @@ const SLIDERS = {
   light: { label: 'Luz', min: 0, max: 360, step: 1, fmt: v => v + '°' },
   count: { label: 'Cantidad', values: [...Array.from({ length: 10 }, (_, i) => (i + 1) * 100), ...Array.from({ length: 158 }, (_, i) => 1500 + i * 500)], fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k' },
   size: { label: 'Diámetro', min: 1, max: 40, step: .5, fmt: v => v + ' px' },
+  pitch: { label: 'Paso de la grilla', min: 2, max: 40, step: .5, fmt: v => v + ' px' },
+  dmin: { label: 'Punto menor', min: .5, max: 40, step: .5, fmt: v => v + ' px' },
+  dmax: { label: 'Punto mayor', min: .5, max: 40, step: .5, fmt: v => v + ' px' },
   overlap: { label: 'Superposición', min: 0, max: 1, step: .01, fmt: pct },
   strokeW: { label: 'Grosor del trazo', min: .1, max: 8, step: .1, fmt: v => v.toFixed(1) + ' px' },
 };
@@ -946,7 +1023,10 @@ function sync() {
   const shape = S.source === 'shape';
   $('#shape-section').hidden = !shape;
   $('#image-controls').hidden = shape;
-  $('#sl-overlap').hidden = shape;
+  $('#sl-overlap').hidden = shape || S.grid;
+  $('#sl-pitch').hidden = !S.grid;
+  $('#sl-dmin').hidden = $('#sl-dmax').hidden = !S.am;
+  $('#sl-size').hidden = S.am;
   $('#sl-strokeW').hidden = !S.stroke;
   paintSwatch($('[data-color=fillColor]').closest('.swatch'), S.fillColor, S.fill && S.palette === 'off');
   $('#pal-row').hidden = S.palette === 'off';
