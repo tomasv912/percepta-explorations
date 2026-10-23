@@ -130,7 +130,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
       <div class="lbl">Color</div>
       <div class="swatches"><span>Tinta</span><input type="color" id="ink"><span>Fondo</span><input type="color" id="paper"></div>
       <label class="tg" for="imageColors" id="imageColorsRow"><span>Colores de la fuente</span><input type="checkbox" id="imageColors"></label>
-      <label class="tg" for="transparent"><span>PNG transparente</span><input type="checkbox" id="transparent"></label>
+      <label class="tg" for="transparent"><span>Exportar sin fondo</span><input type="checkbox" id="transparent"></label>
     </div>
 
     <div class="group">
@@ -141,6 +141,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     <div class="actions">
       <button class="btn primary" id="reseed">Nueva semilla <kbd>R</kbd></button>
       <button class="btn" id="png">Descargar PNG <kbd>↓</kbd></button>
+      <button class="btn" id="svg">Descargar SVG</button>
     </div>
   </aside>
 
@@ -301,7 +302,7 @@ function pointsOf(g) {
   for (let k = 0; k < g.pix.length; k += 3) { base.push(g.pix[k], g.pix[k + 1]); col.push(g.pix[k + 2]); }
   return { base, col };
 }
-function draw(ctx, W, H, scale, withBg) {
+function draw(ctx, W, H, scale, withBg, layerOnly) {
   if (withBg) { ctx.fillStyle = S.paper; ctx.fillRect(0, 0, W, H); }
   const { d } = gen, { v, src } = edit, col = pts.col;
   ctx.save(); ctx.translate(panX, panY);
@@ -329,6 +330,7 @@ function draw(ctx, W, H, scale, withBg) {
     }
     lx.fill();
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(layer, panX * scale, panY * scale); ctx.restore();
+    if (layerOnly) { ctx.restore(); return; }
     // Dispersed pixels, batched per colour.
     const groups = new Map();
     for (let i = 0; i < v.length; i += 2) {
@@ -527,6 +529,50 @@ $('png').addEventListener('click', () => {
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     toast(a.download + ' descargado');
   }, 'image/png');
+});
+// SVG, in export pixels (1:1 with the PNG). Pixelated it is pure vector: the ink cells of each row merged
+// into runs, one path, every edge on the grid. Otherwise the source stays a raster (an embedded image of
+// what is left of it) under the dispersed pixels as rects, one path per colour.
+function toSvg() {
+  const [W, H] = SIZES[S.aspect], d = S.cell, k = RES, { v, src } = edit, out = [];
+  const n = x => Math.round(x * k * 100) / 100;
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W * k}" height="${H * k}" viewBox="0 0 ${W * k} ${H * k}">`);
+  if (!S.transparent) out.push(`<rect width="${W * k}" height="${H * k}" fill="${S.paper}"/>`);
+  if (S.pixelate) {
+    const cols = Math.round(W / d), rows = Math.round(H / d), on = new Uint8Array(cols * rows);
+    for (let i = 0; i < v.length; i += 2) {
+      if (v[i] !== v[i]) continue;
+      const c = Math.floor((v[i] + panX) / d), r = Math.floor((v[i + 1] + panY) / d);
+      if (c >= 0 && c < cols && r >= 0 && r < rows) on[r * cols + c] = 1;
+    }
+    let p = '';
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols;) {
+      if (!on[r * cols + c]) { c++; continue; }
+      let e = c; while (e < cols && on[r * cols + e]) e++;
+      p += `M${n(c * d)} ${n(r * d)}h${n((e - c) * d)}v${n(d)}h${-n((e - c) * d)}z`; c = e;
+    }
+    if (p) out.push(`<path fill="${S.ink}" d="${p}"/>`);
+  } else {
+    const c = document.createElement('canvas'); c.width = W * k; c.height = H * k;
+    const ctx = c.getContext('2d'); ctx.setTransform(k, 0, 0, k, 0, 0);
+    draw(ctx, W, H, k, false, true);
+    out.push(`<image width="${W * k}" height="${H * k}" href="${c.toDataURL('image/png')}"/>`);
+    const groups = new Map(), tint = !S.imageColors;
+    for (let i = 0; i < v.length; i += 2) {
+      if (v[i] !== v[i]) continue;
+      const col = tint ? S.ink : hex(pts.col[src[i / 2]]), x = v[i] + panX - d / 2, y = v[i + 1] + panY - d / 2;
+      if (x + d < 0 || y + d < 0 || x > W || y > H) continue;
+      groups.set(col, (groups.get(col) || '') + `M${n(x)} ${n(y)}h${n(d)}v${n(d)}h${-n(d)}z`);
+    }
+    for (const [col, p] of groups) out.push(`<path fill="${col}" d="${p}"/>`);
+  }
+  out.push('</svg>');
+  return out.join('');
+}
+$('svg').addEventListener('click', () => {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([toSvg()], { type: 'image/svg+xml' })); a.download = `pixel-rise-${S.seed}.svg`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast(a.download + ' descargado');
 });
 
 sync();
