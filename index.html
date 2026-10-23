@@ -258,7 +258,7 @@ const DEFAULTS = {
   seed: 1, aspect: '3:2', source: 'waves',
   layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5,
   rfChannels: 3, rfFocus: .42, rfChaos: .7, rfSpread: .6, rfAmp: .5, rfFreq: 1, rfOrder: .7,
-  blFlowers: 3, blSize: .5, blFlorets: 30, blShare: .5,
+  blFlowers: 3, blSize: .5, blFlorets: 32, blShare: .5,
   contrast: 1.2, threshold: .1, invert: false, grid: false, gridCols: 140, rotX: 0, rotY: 0, rotZ: 0,
   style: 'mono', count: 45000, size: 3.5, mod: .6, variation: .35, grain: .12,
   colorMode: 'single', ink: '#272727', palette: ['#D9D0FA', '#A8A5EC', '#A0C2FF', '#98DEDF', '#7FE4B0'],
@@ -375,39 +375,68 @@ function generate(st) {
     // Hortensia: the sheet ends early (at fEnd) and its rays pour into Flores hydrangea heads to its right,
     // each a dome of four-petalled florets (Florecillas, set out on a sunflower spiral) drawn with points.
     // Each ray goes to one head and carries its colour there; Puntos en las flores is their share.
-    const bloom = st.source === 'bloom', fEnd = bloom ? Math.max(f + .15, .8) : 1, F = st.blFlowers, heads = [];
+    const bloom = st.source === 'bloom', fEnd = bloom ? Math.max(f + .2, .86) : 1, F = st.blFlowers, heads = [];
+    // Hortensia: past the waves the rays gather into a stem per flower, which runs into the base of a
+    // hydrangea head. A head is a dome of four-sepalled florets (Florecillas, on a sunflower spiral over a
+    // hemisphere): those in the middle face us, those at the rim are seen edge-on, so they flatten towards the
+    // rim. Points draw outlines, not fills: most sit on the edges of the sepals, some on their midribs and the
+    // florets' eyes, and florets in front hide what is behind them, so the head reads as a drawing.
     if (bloom) {
-      const Rh = .1 + st.blSize * .14, side = Math.ceil(Math.sqrt(F)), cw = Rh * 2.1 * side, ch = Rh * 2.1 * Math.ceil(F / side);
-      const x0 = fEnd * AR + Rh * 1.1;
+      const Rh = .13 + st.blSize * .2, stem = .05 + Rh * .4, side = Math.ceil(Math.sqrt(F)), cw = Rh * 2.1 * side, ch = Rh * 2.1 * Math.ceil(F / side);
+      const x0 = fEnd * AR + stem + Rh;
       for (let i = 0; i < F; i++) {
         let best = null;
         for (let t = 0; t < 200; t++) {
-          const c = [x0 + r() * cw, (r() - .5) * ch], R = Rh * (.8 + r() * .4);
+          const c = [x0 + r() * cw, (r() - .5) * ch - (F === 1 ? Rh * .6 : 0)], R = Rh * (.8 + r() * .4);
           const gap = heads.reduce((m, h) => Math.min(m, Math.hypot(h.x - c[0], h.y - c[1]) - h.R - R), Infinity);
           if (!best || gap > best.gap) best = { x: c[0], y: c[1], R, gap };
-          if (gap > -R * .25) break;
+          if (gap > -R * .2) break;
         }
-        const N = st.blFlorets, rot = r() * Math.PI * 2, fl = [];
+        const N = st.blFlorets, rot = r() * Math.PI * 2, fl = [], rf = best.R * 1.55 / Math.sqrt(N);
         for (let k = 0; k < N; k++) {
-          const rad = best.R * .86 * Math.sqrt((k + .5) / N), a = k * 2.39996 + rot;
-          fl.push({ c: k % 3 === 0 ? 1 : 0, x: best.x + Math.cos(a) * rad, y: best.y + Math.sin(a) * rad * .92, r: best.R * 1.05 / Math.sqrt(N) * (.85 + r() * .3), rot: r() * Math.PI / 2 });
+          const z = 1 - (k + .5) / N * .96, rr = Math.sqrt(1 - z * z), a = k * 2.39996 + rot;
+          fl.push({ c: r() < .3 ? 1 : 0, x: best.x + Math.cos(a) * rr * best.R, y: best.y + Math.sin(a) * rr * best.R * .94,
+            z, dx: Math.cos(a), dy: Math.sin(a), f: Math.max(.3, z), rf: rf * (.85 + r() * .3), rot: r() * Math.PI / 2 });
         }
-        heads.push({ x: best.x, y: best.y, R: best.R, fl });
+        // Stem: from its base just past the waves to the underside of the head.
+        const A = [best.x - best.R * .35, best.y + best.R * .85], B = [fEnd * AR - .02, A[1] * .3];
+        heads.push({ x: best.x, y: best.y, R: best.R, fl, A, B });
       }
     }
+    // Where a floret is seen: its own plane squashed along the dome's radius by how much it faces us.
+    const project = (q, lx, ly) => { const p = lx * q.dx + ly * q.dy; return [q.x + lx + (q.f - 1) * p * q.dx, q.y + ly + (q.f - 1) * p * q.dy]; };
+    const hidden = (h, k, x, y) => {
+      for (const q of h.fl) {
+        if (q.z <= h.fl[k].z) continue;
+        // Back into q's own plane, then inside any of its four sepals (the shapes drawn below)?
+        const ox = x - q.x, oy = y - q.y, p = ox * q.dx + oy * q.dy, lx = ox + (1 / q.f - 1) * p * q.dx, ly = oy + (1 / q.f - 1) * p * q.dy;
+        const pr = q.rf * .54;
+        if (lx * lx + ly * ly > (pr * 2.1) ** 2) continue;
+        for (let s4 = 0; s4 < 4; s4++) {
+          const pa = q.rot + s4 * Math.PI / 2, ex = lx - Math.cos(pa) * pr * .98, ey = ly - Math.sin(pa) * pr * .98;
+          if (ex * ex + ey * ey < (pr * .97) ** 2) return true;
+        }
+      }
+      return false;
+    };
     for (let tries = 0; got < n && tries < n * 4; tries++) {
       if (bloom && r() < st.blShare) {
-        // A point on a floret: one of its four petals (an ellipse leaning out from the centre), or its eye.
-        const hi = Math.floor(r() * F), h = heads[hi], q = h.fl[Math.floor(r() * h.fl.length)];
-        let x, y;
-        if (r() < .08) { const a = r() * Math.PI * 2, rr = Math.sqrt(r()) * q.r * .14; x = q.x + Math.cos(a) * rr; y = q.y + Math.sin(a) * rr; }
+        const hi = Math.floor(r() * F), h = heads[hi], k = Math.floor(r() * h.fl.length), q = h.fl[k], m = r();
+        let lx, ly;
+        if (m < .06) { const a = r() * Math.PI * 2, rr = Math.sqrt(r()) * q.rf * .1; lx = Math.cos(a) * rr; ly = Math.sin(a) * rr; }
         else {
-          const pa = q.rot + Math.floor(r() * 4) * Math.PI / 2, cx = q.x + Math.cos(pa) * q.r * .52, cy = q.y + Math.sin(pa) * q.r * .52;
-          const t = r() * Math.PI * 2, rr = Math.sqrt(r()), lx = Math.cos(t) * rr * q.r * .48, ly = Math.sin(t) * rr * q.r * .4;
-          x = cx + lx * Math.cos(pa) - ly * Math.sin(pa); y = cy + lx * Math.sin(pa) + ly * Math.cos(pa);
+          // A sepal: a broad rounded lobe from the eye outwards; its edge carries most of the points.
+          const pa = q.rot + Math.floor(r() * 4) * Math.PI / 2, pr = q.rf * .54, cx = Math.cos(pa) * pr * .98, cy = Math.sin(pa) * pr * .98;
+          let ex, ey;
+          if (m < .2) { const t = r() * .9; ex = t * pr * 2 * .95; ey = g() * pr * .03; }                 // midrib
+          else if (m < .27) { const t = r() * Math.PI * 2, rr = Math.sqrt(r()) * pr; ex = pr + Math.cos(t) * rr; ey = Math.sin(t) * rr; } // a little fill
+          else { const t = r() * Math.PI * 2, rr = pr * (1 + .07 * Math.cos(2 * t)) + g() * pr * .035; ex = pr + Math.cos(t) * rr; ey = Math.sin(t) * rr * .95; } // edge
+          lx = (ex - pr) * Math.cos(pa) - ey * Math.sin(pa) + cx; ly = (ex - pr) * Math.sin(pa) + ey * Math.cos(pa) + cy;
         }
-        // Mostly the head's colour, a third of the florets in the next one, as hydrangeas shade.
-        add(x, y, .9, 0, (hi + q.c) % P);
+        const [x, y] = project(q, lx, ly);
+        if (hidden(h, k, x, y)) continue;
+        // Mostly the head's colour, about a third of the florets in the next one, as hydrangeas shade.
+        add(x, y, .85, 0, (hi + q.c) % P);
         continue;
       }
       const u = r() * fEnd;
@@ -424,9 +453,15 @@ function generate(st) {
         let x = u * AR, y = d * AR * (st.rfSpread * 1.7 * w + st.rfAmp * .6 * (sheet(s, w) - sheet(0, 0))) + g() * jit;
         let col = Math.min(P - 1, Math.floor((w + .5) * P));
         if (bloom) {
-          // Towards its end each ray bends into its flower, arriving at the head's centre.
-          const hi = Math.min(F - 1, Math.floor((w + .5) * F)), h = heads[hi], b = smooth(.62, 1, s) ** 1.6;
-          x += (h.x - h.R * .2 - x) * b; y += (h.y - y) * b; col = hi % P;
+          // The rays of each flower gather at its stem's base, then run up the stem into the head.
+          const hi = Math.min(F - 1, Math.floor((w + .5) * F)), h = heads[hi];
+          if (s < .86) { const b = smooth(.6, .86, s) ** 1.4; x += (h.B[0] - x) * b; y += (h.B[1] - y) * b; }
+          else {
+            const q = (s - .86) / .14, bow = Math.sin(Math.PI * q) * .03, dx = h.A[0] - h.B[0], dy = h.A[1] - h.B[1], L = Math.hypot(dx, dy) || 1;
+            const off = bow + g() * (.002 + .004 * (1 - q) + tight * .3);
+            x = h.B[0] + dx * q - dy / L * off; y = h.B[1] + dy * q + dx / L * off;
+          }
+          col = hi % P;
         }
         add(x, y, 1, 0, r() < settle ? col : undefined);
       }
