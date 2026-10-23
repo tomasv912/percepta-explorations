@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixel Blocks</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --page: #f4f2ee;
+  --stage: #e9e6e0;
+  --surface: #fbfaf8;
+  --fill: #efece7;
+  --line: #dcd7cf;
+  --text: #1a1714;
+  --text-2: #5e5850;
+  --text-3: #8f887e;
+  --accent: #1a1714;
+  --accent-text: #fbfaf8;
+  --font: Inter, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+    --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+  --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; background: var(--page); color: var(--text); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
+[hidden] { display: none !important; }
+
+.app { display: grid; flex: 1; min-height: 0; grid-template-columns: 1fr 280px; }
+main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding: 24px 24px 52px; }
+.frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); }
+.frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+.hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
+.drop { position: absolute; inset: 12px; display: grid; place-items: center; border-radius: 12px; border: 1.5px dashed var(--text-2); background: color-mix(in srgb, var(--stage) 85%, transparent); color: var(--text); font-weight: 500; pointer-events: none; z-index: 2; }
+
+aside { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-left: 1px solid var(--line); }
+.controls { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 24px; }
+section { display: flex; flex-direction: column; gap: 10px; }
+h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.seg { display: flex; background: var(--fill); border-radius: 8px; padding: 2px; gap: 2px; }
+.seg button { flex: 1; border: 0; background: transparent; color: var(--text-2); font: 500 12px var(--font); height: 26px; border-radius: 6px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .08), 0 0 0 1px var(--line); }
+.seg button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.slider { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; }
+.slider label { color: var(--text-2); font-size: 12px; }
+.slider output { font: 12px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.slider input { grid-column: 1 / -1; }
+.slider.emph label { color: var(--text); font-weight: 500; }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; margin: 0; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(var(--text), var(--text)) 0 / var(--p, 50%) 100% no-repeat, var(--line); }
+input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line); }
+input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--text); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text); }
+input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text); }
+.row { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; align-items: center; }
+.row > span { color: var(--text-2); font-size: 12px; }
+.text { font: 12px var(--mono); height: 28px; min-width: 0; border-radius: 8px; border: 0; background: var(--fill); color: var(--text); padding: 0 8px; box-shadow: inset 0 0 0 1px var(--line); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 0; background: var(--fill);
+  color: var(--text); font: 500 12px var(--font); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); }
+.btn:hover { background: var(--line); }
+.btn.icon { width: 28px; padding: 0; }
+.btn.primary { background: var(--accent); color: var(--accent-text); box-shadow: none; }
+.btn.primary:hover { opacity: .9; }
+.btn.big { height: 40px; width: 100%; border-radius: 12px; }
+.check { display: flex; gap: 8px; align-items: center; color: var(--text-2); font-size: 12px; cursor: pointer; }
+.check input { accent-color: var(--text); margin: 0; }
+.levels { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.levels button { appearance: none; border: 0; height: 26px; border-radius: 0; cursor: pointer; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .14); position: relative; }
+.levels button[aria-pressed="false"] { opacity: .25; }
+.levels button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--surface); color: var(--text); padding: 6px 12px; border-radius: 8px; box-shadow: 0 0 0 1px var(--line); font-size: 12px; z-index: 5; }
+@media (max-width: 767px) {
+  html, body { height: auto; min-height: 100%; }
+  .app { flex: none; grid-template-columns: 1fr; grid-template-rows: minmax(300px, 55vh) auto; }
+  aside { border-left: 0; border-top: 1px solid var(--line); }
+  .controls { overflow: visible; }
+}
+</style>
+</head>
+<body>
+<script src="../toolbar.js"></script>
+<div class="app">
+  <main id="stage">
+    <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Imagen formada por bloques de color"></canvas></div>
+    <div class="drop" id="drop" hidden>Soltá la imagen</div>
+    <div class="hud" id="stats">—</div>
+  </main>
+
+  <aside>
+    <div class="controls">
+      <section>
+        <h2>Imagen</h2>
+        <button class="btn" id="upload">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10.5V2.5M4.5 6 8 2.5 11.5 6"/><path d="M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2"/></svg>
+          Subir imagen
+        </button>
+        <input type="file" id="file" accept="image/*" hidden>
+        <div id="sl-threshold"></div>
+        <div id="sl-contrast"></div>
+        <div id="sl-gamma"></div>
+        <label class="check"><input type="checkbox" data-check="invert"> Invertir</label>
+      </section>
+
+      <section>
+        <h2>Bloques</h2>
+        <div id="sl-height"></div>
+        <div id="sl-minW"></div>
+        <div id="sl-maxW"></div>
+        <div id="sl-gapX"></div>
+        <div id="sl-gapY"></div>
+        <div id="sl-holes"></div>
+        <div id="sl-mix"></div>
+        <div class="row">
+          <span>Semilla</span>
+          <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
+          <button class="btn icon" id="reseed" title="Nueva semilla (R)" aria-label="Nueva semilla">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg>
+          </button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Color</h2>
+        <div class="levels" id="levels" aria-label="Tonos, de oscuro a claro"></div>
+        <div class="seg" data-key="bg" aria-label="Fondo">
+          <button data-v="dark">Fondo negro</button><button data-v="light">Fondo blanco</button>
+        </div>
+        <label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label>
+      </section>
+
+      <section>
+        <h2>Formato</h2>
+        <div id="sl-width"></div>
+      </section>
+    </div>
+    <footer>
+      <button class="btn primary big" id="png">Exportar PNG</button>
+      <button class="btn big" id="svg">Exportar SVG</button>
+    </footer>
+  </aside>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+// ---------- State ----------
+// The picture is rows of solid rectangles (no rounding, every edge on whole pixels), each block as wide as a
+// random number of units, coloured by how light the image is under it: the lightest tones get white, then
+// the five colours from light to dark; below Umbral there is no block, only background.
+const TONES = ['#4B8D6B', '#5E999A', '#74A3F4', '#A8A5EC', '#D6CCF9', '#F2F0EA']; // dark → light
+const BLACK = '#14191F', WHITE = '#F2F0EA';
+const RES = 2; // export at 2x
+const DEFAULTS = {
+  threshold: .18, contrast: 1.3, gamma: 1, invert: false,
+  height: 12, minW: 2, maxW: 7, gapX: 3, gapY: 4, holes: .12, mix: .25, seed: 1,
+  on: [true, true, true, true, true, true], bg: 'dark', bgExport: false, width: 1200,
+};
+const S = structuredClone(DEFAULTS);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+function rng(seed) {
+  let a = seed >>> 0 || 1;
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+
+// ---------- Image ----------
+// Read once into a luminance grid (long side 600) with a summed-area table, so a block's average is O(1).
+let src = null, srcId = 0;
+function loadImage(el) {
+  const iw = el.naturalWidth || el.width, ih = el.naturalHeight || el.height, G = 600;
+  const gw = Math.max(2, Math.round(iw >= ih ? G : G * iw / ih)), gh = Math.max(2, Math.round(iw >= ih ? G * ih / iw : G));
+  const c = document.createElement('canvas'); c.width = gw; c.height = gh;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.fillStyle = '#000'; x.fillRect(0, 0, gw, gh); // transparent reads as dark: no blocks there
+  x.imageSmoothingQuality = 'high'; x.drawImage(el, 0, 0, gw, gh);
+  const d = x.getImageData(0, 0, gw, gh).data, sat = new Float64Array((gw + 1) * (gh + 1));
+  for (let j = 0; j < gh; j++) {
+    let row = 0;
+    for (let i = 0; i < gw; i++) {
+      const k = (j * gw + i) * 4;
+      row += (.2126 * d[k] + .7152 * d[k + 1] + .0722 * d[k + 2]) / 255;
+      sat[(j + 1) * (gw + 1) + i + 1] = sat[j * (gw + 1) + i + 1] + row;
+    }
+  }
+  src = { gw, gh, sat, ar: iw / ih }; srcId++;
+}
+// Mean lightness of the image over a rectangle given in 0..1 coordinates.
+function mean(x0, y0, x1, y1) {
+  const { gw, gh, sat } = src, W = gw + 1;
+  const a = clamp(Math.floor(x0 * gw), 0, gw - 1), b = clamp(Math.floor(y0 * gh), 0, gh - 1);
+  const c = clamp(Math.ceil(x1 * gw), a + 1, gw), e = clamp(Math.ceil(y1 * gh), b + 1, gh);
+  return (sat[e * W + c] - sat[b * W + c] - sat[e * W + a] + sat[b * W + a]) / ((c - a) * (e - b));
+}
+// A sample to start from: a lit sphere and a smaller one behind it.
+function sample() {
+  const c = document.createElement('canvas'); c.width = 900; c.height = 1100;
+  const x = c.getContext('2d');
+  x.fillStyle = '#000'; x.fillRect(0, 0, 900, 1100);
+  const ball = (cx, cy, r, k) => { const g = x.createRadialGradient(cx - r * .35, cy - r * .4, r * .05, cx, cy, r); g.addColorStop(0, `rgb(${255 * k},${255 * k},${255 * k})`); g.addColorStop(.7, `rgb(${110 * k},${110 * k},${110 * k})`); g.addColorStop(1, '#000'); x.fillStyle = g; x.beginPath(); x.arc(cx, cy, r, 0, 7); x.fill(); };
+  ball(620, 330, 190, .75); ball(400, 650, 340, 1);
+  return c;
+}
+
+// ---------- Blocks ----------
+// Rows of Alto, Separación vertical apart. Along a row, blocks of Ancho mín–máx units (a unit is half the
+// height, so widths stay on whole pixels) with Separación horizontal between them; Huecos leaves some out.
+// Each block takes the image's mean lightness under it; Mezcla nudges it by up to a tone either way, so
+// neighbouring tones interleave as in the reference. Only the tones that are on are used.
+function build(st) {
+  const W = st.width, H = Math.round(W / src.ar), r = rng(st.seed), h = st.height, unit = Math.max(1, Math.round(h / 2));
+  const tones = TONES.map((c, i) => st.on[i] ? c : null).filter(Boolean), n = tones.length, out = [];
+  if (!n) return { W, H, blocks: out };
+  for (let y = 0; y + h <= H; y += h + st.gapY) {
+    for (let x = Math.floor(r() * unit * st.minW) * -1; x < W;) {
+      const w = unit * (st.minW + Math.floor(r() * (st.maxW - st.minW + 1)));
+      const x0 = Math.max(0, x), x1 = Math.min(W, x + w);
+      if (x1 - x0 >= unit && r() >= st.holes) {
+        let v = mean(x0 / W, y / H, x1 / W, (y + h) / H);
+        if (st.invert) v = 1 - v;
+        v = clamp((v - .5) * st.contrast + .5) ** st.gamma;
+        if (v >= st.threshold) {
+          const t = (v - st.threshold) / (1 - st.threshold) + (r() - .5) * st.mix / n * 2;
+          out.push(x0, y, x1 - x0, h, clamp(Math.floor(t * n), 0, n - 1));
+        }
+      }
+      x += w + st.gapX;
+    }
+  }
+  return { W, H, blocks: out, tones };
+}
+function bounds(g) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const b = g.blocks;
+  for (let k = 0; k < b.length; k += 5) { x0 = Math.min(x0, b[k]); y0 = Math.min(y0, b[k + 1]); x1 = Math.max(x1, b[k] + b[k + 2]); y1 = Math.max(y1, b[k + 1] + b[k + 3]); }
+  return x0 > x1 ? null : { x0, y0, x1, y1 };
+}
+function draw(ctx, g, ox = 0, oy = 0) {
+  const by = g.tones.map(() => []);
+  for (let k = 0; k < g.blocks.length; k += 5) by[g.blocks[k + 4]].push(k);
+  by.forEach((ks, i) => {
+    ctx.fillStyle = g.tones[i]; ctx.beginPath();
+    for (const k of ks) ctx.rect(g.blocks[k] - ox, g.blocks[k + 1] - oy, g.blocks[k + 2], g.blocks[k + 3]);
+    ctx.fill();
+  });
+}
+
+// ---------- UI ----------
+const $ = s => document.querySelector(s);
+const cv = $('#cv'), frame = $('#frame'), stage = $('#stage');
+let gen = null, raf = 0;
+const pct = v => Math.round(v * 100) + '%', px = v => v + ' px';
+const SLIDERS = {
+  threshold: { label: 'Umbral', min: 0, max: .95, step: .01, fmt: pct, emph: true },
+  contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
+  gamma: { label: 'Gamma', min: .3, max: 3, step: .05, fmt: v => v.toFixed(2) },
+  height: { label: 'Alto del bloque', min: 2, max: 60, step: 1, fmt: px, emph: true },
+  minW: { label: 'Ancho mínimo', min: 1, max: 20, step: 1, fmt: v => '×' + v },
+  maxW: { label: 'Ancho máximo', min: 1, max: 30, step: 1, fmt: v => '×' + v },
+  gapX: { label: 'Separación horizontal', min: 0, max: 30, step: 1, fmt: px },
+  gapY: { label: 'Separación vertical', min: 0, max: 30, step: 1, fmt: px },
+  holes: { label: 'Huecos', min: 0, max: .9, step: .01, fmt: pct },
+  mix: { label: 'Mezcla de tonos', min: 0, max: 1, step: .01, fmt: pct },
+  width: { label: 'Ancho de la imagen', min: 400, max: 3000, step: 50, fmt: px },
+};
+for (const [key, d] of Object.entries(SLIDERS)) {
+  const host = $('#sl-' + key);
+  host.className = 'slider' + (d.emph ? ' emph' : '');
+  host.innerHTML = `<label for="in-${key}">${d.label}</label><output id="out-${key}"></output><input type="range" id="in-${key}" min="${d.min}" max="${d.max}" step="${d.step}" title="Doble clic para restablecer">`;
+  const input = host.querySelector('input');
+  input.addEventListener('input', () => {
+    S[key] = +input.value;
+    if (key === 'minW' && S.maxW < S.minW) S.maxW = S.minW;
+    if (key === 'maxW' && S.minW > S.maxW) S.minW = S.maxW;
+    sync();
+  });
+  input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
+}
+$('#levels').innerHTML = TONES.map((c, i) => `<button data-i="${i}" style="background:${c}" title="${c} (clic para usarlo o no)" aria-label="${c}"></button>`).join('');
+$('#levels').addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (!b) return; S.on[+b.dataset.i] = !S.on[+b.dataset.i]; sync(); });
+document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = b.dataset.v; sync(); } }));
+document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
+$('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
+const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
+$('#reseed').addEventListener('click', reseed);
+addEventListener('keydown', e => { if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.target.closest('input, textarea') && e.key.toLowerCase() === 'r') reseed(); });
+
+function sync() {
+  for (const key of Object.keys(SLIDERS)) {
+    const input = $('#in-' + key), d = SLIDERS[key];
+    if (+input.value !== S[key]) input.value = S[key];
+    input.style.setProperty('--p', ((S[key] - d.min) / (d.max - d.min) * 100) + '%');
+    $('#out-' + key).textContent = d.fmt(S[key]);
+  }
+  document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
+  document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
+  document.querySelectorAll('#levels [data-i]').forEach(b => b.setAttribute('aria-pressed', S.on[+b.dataset.i]));
+  const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
+  if (!src) return;
+  gen = build(S);
+  schedule();
+}
+function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
+// The canvas is at export resolution and scaled by the browser without smoothing, so edges stay hard.
+function render() {
+  const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 48) / gen.W, (r.height - 84) / gen.H));
+  frame.style.width = Math.round(gen.W * k) + 'px'; frame.style.height = Math.round(gen.H * k) + 'px';
+  if (cv.width !== gen.W * RES || cv.height !== gen.H * RES) { cv.width = gen.W * RES; cv.height = gen.H * RES; }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(RES, 0, 0, RES, 0, 0);
+  ctx.fillStyle = S.bg === 'dark' ? BLACK : WHITE; ctx.fillRect(0, 0, gen.W, gen.H);
+  draw(ctx, gen);
+  const b = bounds(gen);
+  $('#stats').textContent = `${(gen.blocks.length / 5).toLocaleString('es')} bloques · exporta ${b ? `${(b.x1 - b.x0) * RES} × ${(b.y1 - b.y0) * RES}` : '—'} px (recortado)`;
+}
+new ResizeObserver(() => gen && schedule()).observe(stage);
+
+// ---------- Input ----------
+function openFile(file) {
+  if (!file || !file.type.startsWith('image/')) return toast('Eso no parece una imagen.');
+  const el = new Image(), url = URL.createObjectURL(file);
+  el.onload = () => { URL.revokeObjectURL(url); loadImage(el); sync(); toast('Imagen cargada.'); };
+  el.onerror = () => { URL.revokeObjectURL(url); toast('No se pudo leer la imagen.'); };
+  el.src = url;
+}
+$('#upload').addEventListener('click', () => $('#file').click());
+$('#file').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
+let dragDepth = 0;
+stage.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; $('#drop').hidden = false; });
+stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#drop').hidden = true; } });
+stage.addEventListener('dragover', e => e.preventDefault());
+stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; openFile(e.dataTransfer.files[0]); });
+addEventListener('paste', e => { const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/')); if (item) openFile(item.getAsFile()); });
+
+// ---------- Export ----------
+// Both formats are cropped to the blocks' own extent, so empty margins never make it into the file; the
+// background goes in only when asked.
+let toastT = 0;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2400); }
+function download(name, blob) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast(name + ' descargado');
+}
+function toSvg(g) {
+  const b = bounds(g); if (!b) return null;
+  const w = (b.x1 - b.x0) * RES, h = (b.y1 - b.y0) * RES, out = [];
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
+  if (S.bgExport) out.push(`<rect width="${w}" height="${h}" fill="${S.bg === 'dark' ? BLACK : WHITE}"/>`);
+  // One path per tone, so each colour is one layer in Figma.
+  const paths = g.tones.map(() => '');
+  for (let k = 0; k < g.blocks.length; k += 5) {
+    const x = (g.blocks[k] - b.x0) * RES, y = (g.blocks[k + 1] - b.y0) * RES, bw = g.blocks[k + 2] * RES, bh = g.blocks[k + 3] * RES;
+    paths[g.blocks[k + 4]] += `M${x} ${y}h${bw}v${bh}h${-bw}z`;
+  }
+  paths.forEach((d, i) => { if (d) out.push(`<path fill="${g.tones[i]}" d="${d}"/>`); });
+  out.push('</svg>');
+  return out.join('');
+}
+$('#png').addEventListener('click', () => {
+  const b = bounds(gen); if (!b) return toast('No hay bloques para exportar.');
+  const c = document.createElement('canvas'); c.width = (b.x1 - b.x0) * RES; c.height = (b.y1 - b.y0) * RES;
+  const ctx = c.getContext('2d'); ctx.setTransform(RES, 0, 0, RES, 0, 0);
+  if (S.bgExport) { ctx.fillStyle = S.bg === 'dark' ? BLACK : WHITE; ctx.fillRect(0, 0, b.x1 - b.x0, b.y1 - b.y0); }
+  draw(ctx, gen, b.x0, b.y0);
+  c.toBlob(bl => bl ? download(`pixel-blocks-${S.seed}.png`, bl) : toast('No se pudo generar el PNG.'), 'image/png');
+});
+$('#svg').addEventListener('click', () => { const s = toSvg(gen); if (!s) return toast('No hay bloques para exportar.'); download(`pixel-blocks-${S.seed}.svg`, new Blob([s], { type: 'image/svg+xml' })); });
+
+loadImage(sample());
+sync();
+</script>
+</body>
+</html>

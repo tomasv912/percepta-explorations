@@ -132,7 +132,7 @@ main.zoom .hud { position: fixed; bottom: 14px; left: calc(50% - 140px); }
         <input type="file" id="file" accept="image/*" hidden>
         <p class="hint">También podés arrastrarla o pegarla.</p>
         <div class="seg" id="presets" aria-label="Preset">
-          <button data-preset="registro">Registro</button><button data-preset="gastado">Gastado</button><button data-preset="suave">Suave</button>
+          <button data-preset="suave">Suave</button><button data-preset="registro">Registro</button><button data-preset="gastado">Gastado</button>
         </div>
         <button class="btn" id="compare">Mantener para ver el original</button>
       </section>
@@ -183,13 +183,14 @@ main.zoom .hud { position: fixed; bottom: 14px; left: calc(50% - 140px); }
 <script>
 // ---------- Presets ----------
 const MAX_SIDE = 4000; // working and export resolution, long side
+// From softest to most worn. Mainly black and white: no colour in the highlights, only a faint cool cast
+// left in the shadows. Blacks sit around 10–24%, whites stop at 70–88%.
 const PRESETS = {
-  // Tuned against the reference: blacks sit around 20% and lean green, whites stop near 75% and lean yellow.
-  registro: { filter: 'neutral', exposure: 0, contrast: .2, black: .19, white: .76, warmth: .4, cool: .6, blur: .35, glow: .3, grain: .5, grainSize: 1.2, wear: .45, vignette: .45, dust: .25 },
-  gastado: { filter: 'neutral', exposure: .05, contrast: .05, black: .24, white: .7, warmth: .55, cool: .75, blur: .6, glow: .45, grain: .75, grainSize: 1.6, wear: .8, vignette: .65, dust: .55 },
-  suave: { filter: 'neutral', exposure: 0, contrast: .15, black: .1, white: .88, warmth: .25, cool: .3, blur: .15, glow: .15, grain: .3, grainSize: 1, wear: .2, vignette: .25, dust: .08 },
+  suave: { filter: 'neutral', exposure: 0, contrast: .15, black: .1, white: .88, warmth: 0, cool: .12, blur: .15, glow: .15, grain: .3, grainSize: 1, wear: .2, vignette: .25, dust: .08 },
+  registro: { filter: 'neutral', exposure: 0, contrast: .2, black: .19, white: .76, warmth: 0, cool: .2, blur: .35, glow: .3, grain: .5, grainSize: 1.2, wear: .45, vignette: .45, dust: .25 },
+  gastado: { filter: 'neutral', exposure: .05, contrast: .05, black: .24, white: .7, warmth: 0, cool: .25, blur: .6, glow: .45, grain: .75, grainSize: 1.6, wear: .8, vignette: .65, dust: .55 },
 };
-const DEFAULTS = { ...PRESETS.registro, seed: 1 };
+const DEFAULTS = { ...PRESETS.suave, seed: 1 };
 const S = structuredClone(DEFAULTS);
 const FILTERS = { neutral: [.2126, .7152, .0722], red: [.7, .27, .03], green: [.25, .65, .1], blue: [.12, .28, .6] };
 
@@ -296,7 +297,7 @@ void main() {
   l += line * .14;
   l = clamp(l, 0., 1.);
 
-  // Tone: whites lean warm, shadows and mids lean green-gray.
+  // Tone: whites can lean warm (Calidez, off in the presets), shadows and mids lean a little green-gray.
   vec3 col = vec3(l);
   col *= mix(vec3(1), vec3(1., .95, .8), warmth * smoothstep(.2, .9, l));
   col = mix(col, col * vec3(.88, 1., .95), cool * (1. - smoothstep(.1, .75, l)));
