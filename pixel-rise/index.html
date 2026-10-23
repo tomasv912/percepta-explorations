@@ -109,6 +109,8 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
       <div id="gradRows" style="display:contents">
         <div class="row"><span>Altura del gradiente</span><span class="v" id="gradHV"></span><input type="range" id="gradH" min="0.2" max="1" step="0.01"></div>
         <div class="row"><span>Curva</span><span class="v" id="gradCurveV"></span><input type="range" id="gradCurve" min="0.3" max="3" step="0.05"></div>
+        <div class="row"><span>Superposición</span><span class="v" id="gradJitterV"></span><input type="range" id="gradJitter" min="0" max="1.5" step="0.01"></div>
+        <div class="row"><span>Grupos</span><span class="v" id="gradClumpV"></span><input type="range" id="gradClump" min="0" max="1" step="0.01"></div>
       </div>
       <div class="file" id="fileRow"><span id="fileName"></span><button class="btn sm" id="change">Subir SVG o imagen</button></div>
     </div>
@@ -167,7 +169,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
 const SIZES = { '3:2': [1800, 1200], '4:3': [1800, 1350], '1:1': [1500, 1500], '4:5': [1440, 1800], '16:9': [1920, 1080] };
 const RES = 2; // raster and export at 2x
 const DEFAULTS = {
-  seed: 1, source: 'gradient', gradH: .9, gradCurve: 1.2, pixelate: true, bw: .5,
+  seed: 1, source: 'gradient', gradH: .9, gradCurve: 1.2, gradJitter: .75, gradClump: .3, pixelate: true, bw: .5,
   disp: .85, loose: .25, def: .35, irreg: .5, cell: 4,
   ink: '#141414', paper: '#f4f3f1', imageColors: true, transparent: false, aspect: '3:2',
   A: [.5, .08], B: [.5, .7],
@@ -265,6 +267,8 @@ function disperse(W, H) {
   const A = [S.A[0] * W, S.A[1] * H], B = [S.B[0] * W, S.B[1] * H], gx = B[0] - A[0], gy = B[1] - A[1], gl = gx * gx + gy * gy || 1;
   let dx = 0, dy = -1;
   if (gl > 1) { const l = Math.sqrt(gl); dx = -gx / l; dy = -gy / l; }
+  // Gradiente, pixelated: pixels sit freely (on whole export pixels, so edges stay hard) instead of on the grid.
+  const free = S.pixelate && S.source === 'gradient';
   const localD = (x, y) => S.disp * (1 - clamp(((x - A[0]) * gx + (y - A[1]) * gy) / gl));
   const maxDist = .8 * H;
   const i0 = Math.max(0, Math.floor(box.x / d) - 1), i1 = Math.min(cols, Math.ceil((box.x + box.w) / d) + 1);
@@ -283,7 +287,19 @@ function disperse(W, H) {
     const cx = x0 + d / 2, cy = y0 + d / 2, D = localD(cx, cy), col = Math.round(sR / sA) << 16 | Math.round(sG / sA) << 8 | Math.round(sB / sA);
     const id = j * cols + i, streak = clamp(.55 + n(cx * sf, cy * sf) * 1.8, .05, 1.4);
     const chance = D <= .002 ? 0 : Math.pow(D, .5 + S.def * 2.5) * (1 + (streak - 1) * S.irreg);
-    if (hash(id, sb) >= chance) { if (S.pixelate) cells.push(cx, cy); continue; }
+    if (hash(id, sb) >= chance) {
+      if (free) {
+        // Off the cell grid: shifted up to Superposición of a pixel, so neighbours overlap or leave gaps,
+        // and with Grupos' chance a second pixel right next to it, as in Cluster.
+        const j = S.gradJitter * d, ox = cx + (hash(id, sb + 12) - .5) * j, oy = cy + (hash(id, sb + 13) - .5) * j;
+        cells.push(ox, oy);
+        if (hash(id, sb + 14) < S.gradClump * .5) {
+          const k = Math.floor(hash(id, sb + 15) * 4);
+          cells.push(ox + [1, -1, 0, 0][k] * d * (.85 + hash(id, sb + 16) * .3), oy + [0, 0, 1, -1][k] * d * (.85 + hash(id, sb + 16) * .3));
+        }
+      } else if (S.pixelate) cells.push(cx, cy);
+      continue;
+    }
     cut[id] = 1;
     if (hash(id, sb + 1) >= cov) continue;
     const loose = hash(id, sb + 2) < S.loose * .35;
@@ -292,10 +308,10 @@ function disperse(W, H) {
     const wob = n(cx * sf * 3 + 40, cy * sf * 3) * S.irreg * dist * .12;
     const x = cx + (dx * ca - dy * sa) * dist - dy * wob, y = cy + (dx * sa + dy * ca) * dist + dx * wob;
     // Pixelated, a dispersed pixel lands on the grid too.
-    if (S.pixelate) pix.push((Math.floor(x / d) + .5) * d, (Math.floor(y / d) + .5) * d, col);
+    if (S.pixelate && !free) pix.push((Math.floor(x / d) + .5) * d, (Math.floor(y / d) + .5) * d, col);
     else pix.push(x, y, col);
   }
-  return { cols, rows, d, cut, pix, cells };
+  return { cols, rows, d, cut, pix, cells, free };
 }
 
 // ---------- Rendering ----------
@@ -318,7 +334,8 @@ function draw(ctx, W, H, scale, withBg, layerOnly) {
     ctx.fillStyle = S.ink; ctx.beginPath();
     for (let i = 0; i < v.length; i += 2) {
       if (v[i] !== v[i]) continue;
-      ctx.rect(Math.floor(v[i] / d) * d, Math.floor(v[i + 1] / d) * d, d, d);
+      if (gen.free) ctx.rect(Math.round((v[i] - d / 2) * RES) / RES, Math.round((v[i + 1] - d / 2) * RES) / RES, d, d);
+      else ctx.rect(Math.floor(v[i] / d) * d, Math.floor(v[i + 1] / d) * d, d, d);
     }
     ctx.fill();
   } else {
@@ -359,7 +376,7 @@ const $ = s => document.getElementById(s);
 const plate = $('plate'), cv = $('cv'), stage = $('stage');
 let gen = null, genKey = '', pts = null, edit = null, ops = [], panX = 0, panY = 0, raf = 0;
 const pct = v => Math.round(v * 100) + '%';
-const SLIDERS = { disp: pct, loose: pct, def: pct, irreg: pct, cell: v => v + ' px', bw: pct, gradH: pct, gradCurve: v => v.toFixed(2) };
+const SLIDERS = { disp: pct, loose: pct, def: pct, irreg: pct, cell: v => v + ' px', bw: pct, gradH: pct, gradCurve: v => v.toFixed(2), gradJitter: pct, gradClump: pct };
 for (const [key, fmt] of Object.entries(SLIDERS)) {
   const input = $(key);
   input.addEventListener('input', () => { S[key] = +input.value; sync(); });
@@ -409,7 +426,7 @@ function render() {
     // Until the nodes are moved by hand they span the shape: white at its top, black at its base.
     if (!nodesMoved) { const b = src0.box; S.A = [.5, clamp(b.y / H)]; S.B = [.5, clamp((b.y + b.h) / H)]; }
   }
-  const key = JSON.stringify([srcKey, S.seed, S.pixelate, S.bw, S.disp, S.loose, S.def, S.irreg, S.cell, S.A, S.B]);
+  const key = JSON.stringify([srcKey, S.seed, S.pixelate, S.bw, S.gradJitter, S.gradClump, S.disp, S.loose, S.def, S.irreg, S.cell, S.A, S.B]);
   if (key !== genKey) { gen = disperse(W, H); genKey = key; pts = pointsOf(gen); rebuild(); }
   const r = $('stage').querySelector('.canvas').getBoundingClientRect();
   const k = Math.max(.01, Math.min(r.width / W, r.height / H));
@@ -547,7 +564,17 @@ function toSvg() {
   const n = x => Math.round(x * k * 100) / 100;
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W * k}" height="${H * k}" viewBox="0 0 ${W * k} ${H * k}">`);
   if (!S.transparent) out.push(`<rect width="${W * k}" height="${H * k}" fill="${S.paper}"/>`);
-  if (S.pixelate) {
+  if (S.pixelate && gen.free) {
+    // Free pixels: one square each (they overlap), in one path.
+    let p = '';
+    for (let i = 0; i < v.length; i += 2) {
+      if (v[i] !== v[i]) continue;
+      const x = Math.round((v[i] + panX - d / 2) * k) / k, y = Math.round((v[i + 1] + panY - d / 2) * k) / k;
+      if (x + d < 0 || y + d < 0 || x > W || y > H) continue;
+      p += `M${n(x)} ${n(y)}h${n(d)}v${n(d)}h${-n(d)}z`;
+    }
+    if (p) out.push(`<path fill="${S.ink}" d="${p}"/>`);
+  } else if (S.pixelate) {
     const cols = Math.round(W / d), rows = Math.round(H / d), on = new Uint8Array(cols * rows);
     for (let i = 0; i < v.length; i += 2) {
       if (v[i] !== v[i]) continue;
