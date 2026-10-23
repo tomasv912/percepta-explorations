@@ -76,7 +76,7 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 
 .btn.big { height: 40px; width: 100%; border-radius: 12px; }
 .check { display: flex; gap: 8px; align-items: center; color: var(--text-2); font-size: 12px; cursor: pointer; }
 .check input { accent-color: var(--text); margin: 0; }
-.levels { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.levels { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
 .levels button { appearance: none; border: 0; height: 26px; border-radius: 0; cursor: pointer; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .14); position: relative; }
 .levels button[aria-pressed="false"] { opacity: .25; }
 .levels button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -154,16 +154,20 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
 <script>
 // ---------- State ----------
-// The picture is loose, overlapping square pixels coloured by how light the image is under them: the
-// lightest get white, then the five colours from light to dark; below Umbral there is only background.
+// The picture is loose, overlapping square pixels coloured by how light the image is under them: the five
+// colours from dark to light, with white for the lightest on the black background, or black for the darkest
+// on the white one (white would vanish there). Below Umbral there is only background.
 // The palette, ordered from darkest to lightest (by luminance), then white.
 const TONES = ['#A8A5EC', '#A0C2FF', '#7FE4B0', '#98DEDF', '#D9D0FA', '#F6F6F6'];
 const BLACK = '#14191F', WHITE = '#F6F6F6';
+// Every tone the picture can use, darkest first: black is used on the white background (where white would
+// vanish), white on the black one.
+const ALL = [BLACK, ...TONES];
 const RES = 2; // export at 2x
 const DEFAULTS = {
   threshold: .18, contrast: 1.3, gamma: 1, invert: false,
   height: 10, density: 1.4, jitter: 1, clump: .25, mix: 0, seed: 1,
-  on: [true, true, true, true, true, true], bg: 'dark', bgExport: false, width: 1200,
+  on: [true, true, true, true, true, true, true], bg: 'dark', bgExport: false, width: 1200,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -223,7 +227,8 @@ function hash(i, k) {
 }
 function build(st) {
   const W = st.width, H = Math.round(W / src.ar), P = st.height, step = P / Math.sqrt(st.density), sb = st.seed * 977;
-  const tones = TONES.map((c, i) => st.on[i] ? c : null).filter(Boolean), n = tones.length, out = [];
+  const skip = st.bg === 'light' ? WHITE : BLACK;
+  const tones = ALL.filter((c, i) => st.on[i] && c !== skip), n = tones.length, out = [];
   if (!n) return { W, H, blocks: out, tones };
   const snap = v => Math.round(v * RES) / RES;
   let id = 0;
@@ -288,7 +293,7 @@ for (const [key, d] of Object.entries(SLIDERS)) {
   });
   input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
 }
-$('#levels').innerHTML = TONES.map((c, i) => `<button data-i="${i}" style="background:${c}" title="${c} (clic para usarlo o no)" aria-label="${c}"></button>`).join('');
+$('#levels').innerHTML = ALL.map((c, i) => `<button data-i="${i}" style="background:${c}" title="${c} (clic para usarlo o no)" aria-label="${c}"></button>`).join('');
 $('#levels').addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (!b) return; S.on[+b.dataset.i] = !S.on[+b.dataset.i]; sync(); });
 document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = b.dataset.v; sync(); } }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
@@ -306,7 +311,7 @@ function sync() {
   }
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
-  document.querySelectorAll('#levels [data-i]').forEach(b => b.setAttribute('aria-pressed', S.on[+b.dataset.i]));
+  document.querySelectorAll('#levels [data-i]').forEach(b => { b.setAttribute('aria-pressed', S.on[+b.dataset.i]); b.hidden = ALL[+b.dataset.i] === (S.bg === 'light' ? WHITE : BLACK); });
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   if (!src) return;
   gen = build(S);

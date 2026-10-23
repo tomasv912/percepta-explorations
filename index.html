@@ -130,7 +130,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section>
         <h2>Fuente</h2>
         <div class="seg" data-key="source" aria-label="Fuente">
-          <button data-v="waves">Olas</button><button data-v="refract">Refracción</button><button data-v="image">Imagen</button>
+          <button data-v="waves">Olas</button><button data-v="refract">Refracción</button><button data-v="bloom">Hortensia</button><button data-v="image">Imagen</button>
         </div>
         <button class="btn" id="upload">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10.5V2.5M4.5 6 8 2.5 11.5 6"/><path d="M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2"/></svg>
@@ -155,6 +155,12 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <div id="sl-rfAmp"></div>
           <div id="sl-rfFreq"></div>
           <div id="sl-rfOrder"></div>
+        </div>
+        <div id="bloom-controls">
+          <div id="sl-blFlowers"></div>
+          <div id="sl-blSize"></div>
+          <div id="sl-blFlorets"></div>
+          <div id="sl-blShare"></div>
         </div>
         <div id="image-controls">
           <div id="sl-contrast"></div>
@@ -252,6 +258,7 @@ const DEFAULTS = {
   seed: 1, aspect: '3:2', source: 'waves',
   layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5,
   rfChannels: 3, rfFocus: .42, rfChaos: .7, rfSpread: .6, rfAmp: .5, rfFreq: 1, rfOrder: .7,
+  blFlowers: 3, blSize: .5, blFlorets: 30, blShare: .5,
   contrast: 1.2, threshold: .1, invert: false, grid: false, gridCols: 140, rotX: 0, rotY: 0, rotZ: 0,
   style: 'mono', count: 45000, size: 3.5, mod: .6, variation: .35, grain: .12,
   colorMode: 'single', ink: '#272727', palette: ['#D9D0FA', '#A8A5EC', '#A0C2FF', '#98DEDF', '#7FE4B0'],
@@ -351,7 +358,7 @@ function generate(st) {
       const i = lo % gw, j = (lo - i) / gw;
       add((i + r()) / gw * img.ar, (j + r()) / gh, (1 - st.mod) + st.mod * Math.sqrt(Math.max(M[lo], .04)), col[lo]);
     }
-  } else if (st.source === 'refract') {
+  } else if (st.source === 'refract' || st.source === 'bloom') {
     // Refracción: loose points drift in from the left as a wide, disordered cloud that narrows onto the focus
     // point; past it they spread evenly over a single wave sheet that opens from the focus like a beam. The
     // sheet is a fan (across-parameter w) bent by a few long sine waves; where it folds, its rays cross and
@@ -365,20 +372,63 @@ function generate(st) {
     const norm = ws.reduce((t, w) => t + w.a, 0);
     const sheet = (s, w) => { let h = 0; for (const q of ws) h += q.a * Math.sin(q.f * (s * Math.cos(q.th) + w * Math.sin(q.th)) + q.ph); return h / norm; };
     const tight = (1 - st.rfOrder) * .02 + .002, g = () => clamp(gauss(r), -2.6, 2.6);
+    // Hortensia: the sheet ends early (at fEnd) and its rays pour into Flores hydrangea heads to its right,
+    // each a dome of four-petalled florets (Florecillas, set out on a sunflower spiral) drawn with points.
+    // Each ray goes to one head and carries its colour there; Puntos en las flores is their share.
+    const bloom = st.source === 'bloom', fEnd = bloom ? Math.max(f + .15, .8) : 1, F = st.blFlowers, heads = [];
+    if (bloom) {
+      const Rh = .1 + st.blSize * .14, side = Math.ceil(Math.sqrt(F)), cw = Rh * 2.1 * side, ch = Rh * 2.1 * Math.ceil(F / side);
+      const x0 = fEnd * AR + Rh * 1.1;
+      for (let i = 0; i < F; i++) {
+        let best = null;
+        for (let t = 0; t < 200; t++) {
+          const c = [x0 + r() * cw, (r() - .5) * ch], R = Rh * (.8 + r() * .4);
+          const gap = heads.reduce((m, h) => Math.min(m, Math.hypot(h.x - c[0], h.y - c[1]) - h.R - R), Infinity);
+          if (!best || gap > best.gap) best = { x: c[0], y: c[1], R, gap };
+          if (gap > -R * .25) break;
+        }
+        const N = st.blFlorets, rot = r() * Math.PI * 2, fl = [];
+        for (let k = 0; k < N; k++) {
+          const rad = best.R * .86 * Math.sqrt((k + .5) / N), a = k * 2.39996 + rot;
+          fl.push({ c: k % 3 === 0 ? 1 : 0, x: best.x + Math.cos(a) * rad, y: best.y + Math.sin(a) * rad * .92, r: best.R * 1.05 / Math.sqrt(N) * (.85 + r() * .3), rot: r() * Math.PI / 2 });
+        }
+        heads.push({ x: best.x, y: best.y, R: best.R, fl });
+      }
+    }
     for (let tries = 0; got < n && tries < n * 4; tries++) {
-      const u = r();
-      if (r() > smooth(0, .1, u) * (1 - smooth(.9, 1, u))) continue;
+      if (bloom && r() < st.blShare) {
+        // A point on a floret: one of its four petals (an ellipse leaning out from the centre), or its eye.
+        const hi = Math.floor(r() * F), h = heads[hi], q = h.fl[Math.floor(r() * h.fl.length)];
+        let x, y;
+        if (r() < .08) { const a = r() * Math.PI * 2, rr = Math.sqrt(r()) * q.r * .14; x = q.x + Math.cos(a) * rr; y = q.y + Math.sin(a) * rr; }
+        else {
+          const pa = q.rot + Math.floor(r() * 4) * Math.PI / 2, cx = q.x + Math.cos(pa) * q.r * .52, cy = q.y + Math.sin(pa) * q.r * .52;
+          const t = r() * Math.PI * 2, rr = Math.sqrt(r()), lx = Math.cos(t) * rr * q.r * .48, ly = Math.sin(t) * rr * q.r * .4;
+          x = cx + lx * Math.cos(pa) - ly * Math.sin(pa); y = cy + lx * Math.sin(pa) + ly * Math.cos(pa);
+        }
+        // Mostly the head's colour, a third of the florets in the next one, as hydrangeas shade.
+        add(x, y, .9, 0, (hi + q.c) % P);
+        continue;
+      }
+      const u = r() * fEnd;
+      if (r() > smooth(0, .1, u) * (bloom ? 1 : 1 - smooth(.9, 1, u))) continue;
       if (u < f) {
         // Chaos: a cone that closes on the focus, looser the farther back; a few strays wander off it.
         // At the focus it is exactly as loose as the sheet just past it, so there is no seam.
         const t = 1 - u / f, w = st.rfChaos * .3 * Math.pow(t, .9) + tight + st.rfChaos * .05;
         add(u * AR, g() * w * (r() < .1 ? 1.5 : 1), .55 + r() * .7, 0);
       } else {
-        const d = u - f, s = d / (1 - f), w = r() - .5;
+        const d = u - f, s = d / (fEnd - f), w = r() - .5;
         // Order sets in over a short run past the focus: the jitter fades and the sheet takes its shape.
         const settle = smooth(0, .12, d), jit = tight + st.rfChaos * .05 * (1 - settle);
-        const y = d * AR * (st.rfSpread * 1.7 * w + st.rfAmp * .6 * (sheet(s, w) - sheet(0, 0))) + g() * jit;
-        add(u * AR, y, 1, 0, r() < settle ? Math.min(P - 1, Math.floor((w + .5) * P)) : undefined);
+        let x = u * AR, y = d * AR * (st.rfSpread * 1.7 * w + st.rfAmp * .6 * (sheet(s, w) - sheet(0, 0))) + g() * jit;
+        let col = Math.min(P - 1, Math.floor((w + .5) * P));
+        if (bloom) {
+          // Towards its end each ray bends into its flower, arriving at the head's centre.
+          const hi = Math.min(F - 1, Math.floor((w + .5) * F)), h = heads[hi], b = smooth(.62, 1, s) ** 1.6;
+          x += (h.x - h.R * .2 - x) * b; y += (h.y - y) * b; col = hi % P;
+        }
+        add(x, y, 1, 0, r() < settle ? col : undefined);
       }
     }
   } else {
@@ -424,6 +474,11 @@ function generate(st) {
   }
   let X0, X1, Y0, Y1;
   { X0 = .05 * W + half + tl; X1 = W - .05 * W - half - tr; Y0 = .14 * H + half + tt; Y1 = .86 * H - half - tb; }
+  if (st.source === 'bloom') {
+    // Flowers keep their proportions: one scale for both axes, centred in the box.
+    const k = Math.min((X1 - X0) / (x1 - x0 || 1), (Y1 - Y0) / (y1 - y0 || 1)), mx = (X0 + X1) / 2, my = (Y0 + Y1) / 2;
+    X0 = mx - (x1 - x0) * k / 2; X1 = mx + (x1 - x0) * k / 2; Y0 = my - (y1 - y0) * k / 2; Y1 = my + (y1 - y0) * k / 2;
+  }
   for (let i = 0; i < got; i++) { px[i] = X0 + (px[i] - x0) / (x1 - x0 || 1) * (X1 - X0); py[i] = Y0 + (py[i] - y0) / (y1 - y0 || 1) * (Y1 - Y0); }
   return { W, H, n: got, hx: cut(px), hy: cut(py), size: cut(size), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen) };
 }
@@ -597,6 +652,10 @@ const SLIDERS = {
   rfSpread: { label: 'Apertura', min: 0, max: 1.4, step: .01, fmt: pct },
   rfAmp: { label: 'Amplitud de las ondas', min: 0, max: 1.5, step: .01, fmt: pct },
   rfFreq: { label: 'Frecuencia', min: .2, max: 3, step: .01, fmt: v => v.toFixed(2) },
+  blFlowers: { label: 'Flores', min: 1, max: 10, step: 1, fmt: String, emph: true },
+  blSize: { label: 'Tamaño de las flores', min: 0, max: 1, step: .01, fmt: pct },
+  blFlorets: { label: 'Florecillas por flor', min: 8, max: 80, step: 1, fmt: String },
+  blShare: { label: 'Puntos en las flores', min: .2, max: .85, step: .01, fmt: pct },
   rfOrder: { label: 'Orden', min: 0, max: 1, step: .01, fmt: pct },
   contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
   threshold: { label: 'Umbral', min: 0, max: .99, step: .01, fmt: pct, emph: true },
@@ -674,7 +733,7 @@ function sync() {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   const waves = S.source === 'waves', image = S.source === 'image', mono = S.style === 'mono';
-  $('#wave-controls').hidden = !waves; $('#image-controls').hidden = !image; $('#refract-controls').hidden = S.source !== 'refract';
+  $('#wave-controls').hidden = !waves; $('#image-controls').hidden = !image; $('#refract-controls').hidden = S.source !== 'refract' && S.source !== 'bloom'; $('#bloom-controls').hidden = S.source !== 'bloom';
   $('#source-hint').textContent = image ? 'Más cubos en las zonas oscuras, menos en las claras.' : 'También podés arrastrar o pegar una imagen: más cubos en lo oscuro, menos en lo claro.';
   $('#cm-image').hidden = !image;
   $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = mono;
@@ -686,7 +745,7 @@ function sync() {
   $('.rt-bar [data-tool="rotate"]').hidden = !image; if (!image && tools.tool === 'rotate') tools.setTool('scatter');
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
-  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.contrast, S.threshold, S.invert,
+  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.contrast, S.threshold, S.invert,
     S.style, S.count, S.size, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) { gen0 = generate(S); genKey = key; placeKey = pkey; rebuild(true); }
