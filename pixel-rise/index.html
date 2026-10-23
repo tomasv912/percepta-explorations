@@ -105,8 +105,12 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
 
     <div class="group">
       <div class="lbl">Fuente</div>
-      <div class="file"><span id="fileName"></span><button class="btn sm" id="change">Subir SVG o imagen</button></div>
-      <p class="note">También podés soltarla sobre el lienzo o pegar el código de un SVG.</p>
+      <div class="seg" id="source" style="grid-template-columns:repeat(2,1fr)"></div>
+      <div id="gradRows" style="display:contents">
+        <div class="row"><span>Altura del gradiente</span><span class="v" id="gradHV"></span><input type="range" id="gradH" min="0.2" max="1" step="0.01"></div>
+        <div class="row"><span>Curva</span><span class="v" id="gradCurveV"></span><input type="range" id="gradCurve" min="0.3" max="3" step="0.05"></div>
+      </div>
+      <div class="file" id="fileRow"><span id="fileName"></span><button class="btn sm" id="change">Subir SVG o imagen</button></div>
     </div>
 
     <!-- Dispersion controls, in the same place as Gradient Shapes' "Gesto" group. -->
@@ -163,7 +167,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
 const SIZES = { '3:2': [1800, 1200], '4:3': [1800, 1350], '1:1': [1500, 1500], '4:5': [1440, 1800], '16:9': [1920, 1080] };
 const RES = 2; // raster and export at 2x
 const DEFAULTS = {
-  seed: 1, pixelate: true, bw: .5,
+  seed: 1, source: 'gradient', gradH: .9, gradCurve: 1.2, pixelate: true, bw: .5,
   disp: .85, loose: .25, def: .35, irreg: .5, cell: 4,
   ink: '#141414', paper: '#f4f3f1', imageColors: true, transparent: false, aspect: '3:2',
   A: [.5, .08], B: [.5, .7],
@@ -204,15 +208,6 @@ function hash(a, b) {
 // to rise. SVGs are rasterized from the vector at that size, so they stay crisp.
 const SVGNS = 'http://www.w3.org/2000/svg';
 let img = null, imgName = '', srcId = 0, srcKey = '', src0 = null, nodesMoved = false;
-const SAMPLE_SVG = `<svg xmlns="${SVGNS}" viewBox="0 0 1200 800" width="1200" height="800">
-  <circle cx="830" cy="330" r="210" fill="#e4572e"/>
-  <g transform="translate(470 420)">
-    <path d="M0 -260 L225 -130 L0 0 L-225 -130Z" fill="#8a8278"/>
-    <path d="M-225 -130 L0 0 L0 260 L-225 130Z" fill="#1a1714"/>
-    <path d="M0 0 L225 -130 L225 130 L0 260Z" fill="#4a443d"/>
-  </g>
-  <rect x="160" y="700" width="880" height="24" fill="#1a1714"/>
-</svg>`;
 async function loadSvgText(text, name) {
   if (!/xmlns\s*=\s*["']http:\/\/www\.w3\.org\/2000\/svg/.test(text)) text = text.replace(/<svg\b/, `<svg xmlns="${SVGNS}"`);
   const doc = new DOMParser().parseFromString(text, 'image/svg+xml'), root = doc.documentElement;
@@ -225,16 +220,27 @@ async function loadSvgText(text, name) {
   root.setAttribute('width', ar >= 1 ? 1000 : Math.round(1000 * ar)); root.setAttribute('height', ar >= 1 ? Math.round(1000 / ar) : 1000);
   const el = new Image(); el.src = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(root)], { type: 'image/svg+xml' }));
   await el.decode();
-  img = el; imgName = name; srcId++;
+  img = el; imgName = name; srcId++; S.source = 'file'; nodesMoved = false;
 }
 async function loadRaster(file) {
   const el = new Image(); el.src = URL.createObjectURL(file); await el.decode();
-  img = el; imgName = file.name; srcId++;
+  img = el; imgName = file.name; srcId++; S.source = 'file'; nodesMoved = false;
 }
+// Gradiente: ink across the whole width, solid at the bottom and fading out towards the top over Altura del
+// gradiente (Curva bends the fade). Pixelated, each cell is ink with a chance equal to that darkness, so the
+// bottom is almost solid and the top sparse; the upward dispersion then carries it further.
 function buildSource(W, H) {
   const c = document.createElement('canvas'); c.width = W * RES; c.height = H * RES;
   const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.scale(RES, RES);
+  if (S.source === 'gradient') {
+    const top = H * (1 - S.gradH);
+    for (let y = Math.floor(top * RES); y < H * RES; y++) {
+      ctx.fillStyle = `rgba(0,0,0,${Math.pow(clamp((y / RES - top) / (H - top)), S.gradCurve)})`;
+      ctx.fillRect(0, y / RES, W, 1 / RES);
+    }
+    return { canvas: c, data: ctx.getImageData(0, 0, c.width, c.height).data, box: { x: 0, y: top, w: W, h: H - top } };
+  }
   const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
   const bw = W * .84, bh = H * .62, k = Math.min(bw / iw, bh / ih), w = iw * k, h = ih * k;
   const box = { x: (W - w) / 2, y: H * .92 - h, w, h };
@@ -271,7 +277,8 @@ function disperse(W, H) {
       sA += al; sR += data[q] * al; sG += data[q + 1] * al; sB += data[q + 2] * al;
       sD += al * (1 - (.2126 * data[q] + .7152 * data[q + 1] + .0722 * data[q + 2]) / 255);
     }
-    const cov = S.pixelate ? (sD / (9 * 255) >= S.bw ? 1 : 0) : sA / (9 * 255);
+    const dark = sD / (9 * 255);
+    const cov = !S.pixelate ? sA / (9 * 255) : S.source === 'gradient' ? (dark > hash(j * cols + i, sb + 11) ? 1 : 0) : (dark >= S.bw ? 1 : 0);
     if (cov < .02) continue;
     const cx = x0 + d / 2, cy = y0 + d / 2, D = localD(cx, cy), col = Math.round(sR / sA) << 16 | Math.round(sG / sA) << 8 | Math.round(sB / sA);
     const id = j * cols + i, streak = clamp(.55 + n(cx * sf, cy * sf) * 1.8, .05, 1.4);
@@ -352,7 +359,7 @@ const $ = s => document.getElementById(s);
 const plate = $('plate'), cv = $('cv'), stage = $('stage');
 let gen = null, genKey = '', pts = null, edit = null, ops = [], panX = 0, panY = 0, raf = 0;
 const pct = v => Math.round(v * 100) + '%';
-const SLIDERS = { disp: pct, loose: pct, def: pct, irreg: pct, cell: v => v + ' px', bw: pct };
+const SLIDERS = { disp: pct, loose: pct, def: pct, irreg: pct, cell: v => v + ' px', bw: pct, gradH: pct, gradCurve: v => v.toFixed(2) };
 for (const [key, fmt] of Object.entries(SLIDERS)) {
   const input = $(key);
   input.addEventListener('input', () => { S[key] = +input.value; sync(); });
@@ -368,6 +375,7 @@ function seg(el, options, key, onPick) {
   }
 }
 seg($('aspect'), Object.keys(SIZES).map(k => [k, k]), 'aspect');
+seg($('source'), [['gradient', 'Gradiente'], ['file', 'SVG o imagen']], 'source', v => { nodesMoved = false; if (v === 'file' && !img) { $('file').click(); return false; } });
 $('ink').addEventListener('input', e => { S.ink = e.target.value; sync(); });
 $('paper').addEventListener('input', e => { S.paper = e.target.value; sync(); });
 $('imageColors').addEventListener('change', e => { S.imageColors = e.target.checked; sync(); });
@@ -382,25 +390,26 @@ addEventListener('keydown', e => {
 
 function sync() {
   for (const [key, fmt] of Object.entries(SLIDERS)) { if (+$(key).value !== S[key]) $(key).value = S[key]; $(key + 'V').textContent = fmt(S[key]); }
-  for (const id of ['aspect']) [...$(id).children].forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S[id])));
+  for (const id of ['aspect', 'source']) [...$(id).children].forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S[id])));
   $('ink').value = S.ink; $('paper').value = S.paper; $('imageColors').checked = S.imageColors; $('pixelate').checked = S.pixelate; $('transparent').checked = S.transparent;
   $('fileName').textContent = imgName;
-  $('bwRow').hidden = !S.pixelate; $('imageColorsRow').hidden = S.pixelate;
+  $('bwRow').hidden = !S.pixelate || S.source === 'gradient';
+  $('gradRows').hidden = S.source !== 'gradient'; $('fileName').hidden = S.source === 'gradient'; $('imageColorsRow').hidden = S.pixelate;
   plate.classList.toggle('crisp', S.pixelate);
   $('seedTag').textContent = '#' + S.seed;
   schedule();
 }
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
 function render() {
-  if (!img) return;
+  if (!img && S.source !== 'gradient') return;
   const [W, H] = SIZES[S.aspect];
-  const sk = JSON.stringify([S.aspect, srcId]);
+  const sk = JSON.stringify([S.aspect, S.source, S.source === 'gradient' ? [S.gradH, S.gradCurve] : srcId]);
   if (sk !== srcKey) {
     src0 = buildSource(W, H); srcKey = sk;
     // Until the nodes are moved by hand they span the shape: white at its top, black at its base.
     if (!nodesMoved) { const b = src0.box; S.A = [.5, clamp(b.y / H)]; S.B = [.5, clamp((b.y + b.h) / H)]; }
   }
-  const key = JSON.stringify([S.aspect, srcId, S.seed, S.pixelate, S.bw, S.disp, S.loose, S.def, S.irreg, S.cell, S.A, S.B]);
+  const key = JSON.stringify([srcKey, S.seed, S.pixelate, S.bw, S.disp, S.loose, S.def, S.irreg, S.cell, S.A, S.B]);
   if (key !== genKey) { gen = disperse(W, H); genKey = key; pts = pointsOf(gen); rebuild(); }
   const r = $('stage').querySelector('.canvas').getBoundingClientRect();
   const k = Math.max(.01, Math.min(r.width / W, r.height / H));
@@ -576,7 +585,7 @@ $('svg').addEventListener('click', () => {
 });
 
 sync();
-loadSvgText(SAMPLE_SVG, 'Ejemplo').then(sync);
+
 </script>
 </body>
 </html>

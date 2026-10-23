@@ -106,6 +106,14 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
   <aside>
     <div class="controls">
       <section>
+        <h2>Forma</h2>
+        <div class="seg" data-key="shape" aria-label="Forma">
+          <button data-v="cloud">Nube</button><button data-v="firework">Fuegos</button><button data-v="spiral">Espiral</button><button data-v="wave">Onda</button><button data-v="ring">Halo</button>
+        </div>
+        <div id="sl-arms"></div>
+      </section>
+
+      <section>
         <h2>Píxeles</h2>
         <div id="sl-count"></div>
         <div id="sl-size"></div>
@@ -157,6 +165,7 @@ const BEIGE = '#F2F0EA', INK = '#14191F';
 const onBg = (c, bg) => c.toLowerCase() !== bg.toLowerCase() ? c : bg.toLowerCase() === BEIGE.toLowerCase() ? INK : BEIGE;
 const AW = 1600, AH = 1200, RES = 2, TRAIL_BANDS = 12;
 const DEFAULTS = {
+  shape: 'cloud', arms: 12,
   count: 100, size: 16, spread: .28, core: .45, clump: .4, rot: .15, seed: 1,
   trail: 0, trailAngle: 180, trailJitter: .3,
   on: [true, true, true, true, true], bg: '#F2F0EA', bgExport: false,
@@ -175,10 +184,16 @@ function hash(i, k) {
 }
 
 // ---------- Cluster ----------
-// Pixel i is placed from its own random numbers: most fall in a soft round cloud around the centre (Dispersión
-// sets its size, Centro how much they crowd the middle); with Agrupamiento's chance a pixel sits right next
-// to an earlier one, so they gather into little clumps of two, three or four touching squares. Each pixel
-// leans a little (Rotación) and keeps its colour; more pixels only add to the cloud.
+// Pixel i is placed from its own random numbers, so more pixels only add to the picture. With Agrupamiento's
+// chance a pixel sits right next to an earlier one (clumps of two, three or four touching squares); the rest
+// follow the Forma. Dispersión sets the size, Centro how much they crowd the middle, Rayos/Brazos/Ondas the
+// count where the shape has one:
+//   Nube      a soft round cloud.
+//   Fuegos    a burst: every pixel flies out along one of the rays from a single point, thinning with
+//             distance and dipping a little at the far end; their trails point back to that point.
+//   Espiral   arms winding out of the centre, like a galaxy.
+//   Onda      a ribbon that undulates across the frame.
+//   Halo      a ring of light, densest on its rim.
 function build(st) {
   const s = st.size, R = Math.min(AW, AH) * (.06 + st.spread * .5), sb = st.seed * 977, out = [];
   const colors = COLORS.map((c, i) => st.on[i] ? c : null).filter(Boolean);
@@ -190,13 +205,45 @@ function build(st) {
       x = out[j].x + ax * s * (.92 + h(3) * .3) + (h(4) - .5) * s * .35;
       y = out[j].y + ay * s * (.92 + h(3) * .3) + (h(5) - .5) * s * .35;
     } else {
-      const a = h(6) * Math.PI * 2, r = R * Math.pow(h(7), .5 + st.core * 1.2);
-      x = AW / 2 + Math.cos(a) * r * 1.15; y = AH / 2 + Math.sin(a) * r * .95;
+      [x, y] = place(st, i, h, R);
     }
     const color = colors.length ? colors[Math.floor(h(8) * colors.length)] : COLORS[0];
-    out.push({ x, y, a: (h(9) - .5) * st.rot * Math.PI / 2, color, t: Math.max(0, 1 + st.trailJitter * (h(10) * 2 - 1)) });
+    const ta = st.shape === 'firework' ? Math.atan2(BURST[1] - y, BURST[0] - x) : null;
+    out.push({ x, y, a: (ta ?? 0) * (st.shape === 'firework') + (h(9) - .5) * st.rot * Math.PI / 2, color, ta, t: Math.max(0, 1 + st.trailJitter * (h(10) * 2 - 1)) });
   }
   return out;
+}
+const BURST = [AW / 2, AH * .46];
+const gauss = (u, v) => Math.sqrt(-2 * Math.log(1 - u * .999)) * Math.cos(2 * Math.PI * v);
+function place(st, i, h, R) {
+  const cx = AW / 2, cy = AH / 2, k = .5 + st.core * 1.2;
+  switch (st.shape) {
+    case 'firework': {
+      const n = st.arms, ray = Math.floor(h(11) * n), a = (ray + .5) / n * Math.PI * 2 + (h(12) - .5) * .06 + st.seed;
+      const t = Math.pow(h(7), k * .8), r = R * 1.25 * (.08 + .92 * t);
+      return [BURST[0] + Math.cos(a) * r, BURST[1] + Math.sin(a) * r + R * .18 * t * t];
+    }
+    case 'spiral': {
+      const n = Math.max(2, Math.round(st.arms / 3)), arm = Math.floor(h(11) * n), t = Math.pow(h(7), .6 + st.core * .5);
+      const a = arm / n * Math.PI * 2 + t * Math.PI * 2.6 + st.seed, w = (.02 + .07 * t) * R * gauss(h(12), h(13));
+      const r = R * 2.1 * (.06 + .94 * t);
+      return [cx + Math.cos(a) * r - Math.sin(a) * w, cy + Math.sin(a) * r * .8 + Math.cos(a) * w];
+    }
+    case 'wave': {
+      const u = h(7) * 2 - 1, edge = 1 - Math.pow(Math.abs(u), 2 + st.core * 4), n = Math.max(1, st.arms / 6);
+      if (h(14) > edge) return place({ ...st, shape: 'wave' }, i + 7919, k2 => hash(i + 7919, st.seed * 977 + k2), R);
+      const x = cx + u * AW * .42 * (.5 + st.spread * .6), y = cy + Math.sin(u * Math.PI * n + st.seed) * R * .45;
+      return [x, y + gauss(h(12), h(13)) * R * (.05 + .1 * (1 - st.core))];
+    }
+    case 'ring': {
+      const a = h(6) * Math.PI * 2, r = R * (1 + gauss(h(12), h(13)) * (.04 + .14 * (1 - st.core)));
+      return [cx + Math.cos(a) * r * 1.1, cy + Math.sin(a) * r * .95];
+    }
+    default: {
+      const a = h(6) * Math.PI * 2, r = R * Math.pow(h(7), k);
+      return [cx + Math.cos(a) * r * 1.15, cy + Math.sin(a) * r * .95];
+    }
+  }
 }
 // Square corners, and the trail as TRAIL_BANDS strips from full opacity next to the pixel to nothing.
 function corners(p, s) {
@@ -204,9 +251,11 @@ function corners(p, s) {
   return [p.x - c + n, p.y - n - c, p.x + c + n, p.y + n - c, p.x + c - n, p.y + n + c, p.x - c - n, p.y - n + c];
 }
 function shapes(st, pts, fn) {
-  const a = st.trailAngle * Math.PI / 180, dx = Math.cos(a), dy = Math.sin(a), h = st.size / 2;
+  const a = st.trailAngle * Math.PI / 180, dx0 = Math.cos(a), dy0 = Math.sin(a), h = st.size / 2;
   for (const p of pts) {
     const color = onBg(p.color, st.bg), L = st.trail * p.t;
+    // Fuegos: each trail points back to the burst.
+    const dx = p.ta == null ? dx0 : Math.cos(p.ta), dy = p.ta == null ? dy0 : Math.sin(p.ta);
     if (L > 0) for (let b = TRAIL_BANDS; b >= 1; b--) {
       const s0 = (b - 1) / TRAIL_BANDS * L, s1 = b / TRAIL_BANDS * L, nx = -dy * h, ny = dx * h;
       fn(color, 1 - (b - .5) / TRAIL_BANDS, [p.x + dx * s0 + nx, p.y + dy * s0 + ny, p.x + dx * s1 + nx, p.y + dy * s1 + ny, p.x + dx * s1 - nx, p.y + dy * s1 - ny, p.x + dx * s0 - nx, p.y + dy * s0 - ny]);
@@ -233,6 +282,7 @@ const cv = $('#cv'), frame = $('#frame'), stage = $('#stage');
 let pts = null, raf = 0;
 const pct = v => Math.round(v * 100) + '%';
 const SLIDERS = {
+  arms: { label: 'Rayos', min: 3, max: 36, step: 1, fmt: String },
   count: { label: 'Cantidad', min: 100, max: 1000, step: 20, fmt: String, emph: true },
   size: { label: 'Tamaño del píxel', min: 16, max: 80, step: 4, fmt: v => v + ' px', emph: true },
   spread: { label: 'Dispersión', min: 0, max: 1, step: .01, fmt: pct },
@@ -251,6 +301,7 @@ for (const [key, d] of Object.entries(SLIDERS)) {
   input.addEventListener('input', () => { S[key] = +input.value; sync(); });
   input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
 }
+document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = b.dataset.v; sync(); } }));
 $('#levels').innerHTML = COLORS.map((c, i) => `<button data-i="${i}" style="background:${c}" title="${c} (clic para usarlo o no)" aria-label="${c}"></button>`).join('');
 $('#levels').addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (!b) return; S.on[+b.dataset.i] = !S.on[+b.dataset.i]; sync(); });
 $('#bg').innerHTML = BACKGROUNDS.map(([h, n]) => `<option value="${h}">${n} · ${h}</option>`).join('');
@@ -271,7 +322,11 @@ function sync() {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('#levels [data-i]').forEach(b => b.setAttribute('aria-pressed', S.on[+b.dataset.i]));
   $('#bg').value = S.bg; $('#bg-chip').style.background = S.bg;
-  $('#sl-trailAngle').hidden = $('#sl-trailJitter').hidden = !S.trail;
+  $('#sl-trailAngle').hidden = !S.trail || S.shape === 'firework'; $('#sl-trailJitter').hidden = !S.trail;
+  $('#sl-arms').hidden = S.shape === 'cloud' || S.shape === 'ring';
+  $('#sl-arms label').textContent = { firework: 'Rayos', spiral: 'Brazos', wave: 'Ondas' }[S.shape] || 'Rayos';
+  $('#out-arms').textContent = S.shape === 'spiral' ? Math.max(2, Math.round(S.arms / 3)) : S.shape === 'wave' ? (Math.max(1, S.arms / 6)).toFixed(1) : S.arms;
+  document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   pts = build(S);
   schedule();
