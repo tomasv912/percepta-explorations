@@ -97,6 +97,9 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 
 .swatch i { width: 20px; height: 20px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); flex: none; }
 .swatch input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 .swatch.off { opacity: .4; }
+.pal { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.pal .swatch { padding: 0 4px; justify-content: center; }
+.pal .swatch i { width: 100%; }
 .check { display: flex; gap: 8px; align-items: center; color: var(--text-2); font-size: 12px; cursor: pointer; }
 .check input { accent-color: var(--text); margin: 0; }
 
@@ -201,6 +204,15 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
       <section>
         <h2>Color</h2>
+        <div class="seg" data-key="palette" aria-label="Color de los puntos">
+          <button data-v="off">Un color</button><button data-v="random">Aleatorio</button><button data-v="zones">Por zonas</button>
+        </div>
+        <div class="pal" id="pal-row">
+          <label class="swatch"><i></i><input type="color" data-color="p0" aria-label="Color 1 de la paleta"></label>
+          <label class="swatch"><i></i><input type="color" data-color="p1" aria-label="Color 2 de la paleta"></label>
+          <label class="swatch"><i></i><input type="color" data-color="p2" aria-label="Color 3 de la paleta"></label>
+          <label class="swatch"><i></i><input type="color" data-color="p3" aria-label="Color 4 de la paleta"></label>
+        </div>
         <div class="row" style="grid-template-columns:64px 1fr">
           <label class="check"><input type="checkbox" data-check="fill"> Relleno</label>
           <label class="swatch"><i></i><b data-hex></b><input type="color" data-color="fillColor" aria-label="Color del relleno"></label>
@@ -238,6 +250,7 @@ const DEFAULTS = {
   bulbs: 4, waist: .45, fold: .45, droop: .35, twist: .25, yaw: 0, shade: .6, light: 135,
   invert: false, contrast: 1.2, threshold: .15,
   count: 18000, size: 4.5, overlap: .5,
+  palette: 'off', p0: '#ffef99', p1: '#ccefec', p2: '#ffb2cf', p3: '#d9b7f6',
   fill: true, fillColor: '#f4f1ea', stroke: true, strokeColor: '#0c0c0c', strokeW: .8,
   paper: '#0c0c0c',
 };
@@ -286,9 +299,12 @@ function loadImage(img) {
   const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, gw, gh);
   ctx.imageSmoothingQuality = 'high'; ctx.drawImage(cur, 0, 0, gw, gh);
-  const d = ctx.getImageData(0, 0, gw, gh).data, n = gw * gh, lum = new Float32Array(n);
-  for (let k = 0; k < n; k++) lum[k] = (.2126 * d[k * 4] + .7152 * d[k * 4 + 1] + .0722 * d[k * 4 + 2]) / 255;
-  src = { gw, gh, lum, ar: iw / ih };
+  const d = ctx.getImageData(0, 0, gw, gh).data, n = gw * gh, lum = new Float32Array(n), rgb = new Float32Array(n * 3);
+  for (let k = 0; k < n; k++) {
+    lum[k] = (.2126 * d[k * 4] + .7152 * d[k * 4 + 1] + .0722 * d[k * 4 + 2]) / 255;
+    rgb[k * 3] = d[k * 4]; rgb[k * 3 + 1] = d[k * 4 + 1]; rgb[k * 3 + 2] = d[k * 4 + 2];
+  }
+  src = { gw, gh, lum, rgb, ar: iw / ih, id: (src?.id || 0) + 1 };
 }
 // The source fills 90% of the artboard, centred, keeping its proportions.
 function box(ar) {
@@ -531,14 +547,83 @@ function clampPan() {
   panX = clamp(panX, r - x0, AW - r - x1); panY = clamp(panY, r - y0, AH - r - y1);
 }
 
+// ---------- Palette ----------
+// Aleatorio gives each dot one of the four colours at random. Por zonas groups them: on an image, its
+// colours (where dots can fall) are split into four clusters (k-means) and each cluster takes a palette
+// colour, dark to light in both; on the shape, a slow noise field cuts the frame into four regions.
+// Dots take the colour of where they were born, so a smudge carries its colour along.
+const PAL = () => [S.p0, S.p1, S.p2, S.p3];
+const lumOf = h => { const n = parseInt(h.slice(1), 16); return .2126 * (n >> 16) + .7152 * (n >> 8 & 255) + .0722 * (n & 255); };
+function hash(a, b) {
+  let t = Math.imul(a ^ 0x9E3779B9, 0x85EBCA6B) ^ Math.imul(b + 0x632BE5AB, 0xC2B2AE35);
+  t ^= t >>> 15; t = Math.imul(t, 0x2C1B3C6D); t ^= t >>> 12; t = Math.imul(t, 0x297A2D39); t ^= t >>> 15;
+  return (t >>> 0) / 4294967296;
+}
+let clusterMap = null, clusterKey = '';
+function imageClusters() {
+  const key = [src.id, S.invert, S.threshold, S.contrast, S.p0, S.p1, S.p2, S.p3].join();
+  if (key === clusterKey) return clusterMap;
+  const { gw, gh, lum, rgb } = src, n = gw * gh, col = k => S.invert ? [255 - rgb[k * 3], 255 - rgb[k * 3 + 1], 255 - rgb[k * 3 + 2]] : [rgb[k * 3], rgb[k * 3 + 1], rgb[k * 3 + 2]];
+  const inked = [];
+  for (let k = 0; k < n; k++) if (clamp(((S.invert ? lum[k] : 1 - lum[k]) - .5) * S.contrast + .5) > S.threshold) inked.push(k);
+  const sample = inked.length > 6000 ? Array.from({ length: 6000 }, (_, i) => inked[Math.floor(i * inked.length / 6000)]) : inked;
+  // Start from four tones, then refine.
+  const byLum = sample.slice().sort((a, b) => lum[a] - lum[b]);
+  let C = [0, 1, 2, 3].map(q => col(byLum[Math.min(byLum.length - 1, Math.floor((q + .5) / 4 * byLum.length))] ?? 0));
+  const near = c => { let b = 0, bd = Infinity; C.forEach((m, q) => { const d = (c[0] - m[0]) ** 2 + (c[1] - m[1]) ** 2 + (c[2] - m[2]) ** 2; if (d < bd) { bd = d; b = q; } }); return b; };
+  for (let it = 0; it < 10 && sample.length; it++) {
+    const acc = C.map(() => [0, 0, 0, 0]);
+    for (const k of sample) { const c = col(k), q = near(c); acc[q][0] += c[0]; acc[q][1] += c[1]; acc[q][2] += c[2]; acc[q][3]++; }
+    C = C.map((m, q) => acc[q][3] ? [acc[q][0] / acc[q][3], acc[q][1] / acc[q][3], acc[q][2] / acc[q][3]] : m);
+  }
+  const lumC = c => .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
+  const cOrder = [0, 1, 2, 3].sort((a, b) => lumC(C[a]) - lumC(C[b])), pOrder = [0, 1, 2, 3].sort((a, b) => lumOf(PAL()[a]) - lumOf(PAL()[b]));
+  const toPal = []; cOrder.forEach((c, rank) => { toPal[c] = pOrder[rank]; });
+  clusterMap = new Uint8Array(n);
+  for (let k = 0; k < n; k++) clusterMap[k] = toPal[near(col(k))];
+  clusterKey = key;
+  return clusterMap;
+}
+let zoneNoise = null, zoneSeed = -1;
+function zoneAt(x, y) {
+  if (S.source === 'image' && src) {
+    const m = imageClusters(), b = box(src.ar);
+    const i = clamp(Math.floor((x - b.x) / b.w * src.gw), 0, src.gw - 1), j = clamp(Math.floor((y - b.y) / b.h * src.gh), 0, src.gh - 1);
+    return m[j * src.gw + i];
+  }
+  if (zoneSeed !== S.seed) { zoneNoise = perlin3(rng(S.seed * 7 + 3)); zoneSeed = S.seed; }
+  const v = zoneNoise(x / AH * 2.2, y / AH * 2.2, .5) + .5 * zoneNoise(x / AH * 4.4, y / AH * 4.4, 9.5);
+  return v < -.18 ? 0 : v < 0 ? 1 : v < .18 ? 2 : 3;
+}
+// Palette index per dot, or null with a single colour.
+function colorsOf(it) {
+  if (S.palette === 'off') return null;
+  const n = it.length / 2, c = new Uint8Array(n), home = dots.length / 2;
+  for (let q = 0; q < n; q++) {
+    if (S.palette === 'random') { c[q] = Math.floor(hash(q, S.seed) * 4); continue; }
+    const o = q * 2, born = q < home ? dots : it;
+    c[q] = born[o] === born[o] ? zoneAt(born[o], born[o + 1]) : 0;
+  }
+  return c;
+}
+
 // ---------- Drawing ----------
 // With fill and stroke, each circle is filled then outlined in order, so it covers the outlines below.
+// With the palette on, it colours the fill (or the stroke, when there's no fill).
 function draw(ctx, it) {
-  const r = S.size / 2, fill = S.fill, stroke = S.stroke && S.strokeW > 0;
+  const r = S.size / 2, fill = S.fill, stroke = S.stroke && S.strokeW > 0, cols = colorsOf(it), pal = PAL();
   ctx.fillStyle = S.fillColor; ctx.strokeStyle = S.strokeColor; ctx.lineWidth = S.strokeW;
-  if (fill && stroke) {
-    for (let i = 0; i < it.length; i += 2) { if (it[i] !== it[i]) continue; ctx.beginPath(); ctx.arc(it[i] + panX, it[i + 1] + panY, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
-  } else if (fill || stroke) {
+  if (!fill && !stroke) return;
+  if ((fill && stroke) || cols) {
+    // One by one, in order, so the colours mix and near dots cover far ones.
+    for (let i = 0; i < it.length; i += 2) {
+      if (it[i] !== it[i]) continue;
+      if (cols) fill ? ctx.fillStyle = pal[cols[i >> 1]] : ctx.strokeStyle = pal[cols[i >> 1]];
+      ctx.beginPath(); ctx.arc(it[i] + panX, it[i + 1] + panY, r, 0, Math.PI * 2);
+      if (fill) ctx.fill();
+      if (stroke) ctx.stroke();
+    }
+  } else {
     ctx.beginPath();
     for (let i = 0; i < it.length; i += 2) { if (it[i] !== it[i]) continue; ctx.moveTo(it[i] + panX + r, it[i + 1] + panY); ctx.arc(it[i] + panX, it[i + 1] + panY, r, 0, Math.PI * 2); }
     fill ? ctx.fill() : ctx.stroke();
@@ -551,12 +636,15 @@ function draw(ctx, it) {
 function toSvg(it) {
   const n = v => Math.round(v * 100) / 100, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW} ${AH}">`);
-  const stroke = S.stroke && S.strokeW > 0, ring = !S.fill && stroke;
-  if (S.fill || ring) {
-    const d = unionPath(it, S.size / 2, ring ? S.strokeW / 2 : 0);
+  const stroke = S.stroke && S.strokeW > 0, ring = !S.fill && stroke, cols = colorsOf(it), pal = PAL();
+  // With the palette, one unified path per colour.
+  if (S.fill || ring) for (let g = 0; g < (cols ? 4 : 1); g++) {
+    const part = cols ? it.map((v, i) => cols[i >> 1] === g ? v : NaN) : it;
+    const d = unionPath(part, S.size / 2, ring ? S.strokeW / 2 : 0);
+    if (!d) continue;
     out.push(S.fill
-      ? `<path fill="${S.fillColor}" fill-rule="evenodd"${stroke ? ` stroke="${S.strokeColor}" stroke-width="${S.strokeW}" stroke-linejoin="round"` : ''} d="${d}"/>`
-      : `<path fill="${S.strokeColor}" fill-rule="evenodd" d="${d}"/>`);
+      ? `<path fill="${cols ? pal[g] : S.fillColor}" fill-rule="evenodd"${stroke ? ` stroke="${S.strokeColor}" stroke-width="${S.strokeW}" stroke-linejoin="round"` : ''} d="${d}"/>`
+      : `<path fill="${cols ? pal[g] : S.strokeColor}" fill-rule="evenodd" d="${d}"/>`);
   }
   out.push('</svg>');
   return out.join('\n');
@@ -802,14 +890,15 @@ for (const [key, d] of Object.entries(SLIDERS)) {
 document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   if (seg.dataset.key === 'source' && b.dataset.v === 'image' && !src) { $('#file').click(); return; }
-  S[seg.dataset.key] = b.dataset.v; panX = panY = 0; sync();
+  if (seg.dataset.key === 'source') panX = panY = 0;
+  S[seg.dataset.key] = b.dataset.v; sync();
 }));
 document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 $('#swap').addEventListener('click', () => { [S.fillColor, S.strokeColor] = [S.strokeColor, S.fillColor]; sync(); });
 const negHex = h => '#' + (0xFFFFFF ^ parseInt(h.slice(1), 16)).toString(16).padStart(6, '0');
-$('#negate').addEventListener('click', () => { for (const k of ['fillColor', 'strokeColor', 'paper']) S[k] = negHex(S[k]); sync(); });
+$('#negate').addEventListener('click', () => { for (const k of ['fillColor', 'strokeColor', 'paper', 'p0', 'p1', 'p2', 'p3']) S[k] = negHex(S[k]); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('#reseed').addEventListener('click', reseed);
 // A new seed plus fresh values for every shape setting, within ranges that stay recognisable.
@@ -859,7 +948,9 @@ function sync() {
   $('#image-controls').hidden = shape;
   $('#sl-overlap').hidden = shape;
   $('#sl-strokeW').hidden = !S.stroke;
-  paintSwatch($('[data-color=fillColor]').closest('.swatch'), S.fillColor, S.fill);
+  paintSwatch($('[data-color=fillColor]').closest('.swatch'), S.fillColor, S.fill && S.palette === 'off');
+  $('#pal-row').hidden = S.palette === 'off';
+  for (const k of ['p0', 'p1', 'p2', 'p3']) { const sw = $(`[data-color=${k}]`).closest('.swatch'); sw.querySelector('i').style.background = S[k]; sw.querySelector('input').value = S[k]; }
   paintSwatch($('[data-color=strokeColor]').closest('.swatch'), S.strokeColor, S.stroke);
   paintSwatch($('[data-color=paper]').closest('.swatch'), S.paper, true);
   if (view) clampPan();
