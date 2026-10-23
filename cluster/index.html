@@ -120,7 +120,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-spread"></div>
         <div id="sl-core"></div>
         <div id="sl-clump"></div>
-        <div id="sl-rot"></div>
         <div class="row">
           <span>Semilla</span>
           <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
@@ -158,17 +157,17 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <script>
 // ---------- State ----------
 // A loose cloud of square pixels, each one of the five colours at random (as Pixel Waves' Al azar), on a
-// background of beige or one of those colours; pixels of the background's colour turn beige instead.
-const COLORS = ['#D6CCF9', '#A8A5EC', '#74A3F4', '#5E999A', '#4B8D6B'];
-const BACKGROUNDS = [['#F2F0EA', 'Beige'], ['#D6CCF9', 'Lila'], ['#A8A5EC', 'Violeta'], ['#74A3F4', 'Celeste'], ['#5E999A', 'Verde agua'], ['#4B8D6B', 'Verde']];
-const BEIGE = '#F2F0EA', INK = '#14191F';
-const onBg = (c, bg) => c.toLowerCase() !== bg.toLowerCase() ? c : bg.toLowerCase() === BEIGE.toLowerCase() ? INK : BEIGE;
+// background of white or one of those colours; pixels of the background's colour turn white instead.
+const COLORS = ['#D9D0FA', '#A8A5EC', '#A0C2FF', '#98DEDF', '#7FE4B0'];
+const BACKGROUNDS = [['#F6F6F6', 'Blanco'], ['#D9D0FA', 'Lila'], ['#A8A5EC', 'Violeta'], ['#A0C2FF', 'Celeste'], ['#98DEDF', 'Agua'], ['#7FE4B0', 'Verde']];
+const WHITE = '#F6F6F6', INK = '#14191F';
+const onBg = (c, bg) => c.toLowerCase() !== bg.toLowerCase() ? c : bg.toLowerCase() === WHITE.toLowerCase() ? INK : WHITE;
 const AW = 1600, AH = 1200, RES = 2, TRAIL_BANDS = 12;
 const DEFAULTS = {
   shape: 'cloud', arms: 12,
-  count: 100, size: 16, spread: .28, core: .45, clump: .4, rot: .15, seed: 1,
+  count: 100, size: 16, spread: .28, core: .45, clump: .4, seed: 1,
   trail: 0, trailAngle: 180, trailJitter: .3,
-  on: [true, true, true, true, true], bg: '#F2F0EA', bgExport: false,
+  on: [true, true, true, true, true], bg: '#F6F6F6', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -209,7 +208,7 @@ function build(st) {
     }
     const color = colors.length ? colors[Math.floor(h(8) * colors.length)] : COLORS[0];
     const ta = st.shape === 'firework' ? Math.atan2(BURST[1] - y, BURST[0] - x) : null;
-    out.push({ x, y, a: (ta ?? 0) * (st.shape === 'firework') + (h(9) - .5) * st.rot * Math.PI / 2, color, ta, t: Math.max(0, 1 + st.trailJitter * (h(10) * 2 - 1)) });
+    out.push({ x, y, color, ta, t: Math.max(0, 1 + st.trailJitter * (h(10) * 2 - 1)) });
   }
   return out;
 }
@@ -246,9 +245,10 @@ function place(st, i, h, R) {
   }
 }
 // Square corners, and the trail as TRAIL_BANDS strips from full opacity next to the pixel to nothing.
+// Pixels are never rotated.
 function corners(p, s) {
-  const c = Math.cos(p.a) * s / 2, n = Math.sin(p.a) * s / 2;
-  return [p.x - c + n, p.y - n - c, p.x + c + n, p.y + n - c, p.x + c - n, p.y + n + c, p.x - c - n, p.y - n + c];
+  const h = s / 2;
+  return [p.x - h, p.y - h, p.x + h, p.y - h, p.x + h, p.y + h, p.x - h, p.y + h];
 }
 function shapes(st, pts, fn) {
   const a = st.trailAngle * Math.PI / 180, dx0 = Math.cos(a), dy0 = Math.sin(a), h = st.size / 2;
@@ -288,7 +288,6 @@ const SLIDERS = {
   spread: { label: 'Dispersión', min: 0, max: 1, step: .01, fmt: pct },
   core: { label: 'Centro', min: 0, max: 1, step: .01, fmt: pct },
   clump: { label: 'Agrupamiento', min: 0, max: .9, step: .01, fmt: pct },
-  rot: { label: 'Rotación', min: 0, max: 1, step: .01, fmt: pct },
   trail: { label: 'Longitud del trail', min: 0, max: 600, step: 1, fmt: v => v ? v + ' px' : 'sin trail', emph: true },
   trailAngle: { label: 'Dirección', min: 0, max: 360, step: 1, fmt: v => v + '°' },
   trailJitter: { label: 'Variación de largo', min: 0, max: 1, step: .01, fmt: pct },
