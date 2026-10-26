@@ -260,7 +260,7 @@ const DEFAULTS = {
   source: 'shape', seed: 1,
   bulbs: 4, waist: .45, fold: .45, droop: .35, twist: .25, yaw: 0, tilt: 18, shade: 0, light: 135,
   invert: false, contrast: 1.2, threshold: .15,
-  count: 18000, size: 4.5, hide: true, grid: false, pitch: 6, am: false, dmin: 1.5, dmax: 8, fadeT: false, fadeB: false, fadeD: .5,
+  count: 29000, size: 4.5, hide: true, grid: true, pitch: 6, am: true, dmin: .5, dmax: 5, fadeT: false, fadeB: false, fadeD: .5,
   fadeTA: null, fadeTB: null, fadeBA: null, fadeBB: null, // gradient nodes (content units): A dispersed, B solid
   palette: 'off', p0: '#ffef99', p1: '#ccefec', p2: '#ffb2cf', p3: '#d9b7f6',
   fillColor: '#f4f1ea',
@@ -996,7 +996,16 @@ stage.addEventListener('pointermove', e => {
   if (cur) { const a = toArt(e); cur.pts.push([a[0] - panX, a[1] - panY]); applyOp(cur); separate(view); schedule(); return; }
   if (!drag) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-  if (drag.node) { const a = toArt(e); S[drag.node] = [a[0] - panX, a[1] - panY]; sync(); return; }
+  if (drag.node) {
+    let p = [toArt(e)[0] - panX, toArt(e)[1] - panY];
+    // Shift: the line to the other node of the pair turns in 15° steps, keeping its length.
+    if (e.shiftKey) {
+      const o = S[drag.node.slice(0, -1) + (drag.node.endsWith('A') ? 'B' : 'A')], dx = p[0] - o[0], dy = p[1] - o[1];
+      const L = Math.hypot(dx, dy), a = Math.round(Math.atan2(dy, dx) / (Math.PI / 12)) * (Math.PI / 12);
+      p = [o[0] + Math.cos(a) * L, o[1] + Math.sin(a) * L];
+    }
+    S[drag.node] = p; sync(); return;
+  }
   // Girar: across turns the shape around its axis, up and down tilts it towards or away from you.
   if (drag.orbit) { S.yaw = Math.round(((drag.yaw - dx * .4) % 360 + 360) % 360); S.tilt = clamp(Math.round(drag.tilt + dy * .3), -80, 80); sync(); return; }
   if (Math.hypot(dx, dy) > 3) drag.moved = true;
