@@ -104,7 +104,9 @@
     if (!idx.length) return out;
     for (let tries = 0; out.length < n * 3 && tries < n * 40; tries++) {
       const i = idx[Math.floor(rnd() * idx.length)], dark = 1 - lit[i];
-      const p = Math.min(1, Math.pow(dark, gamma) * gain + e[i] * edge + floor);
+      // threshold: tones lighter than it get no points (edges still do), the rest are rescaled from it.
+      const t = o.threshold || 0, dk = t ? (dark < t ? 0 : (dark - t) / (1 - t)) : dark;
+      const p = Math.min(1, (t && dk <= 0 ? 0 : Math.pow(dk, gamma) * gain + floor) + e[i] * edge);
       if (rnd() > p) continue;
       out.push(box.x0 + (i % W + rnd()) / k, box.y0 + (Math.floor(i / W) + rnd()) / k, dark);
     }
