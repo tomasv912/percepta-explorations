@@ -423,7 +423,7 @@ function generate(st) {
     // what falls behind a head is hidden, and a stalk of the model fades in over the stem, so they are one.
     const bloom = st.source === 'bloom', fEnd = bloom ? .85 * st.blLength : 1, F = st.blFlowers, heads = [];
     if (bloom) {
-      const Rh = .08 + st.blSize * .3, travel = .03 + st.blStem * .9, side = Math.ceil(Math.sqrt(F)), cw = Rh * 2.1 * side, ch = Rh * 2.1 * Math.ceil(F / side);
+      const Rh = .08 + st.blSize * .3, travel = fEnd * AR * (.03 + st.blStem * .45), side = Math.ceil(Math.sqrt(F)), cw = Rh * 1.2 * side, ch = Rh * 2.1 * Math.ceil(F / side);
       const x0 = fEnd * AR + travel + Rh;
       for (let i = 0; i < F; i++) {
         let best = null;
@@ -786,7 +786,7 @@ const SLIDERS = {
   blPitch: { label: 'Inclinación de las flores', min: -89, max: 89, step: 1, fmt: v => Math.round(v) + '°' },
   blLength: { label: 'Largo de la ola', min: .4, max: 1.8, step: .01, fmt: v => '×' + v.toFixed(2), emph: true },
   blChannel: { label: 'Encauce', min: .1, max: .9, step: .01, fmt: pct },
-  blStem: { label: 'Largo del tallo', min: 0, max: 1.5, step: .01, fmt: pct, emph: true },
+  blStem: { label: 'Largo del tallo', min: 0, max: 1, step: .01, fmt: pct, emph: true },
   blTravel: { label: 'Vueltas del nudo', min: 0, max: 1, step: .01, fmt: pct, emph: true },
   blFlowers: { label: 'Flores', min: 1, max: 10, step: 1, fmt: String, emph: true },
   blSize: { label: 'Tamaño de las flores', min: 0, max: 1.5, step: .01, fmt: pct, emph: true },

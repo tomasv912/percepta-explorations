@@ -173,12 +173,14 @@
     margarita: r => {
       const out = [], n = 13 + Math.floor(r() * 22), cr = pick(r, .18, .32), dome = pick(r, .07, .2), Lp = pick(r, .6, 1.1), Wp = pick(r, .05, .1), droop = pick(r, -.35, .3);
       const lose = r() < .3 ? pick(r, .1, .35) : 0, rows = r() < .35 ? 2 : 1;
-      patch(out, (u, v) => { const th = v * Math.PI * 2, rad = cr * 1.15 * u; return [Math.cos(th) * rad, Math.sin(th) * rad, dome * Math.cos(u * Math.PI / 2)]; }, 8, 24);
+      // The centre stands proud: a dome on a short drum, so the petals, which start under it, never cross it.
+      patch(out, (u, v) => { const th = v * Math.PI * 2, rad = cr * 1.15 * u; return [Math.cos(th) * rad, Math.sin(th) * rad, .05 + dome * Math.cos(u * Math.PI / 2)]; }, 8, 24);
+      patch(out, (u, v) => { const th = v * Math.PI * 2; return [Math.cos(th) * cr * 1.15, Math.sin(th) * cr * 1.15, .05 - u * .1]; }, 24, 2);
       for (let row = 0; row < rows; row++) for (let k = 0; k < n; k++) {
         if (r() < lose) continue;
         const a = (k + row * .5) / n * Math.PI * 2 + (r() - .5) * .12, D = [Math.cos(a), Math.sin(a), 0], S = [-Math.sin(a), Math.cos(a), 0];
         const L = Lp * pick(r, .85, 1.1) * (row ? .85 : 1), tw = (r() - .5) * .4, dr = droop + (r() - .5) * .15 - row * .08;
-        blade(out, add3(mul(D, cr * .8), [0, 0, row * .02]), D, S, [0, 0, 1], L, u => Wp * Math.pow(Math.sin(Math.PI * Math.min(1, u * .9 + .1)), .5), (u, vv) => -dr * u * u + tw * vv * .05 * u + .03 * Math.sin(u * 7 + k), 12, 4);
+        blade(out, add3(mul(D, cr * .85), [0, 0, -.02 - row * .03]), D, S, [0, 0, 1], L, u => Wp * Math.pow(Math.sin(Math.PI * Math.min(1, u * .9 + .1)), .5), (u, vv) => -dr * u * u + tw * vv * .05 * u + .03 * Math.sin(u * 7 + k) * Math.min(1, u * 4), 12, 4);
       }
       return distort(out, r, warp(r));
     },
