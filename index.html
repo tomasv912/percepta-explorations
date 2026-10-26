@@ -174,6 +174,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <div id="sl-blPitch"></div>
           <div id="sl-blLength"></div>
           <div id="sl-blChannel"></div>
+          <div id="sl-blStem"></div>
           <div id="sl-blTravel"></div>
           <div id="sl-blFlowers"></div>
           <div id="sl-blSize"></div>
@@ -282,7 +283,7 @@ const DEFAULTS = {
   seed: 1, aspect: '3:2', source: 'waves',
   layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5,
   rfChannels: 3, rfFocus: .42, rfChaos: .7, rfSpread: .6, rfAmp: .5, rfFreq: 1, rfOrder: .7, rfWaist: 0,
-  blModel: 'hortensia', blYaw: 0, blPitch: 0, blTravel: .5, blLength: 1, blChannel: .45, blFlowers: 3, blSize: .5, blFlorets: 32, blShare: .5, orient: 'h',
+  blModel: 'hortensia', blYaw: 0, blPitch: 0, blTravel: .5, blStem: .3, blLength: 1, blChannel: .45, blFlowers: 3, blSize: .5, blFlorets: 32, blShare: .5, orient: 'h',
   contrast: 1.2, threshold: .1, invert: false, grid: false, gridCols: 140, rotX: 0, rotY: 0, rotZ: 0,
   style: 'mono', count: 45000, size: 3.5, mod: .6, variation: .35, grain: .12,
   colorMode: 'single', ink: '#272727', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89'],
@@ -422,7 +423,7 @@ function generate(st) {
     // what falls behind a head is hidden, and a stalk of the model fades in over the stem, so they are one.
     const bloom = st.source === 'bloom', fEnd = bloom ? .85 * st.blLength : 1, F = st.blFlowers, heads = [];
     if (bloom) {
-      const Rh = .08 + st.blSize * .3, travel = .06 + st.blTravel * .5, side = Math.ceil(Math.sqrt(F)), cw = Rh * 2.1 * side, ch = Rh * 2.1 * Math.ceil(F / side);
+      const Rh = .08 + st.blSize * .3, travel = .03 + st.blStem * .9, side = Math.ceil(Math.sqrt(F)), cw = Rh * 2.1 * side, ch = Rh * 2.1 * Math.ceil(F / side);
       const x0 = fEnd * AR + travel + Rh;
       for (let i = 0; i < F; i++) {
         let best = null;
@@ -785,7 +786,8 @@ const SLIDERS = {
   blPitch: { label: 'Inclinación de las flores', min: -89, max: 89, step: 1, fmt: v => Math.round(v) + '°' },
   blLength: { label: 'Largo de la ola', min: .4, max: 1.8, step: .01, fmt: v => '×' + v.toFixed(2), emph: true },
   blChannel: { label: 'Encauce', min: .1, max: .9, step: .01, fmt: pct },
-  blTravel: { label: 'Recorrido y nudo', min: 0, max: 1, step: .01, fmt: pct, emph: true },
+  blStem: { label: 'Largo del tallo', min: 0, max: 1.5, step: .01, fmt: pct, emph: true },
+  blTravel: { label: 'Vueltas del nudo', min: 0, max: 1, step: .01, fmt: pct, emph: true },
   blFlowers: { label: 'Flores', min: 1, max: 10, step: 1, fmt: String, emph: true },
   blSize: { label: 'Tamaño de las flores', min: 0, max: 1.5, step: .01, fmt: pct, emph: true },
   blFlorets: { label: 'Florecillas por flor', min: 8, max: 80, step: 1, fmt: String },
@@ -881,7 +883,7 @@ function sync() {
   $('.rt-bar [data-tool="rotate"]').hidden = !image; if (!image && tools.tool === 'rotate') tools.setTool('scatter');
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
-  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.contrast, S.threshold, S.invert,
+  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.contrast, S.threshold, S.invert,
     S.style, S.count, S.size, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {
