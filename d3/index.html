@@ -212,6 +212,16 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       </section>
 
       <section>
+        <h2>Desvanecer bordes</h2>
+        <div style="display:flex;gap:16px">
+          <label class="check"><input type="checkbox" data-check="fadeL"> Izquierdo</label>
+          <label class="check"><input type="checkbox" data-check="fadeR"> Derecho</label>
+        </div>
+        <div id="sl-fadeW"></div>
+        <div id="sl-fadeD"></div>
+      </section>
+
+      <section>
         <h2>Color</h2>
         <div class="seg" data-key="palette" aria-label="Color de los puntos">
           <button data-v="off">Un color</button><button data-v="random">Aleatorio</button><button data-v="zones">Por zonas</button>
@@ -249,7 +259,7 @@ const DEFAULTS = {
   source: 'shape', seed: 1,
   bulbs: 4, waist: .45, fold: .45, droop: .35, twist: .25, yaw: 0, tilt: 18, shade: 0, light: 135,
   invert: false, contrast: 1.2, threshold: .15,
-  count: 18000, size: 4.5, hide: true, grid: false, pitch: 6, am: false, dmin: 1.5, dmax: 8,
+  count: 18000, size: 4.5, hide: true, grid: false, pitch: 6, am: false, dmin: 1.5, dmax: 8, fadeL: false, fadeR: false, fadeW: .35, fadeD: .5,
   palette: 'off', p0: '#ffef99', p1: '#ccefec', p2: '#ffb2cf', p3: '#d9b7f6',
   fillColor: '#f4f1ea',
   paper: '#0c0c0c',
@@ -511,12 +521,45 @@ let dots = null, tones = null, dotsKey = '', view = null;
 function currentDots() {
   const image = S.source === 'image' && src;
   const key = JSON.stringify([image ? ['i', src.id, S.invert, S.contrast, S.threshold]
-    : ['s', S.bulbs, S.waist, S.fold, S.droop, S.twist, S.yaw, S.tilt, S.shade, S.light, S.hide, orbiting], S.seed, S.count, S.grid, S.pitch, S.size, S.am, S.dmin, S.dmax]);
+    : ['s', S.bulbs, S.waist, S.fold, S.droop, S.twist, S.yaw, S.tilt, S.shade, S.light, S.hide, orbiting], S.seed, S.count, S.grid, S.pitch, S.size, S.am, S.dmin, S.dmax, S.fadeL, S.fadeR, S.fadeW, S.fadeD]);
   if (key !== dotsKey) {
-    const g = image ? imageDots(S) : shapeDots(S), snapped = S.grid ? gridify(g.xy, g.tone, S.pitch) : g;
+    let g = image ? imageDots(S) : shapeDots(S);
+    if (S.fadeL || S.fadeR) g = fadeEdges(g);
+    const snapped = S.grid ? gridify(g.xy, g.tone, S.pitch) : g;
     dots = snapped.xy; tones = snapped.tone; dotsKey = key; rebuild();
   }
   return view;
+}
+// Desvanecer bordes: within Ancho of the chosen side(s) of the content, dots let go more the nearer the
+// edge they are; one that lets go is dropped (thinning) or carried outwards by up to Dispersión, so the
+// edge dissolves into scattered dots. With Grilla on they land on the grid like the rest.
+function fadeEdges({ xy, tone }) {
+  let x0 = Infinity, x1 = -Infinity;
+  for (let i = 0; i < xy.length; i += 2) { if (xy[i] < x0) x0 = xy[i]; if (xy[i] > x1) x1 = xy[i]; }
+  const W = Math.max(1, x1 - x0), rand = rng(S.seed * 17 + 3), r = maxR(), out = [], t = [];
+  for (let q = 0; q < tone.length; q++) {
+    let x = xy[q * 2], y = xy[q * 2 + 1];
+    const u = (x - x0) / W, wl = S.fadeL ? clamp(1 - u / S.fadeW) : 0, wr = S.fadeR ? clamp(1 - (1 - u) / S.fadeW) : 0, w = Math.max(wl, wr);
+    if (w > 0 && rand() < w) {
+      if (rand() < w * .5) continue;
+      x += (wl > wr ? -1 : 1) * S.fadeD * W * .6 * w * (.2 + .8 * rand());
+      y += (rand() - .5) * W * .04 * w;
+      if (x < r || x > AW - r || y < r || y > AH - r) continue;
+    }
+    out.push(x, y); t.push(tone[q]);
+  }
+  return { xy: Float32Array.from(out), tone: Float32Array.from(t) };
+}
+// Centre of the grid cell a point falls in (the grid is centred on the frame).
+function snap(v, p, o) { return o + (Math.floor((v - o) / p) + .5) * p; }
+// What is drawn and exported. With Grilla, brushed dots keep their exact positions (so small pushes add
+// up) and are shown at the centre of their cell, one per cell.
+function shownDots() {
+  const v = currentDots();
+  if (!S.grid) return v;
+  const p = S.pitch, ox = AW / 2 % p, oy = AH / 2 % p, g = v.map((x, i) => x !== x ? NaN : snap(x, p, i % 2 ? oy : ox));
+  separate(g);
+  return g;
 }
 // Grilla: every dot moves to the centre of its cell on a square grid (centred on the frame) and each
 // cell keeps one, the last drawn (the nearest, on the shape); its tone is the cell's average.
@@ -843,7 +886,7 @@ function fitView() { zoom = 1; vx = vy = 0; schedule(); }
 
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
 function render() {
-  const it = currentDots(), r = stage.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  const it = shownDots(), r = stage.getBoundingClientRect(), dpr = devicePixelRatio || 1;
   cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
   const ctx = cv.getContext('2d'), t = viewT();
   ctx.setTransform(dpr * t.k, 0, 0, dpr * t.k, dpr * t.x, dpr * t.y);
@@ -971,6 +1014,8 @@ const SLIDERS = {
   pitch: { label: 'Paso de la grilla', min: 2, max: 40, step: .5, fmt: v => v + ' px' },
   dmin: { label: 'Punto menor', min: .5, max: 40, step: .5, fmt: v => v + ' px' },
   dmax: { label: 'Punto mayor', min: .5, max: 40, step: .5, fmt: v => v + ' px' },
+  fadeW: { label: 'Ancho', min: .05, max: 1, step: .01, fmt: pct },
+  fadeD: { label: 'Dispersión', min: 0, max: 1, step: .01, fmt: pct },
 };
 // A slider with a values list moves through it (uneven steps), otherwise through min..max by step.
 const pos = (d, v) => d.values ? d.values.reduce((b, x, i) => Math.abs(x - v) < Math.abs(d.values[b] - v) ? i : b, 0) : v;
@@ -1050,6 +1095,7 @@ function sync() {
   $('#image-controls').hidden = shape;
   $('#sl-pitch').hidden = !S.grid;
   $('#sl-dmin').hidden = $('#sl-dmax').hidden = !S.am;
+  $('#sl-fadeW').hidden = $('#sl-fadeD').hidden = !S.fadeL && !S.fadeR;
   $('#sl-size').hidden = S.am;
   paintSwatch($('[data-color=fillColor]').closest('.swatch'), S.fillColor, true);
   $('#fill-row').hidden = S.palette !== 'off';
@@ -1101,7 +1147,7 @@ $('#png').addEventListener('click', () => {
   const c = document.createElement('canvas'); c.width = AW * RES; c.height = AH * RES;
   const ctx = c.getContext('2d');
   ctx.setTransform(RES, 0, 0, RES, 0, 0);
-  draw(ctx, currentDots());
+  draw(ctx, shownDots());
   // Transparent, cropped to the pixels the dots cover.
   const { data } = ctx.getImageData(0, 0, c.width, c.height);
   let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
@@ -1115,7 +1161,7 @@ $('#png').addEventListener('click', () => {
 });
 $('#svg').addEventListener('click', () => {
   toast('Unificando el SVG…');
-  setTimeout(() => download(`d3-${S.seed}.svg`, new Blob([toSvg(currentDots())], { type: 'image/svg+xml' })), 30);
+  setTimeout(() => download(`d3-${S.seed}.svg`, new Blob([toSvg(shownDots())], { type: 'image/svg+xml' })), 30);
 });
 
 setTool('move');
