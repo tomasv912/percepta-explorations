@@ -44,6 +44,13 @@ main { position: relative; display: grid; place-items: center; overflow: hidden;
 .frame { touch-action: none; }
 .hud { position: absolute; top: 10px; right: 14px; display: flex; gap: 12px; align-items: center; white-space: nowrap; z-index: 4;
   background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
+.crop-hud { position: absolute; top: 10px; left: 14px; display: flex; gap: 4px; align-items: center; white-space: nowrap; z-index: 4; padding: 4px 4px 4px 10px;
+  background: var(--surface); color: var(--text-2); border-radius: 8px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
+.crop-hud b { color: var(--text); font-weight: 500; margin-right: 6px; }
+.crop-hud button { height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: var(--fill); color: var(--text); font: 500 12px var(--font); cursor: pointer; }
+.crop-hud button:hover { background: var(--line); }
+.crop-box { position: absolute; z-index: 5; pointer-events: none; border: 1px solid #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / .55), 0 0 0 9999px rgb(0 0 0 / .18); }
+[data-rt-tool="crop"] .frame, [data-rt-tool="focus"] .frame { cursor: crosshair; }
 .hud kbd { font: 500 11px var(--mono); color: var(--text); }
 .hud .dim { color: var(--text-3); }
 
@@ -124,6 +131,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <canvas id="cv" role="img" aria-label="Olas o imagen formadas por cubos"></canvas>
     </div>
     <div class="drop" id="drop" hidden>Soltá la imagen</div>
+    <div class="crop-hud" id="crop-hud" hidden><b id="crop-label">Recorte</b><button id="crop-back" title="Vuelve al recorte anterior">Vista anterior</button><button id="crop-clear" title="Muestra la imagen entera">Quitar recorte</button></div>
     <div class="hud"><span id="stats">—</span><span class="dim"><kbd>X</kbd> dispersar · <kbd>R</kbd> nueva semilla</span></div>
   </main>
 
@@ -230,6 +238,17 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       </section>
 
       <section>
+        <h2>Profundidad</h2>
+        <p class="hint">Desenfoca lo que queda lejos del foco. Con la herramienta Foco (F) hacé clic sobre un cubo para enfocar a su distancia.</p>
+        <div id="sl-dof"></div>
+        <div id="sl-focus"></div>
+        <div id="sl-focusBand"></div>
+        <div class="seg" data-key="dofStyle" aria-label="Desenfoque">
+          <button data-v="pixel">Píxel</button><button data-v="soft">Suave</button>
+        </div>
+      </section>
+
+      <section>
         <h2>Dispersión</h2>
         <p class="hint">Mantené el clic sobre la imagen: los cubos de esa zona se dispersan y siguen derivando. Los que salen del cuadro desaparecen.</p>
         <div id="sl-radius"></div>
@@ -276,6 +295,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
+  dof: 0, focus: .35, focusBand: .25, dofStyle: 'pixel',
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -341,10 +361,11 @@ function generate(st) {
   const gridRows = image ? Math.max(1, Math.round(st.gridCols / img.ar)) : 0, grid = image && st.grid;
   const n = grid ? st.gridCols * gridRows : st.count;
   const px = new Float32Array(n), py = new Float32Array(n), size = new Float32Array(n), shade = new Uint8Array(n);
-  const pal = new Uint8Array(n), rgb = new Uint32Array(n), tlen = new Float32Array(n);
+  const pal = new Uint8Array(n), rgb = new Uint32Array(n), tlen = new Float32Array(n), dep = new Float32Array(n);
   let got = 0;
-  const add = (x, y, sizeK, color, palIdx) => {
-    px[got] = x; py[got] = y;
+  // depth: 0 nearest to 1 farthest (Profundidad de campo blurs what is off the focus).
+  const add = (x, y, sizeK, color, palIdx, depth = .5) => {
+    px[got] = x; py[got] = y; dep[got] = depth;
     size[got] = mono ? st.size : st.size * sizeK * Math.max(.2, 1 + st.variation * (r() * 2 - 1) * .7);
     shade[got] = mono ? 0 : Math.floor(r() * SHADES);
     pal[got] = palIdx ?? Math.floor(r() * st.palette.length); rgb[got] = color;
@@ -427,7 +448,8 @@ function generate(st) {
       h.buf = buf;
       const pts = Stipple3D.sample(buf, e, Math.round(n * st.blShare / F), r, { gamma: 1.9, edge: .8, floor: .01, gain: 1.25 });
       for (let i = 0; i < pts.length && got < n; i += 3) {
-        add(h.x + pts[i], h.y + pts[i + 1], .85, 0); // every flower carries all the colours
+        const ix = Math.min(buf.W - 1, Math.floor((pts[i] - box.x0) * buf.k)), iy = Math.min(buf.H - 1, Math.floor((pts[i + 1] - box.y0) * buf.k)), z = buf.depth[iy * buf.W + ix];
+        add(h.x + pts[i], h.y + pts[i + 1], .85, 0, undefined, clamp(.5 - (z > -1e9 ? z : 0) / (R * 1.55) * .3)); // every flower carries all the colours
       }
     });
     if (bloom) {
@@ -444,13 +466,14 @@ function generate(st) {
       const stemShare = .14 + .06 * F / 10, len = heads.map(h => Math.hypot(h.A[0] - E[0], h.A[1] - E[1]));
       for (let tries = 0; got < n && tries < n * 6; tries++) {
         const w = r() - .5;
-        let x, y;
+        let x, y, d = .5;
         if (r() > stemShare) {
           const q = r();
           if (r() > smooth(0, .12, q)) continue;
           const hw = open * (1 - Math.pow(q, 2.4)) + .006, th = ph0 + 2 * Math.PI * turns * Math.pow(q, 1.3);
           const loose = (st.rfChaos * .1 * Math.pow(1 - q, 4) + tight * (1 - q * .7)) * (r() < .08 ? 2 : 1);
           x = q * xE + hw * w * Math.sin(th) * .35 + g() * loose * .6;
+          d = .5 + .9 * w * Math.sin(th) * (hw / open) + g() * loose * 2;
           y = mid(q) + hw * w * Math.cos(th) + st.rfAmp * .25 * hw * sheet(q, w) + (g() * loose + Math.abs(g()) * st.rfChaos * .2 * Math.pow(1 - q, 5)) ;
         } else {
           // A stem: a gentle S from the knot that meets the flower's base head-on, then straight on to its middle.
@@ -464,7 +487,7 @@ function generate(st) {
           y += wid * w * 2 * Math.cos(2 * Math.PI * 1.5 * q + ph0 + hi) + g() * .0015;
         }
         if (behind(x, y)) continue;
-        add(x, y, 1, 0);
+        add(x, y, 1, 0, undefined, clamp(d));
       }
     }
     else for (let tries = 0; got < n && tries < n * 4; tries++) {
@@ -474,7 +497,7 @@ function generate(st) {
         // Chaos: a cone that closes on the focus, looser the farther back; a few strays wander off it.
         // At the focus it is exactly as loose as the sheet just past it, so there is no seam.
         const t = 1 - u / f, w = st.rfChaos * .3 * Math.pow(t, .9) + tight + st.rfChaos * .05 + waist * .3;
-        add(u * AR, g() * w * (r() < .1 ? 1.5 : 1), .55 + r() * .7, 0);
+        add(u * AR, g() * w * (r() < .1 ? 1.5 : 1), .55 + r() * .7, 0, undefined, clamp(.5 + g() * .18 * t));
       } else {
         const d = u - f, s = d / (fEnd - f), w = r() - .5;
         // Order sets in over a short run past the focus: the jitter fades and the sheet takes its shape.
@@ -482,7 +505,7 @@ function generate(st) {
         // Cintura: the rays leave the focus already spread over its width, instead of from a single point.
         let x = u * AR, y = waist * w + d * AR * (st.rfSpread * 1.7 * w + st.rfAmp * .6 * (sheet(s, w) - sheet(0, 0))) + g() * jit;
         const col = Math.min(P - 1, Math.floor((w + .5) * P));
-        add(x, y, 1, 0, r() < settle ? col : undefined);
+        add(x, y, 1, 0, r() < settle ? col : undefined, clamp(.5 + .45 * sheet(s * .7 + .3, w + .5)));
       }
     }
   } else {
@@ -505,7 +528,7 @@ function generate(st) {
       if (r() > keep) continue;
       const z = zNear + v * (zFar - zNear), x = (u - .5) * 2 * z / focal * 1.1;
       const y = height(L, u, v) + gauss(r) * st.thickness * .06;
-      add(x / z * focal, (.9 - y) / z * focal, (1 - st.mod) + st.mod * clamp(1.6 / z), 0);
+      add(x / z * focal, (.9 - y) / z * focal, (1 - st.mod) + st.mod * clamp(1.6 / z), 0, undefined, v);
     }
   }
   if (st.orient === 'v' && !image) for (let i = 0; i < got; i++) { const x = px[i]; px[i] = py[i]; py[i] = -x; }
@@ -523,7 +546,7 @@ function generate(st) {
   if (image) {
     // Kept flat here; place() turns and projects it, so rotating never regenerates.
     const g = { W, H, n: got, lx: cut(px), ly: cut(py), bs: cut(size), fit: { x0, x1, y0, y1, half, tl, tr, tt, tb },
-      size: new Float32Array(got), dp: new Float32Array(got), hx: new Float32Array(got), hy: new Float32Array(got), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen) };
+      size: new Float32Array(got), dp: new Float32Array(got), dep: new Float32Array(got), hx: new Float32Array(got), hy: new Float32Array(got), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen) };
     place(g, st);
     return g;
   }
@@ -535,7 +558,7 @@ function generate(st) {
     X0 = mx - (x1 - x0) * k / 2; X1 = mx + (x1 - x0) * k / 2; Y0 = my - (y1 - y0) * k / 2; Y1 = my + (y1 - y0) * k / 2;
   }
   for (let i = 0; i < got; i++) { px[i] = X0 + (px[i] - x0) / (x1 - x0 || 1) * (X1 - X0); py[i] = Y0 + (py[i] - y0) / (y1 - y0 || 1) * (Y1 - Y0); }
-  return { W, H, n: got, hx: cut(px), hy: cut(py), size: cut(size), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen) };
+  return { W, H, n: got, hx: cut(px), hy: cut(py), size: cut(size), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen), dep: cut(dep) };
 }
 
 // An image is a flat card: fitted inside the frame unrotated (so turning it never rescales), then turned
@@ -551,7 +574,7 @@ function place(g, st) {
     const x2 = xr * cb, z1 = -xr * sb;                     // left–right
     const y2 = yr * ca - z1 * sa, z2 = yr * sa + z1 * ca;  // up–down
     const p = cam / (cam + z2);
-    g.hx[i] = ox + x2 * p * k; g.hy[i] = oy + y2 * p * k; g.size[i] = g.bs[i] * p; g.dp[i] = p;
+    g.hx[i] = ox + x2 * p * k; g.hy[i] = oy + y2 * p * k; g.size[i] = g.bs[i] * p; g.dp[i] = p; g.dep[i] = clamp(.5 - z2 / cam * 1.6);
   }
 }
 
@@ -635,30 +658,47 @@ function groupsOf(st) {
   }
   return g;
 }
-function eachShape(st, fn) {
+// Profundidad de campo: each cube's distance from the focus (beyond the sharp band) sets its blur, in DOF_L
+// steps on each side of the focus. Far blur is drawn first, the sharp cubes over it, near blur over all.
+// Píxel draws a blurred cube as a larger, fainter square (it stays a vector); Suave blurs it for real.
+const DOF_L = 5;
+function dofLevels(st) {
+  if (!st.dof || !gen.dep) return null;
+  const lv = new Int8Array(gen.n), maxR = st.dof * .014 * viewBox().h, band = st.focusBand * .5;
+  for (let i = 0; i < gen.n; i++) {
+    const d = gen.dep[i] - st.focus, t = clamp((Math.abs(d) - band) / Math.max(.05, 1 - band));
+    lv[i] = Math.round(t * DOF_L) * Math.sign(d);
+  }
+  const rad = k => Math.abs(k) / DOF_L * maxR, order = [];
+  for (let k = DOF_L; k >= -DOF_L; k--) order.push(k); // far (positive) first
+  return { lv, rad, order };
+}
+function eachShape(st, fn, lev = null, grow = 0) {
   const a = st.trailAngle * Math.PI / 180, dx = Math.cos(a), dy = Math.sin(a);
   // Each colour is drawn in SLICES interleaved slices, so where colours overlap (dense flowers) none of
   // them ends up covering the rest.
   const SLICES = 6, groups = [...groupsOf(st)];
   for (let sl = 0; sl < SLICES; sl++) for (const [color, all] of groups) {
-    const idx = all.filter((_, j) => j % SLICES === sl);
+    const idx = all.filter((i, j) => j % SLICES === sl && (!lev || lev.lv[i] === lev.k));
     if (!idx.length) continue;
+    // A blurred cube grows by its blur on every side and fades as its colour spreads over more area.
+    const fade = grow ? clamp(Math.pow(st.size / (st.size + 2 * grow), 1.4) * 1.4, .05, 1) : 1;
     if (st.trail > 0) for (let b = TRAIL_BANDS; b >= 1; b--) {
       const polys = [];
       for (const i of idx) {
-        const L = st.trail * gen.tlen[i] * (gen.dp ? gen.dp[i] : 1), s0 = (b - 1) / TRAIL_BANDS * L, s1 = b / TRAIL_BANDS * L, h = gen.size[i] / 2;
+        const L = st.trail * gen.tlen[i] * (gen.dp ? gen.dp[i] : 1), s0 = (b - 1) / TRAIL_BANDS * L, s1 = b / TRAIL_BANDS * L, h = gen.size[i] / 2 + grow;
         if (L <= 0) continue;
         const cx = X[i], cy = Y[i], nx = -dy * h, ny = dx * h;
         polys.push([cx + dx * s0 + nx, cy + dy * s0 + ny, cx + dx * s1 + nx, cy + dy * s1 + ny, cx + dx * s1 - nx, cy + dy * s1 - ny, cx + dx * s0 - nx, cy + dy * s0 - ny]);
       }
-      if (polys.length) fn(color, 1 - (b - .5) / TRAIL_BANDS, polys);
+      if (polys.length) fn(color, (1 - (b - .5) / TRAIL_BANDS) * fade, polys);
     }
-    fn(color, 1, idx.map(i => { const s = gen.size[i], h = s / 2, x = X[i], y = Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }));
+    fn(color, fade, idx.map(i => { const h = gen.size[i] / 2 + grow, x = X[i], y = Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }));
   }
 }
 // Filled in small batches: one huge path of overlapping polygons rasterizes far slower than many small ones.
 const BATCH = 256;
-function draw(ctx, st) {
+function fill(ctx, st, lev, grow) {
   eachShape(st, (color, alpha, polys) => {
     ctx.globalAlpha = alpha; ctx.fillStyle = color;
     for (let k = 0; k < polys.length; k += BATCH) {
@@ -669,18 +709,46 @@ function draw(ctx, st) {
       }
       ctx.fill();
     }
-  });
+  }, lev, grow);
   ctx.globalAlpha = 1;
 }
+const canBlur = (() => { try { return 'filter' in document.createElement('canvas').getContext('2d'); } catch { return false; } })();
+let blurLayer = null;
+function draw(ctx, st) {
+  const D = dofLevels(st);
+  if (!D) return fill(ctx, st);
+  const soft = st.dofStyle === 'soft' && canBlur, T = ctx.getTransform(), scale = Math.hypot(T.a, T.b);
+  for (const k of D.order) {
+    const lev = { lv: D.lv, k }, rad = D.rad(k);
+    if (!k || !soft) { fill(ctx, st, lev, soft ? 0 : rad); continue; }
+    // Suave: the level on a layer of its own, then laid down blurred.
+    const c = ctx.canvas;
+    if (!blurLayer || blurLayer.width !== c.width || blurLayer.height !== c.height) { blurLayer = document.createElement('canvas'); blurLayer.width = c.width; blurLayer.height = c.height; }
+    const b = blurLayer.getContext('2d');
+    b.setTransform(1, 0, 0, 1, 0, 0); b.clearRect(0, 0, c.width, c.height); b.setTransform(T);
+    fill(b, st, lev, 0);
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.filter = `blur(${(rad * scale * .6).toFixed(2)}px)`; ctx.drawImage(blurLayer, 0, 0); ctx.restore();
+  }
+}
 function toSvg(st) {
-  const r = v => Math.round(v * 10) / 10, out = [];
+  const r = v => Math.round(v * 10) / 10, out = [], v = viewBox(), c = gen.W / v.w, D = dofLevels(st), soft = st.dofStyle === 'soft';
+  // Cubes outside the recorte are left out of the file.
+  const inView = p => p[4] + panX >= v.x && p[0] + panX <= v.x + v.w && p[5] + panY >= v.y && p[1] + panY <= v.y + v.h;
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${gen.W}" height="${gen.H}" viewBox="0 0 ${gen.W} ${gen.H}">`);
   if (st.bgExport) out.push(`<rect width="${gen.W}" height="${gen.H}" fill="${st.bg}"/>`);
-  eachShape(st, (color, alpha, polys) => {
-    const d = polys.map(q => q.map((v, k) => v + (k % 2 ? panY : panX))).map(p => `M${r(p[0])} ${r(p[1])}L${r(p[2])} ${r(p[3])}L${r(p[4])} ${r(p[5])}L${r(p[6])} ${r(p[7])}Z`).join('');
-    out.push(`<path fill="${color}"${alpha < 1 ? ` fill-opacity="${Math.round(alpha * 1000) / 1000}"` : ''} d="${d}"/>`);
-  });
-  out.push('</svg>');
+  out.push(`<g transform="matrix(${r(c * 1000) / 1000} 0 0 ${r(c * 1000) / 1000} ${r(-v.x * c)} ${r(-v.y * c)})">`);
+  const paths = (lev, grow) => eachShape(st, (color, alpha, polys) => {
+    const d = polys.filter(inView).map(q => q.map((v, k) => v + (k % 2 ? panY : panX))).map(p => `M${r(p[0])} ${r(p[1])}L${r(p[2])} ${r(p[3])}L${r(p[4])} ${r(p[5])}L${r(p[6])} ${r(p[7])}Z`).join('');
+    if (d) out.push(`<path fill="${color}"${alpha < 1 ? ` fill-opacity="${Math.round(alpha * 1000) / 1000}"` : ''} d="${d}"/>`);
+  }, lev, grow);
+  if (!D) paths();
+  else for (const k of D.order) {
+    const rad = D.rad(k);
+    if (!k || !soft) { paths({ lv: D.lv, k }, soft ? 0 : rad); continue; }
+    out.push(`<filter id="b${k + DOF_L}" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${r(rad * .6)}"/></filter><g filter="url(#b${k + DOF_L})">`);
+    paths({ lv: D.lv, k }, 0); out.push('</g>');
+  }
+  out.push('</g></svg>');
   return out.join('');
 }
 
@@ -736,6 +804,9 @@ const SLIDERS = {
   rotX: { label: 'Rotación arriba–abajo', min: -85, max: 85, step: 1, fmt: v => Math.round(v) + '°' },
   rotY: { label: 'Rotación izquierda–derecha', min: -85, max: 85, step: 1, fmt: v => Math.round(v) + '°' },
   rotZ: { label: 'Rotación en el plano', min: -180, max: 180, step: 1, fmt: v => Math.round(v) + '°' },
+  dof: { label: 'Desenfoque', min: 0, max: 1, step: .01, fmt: pct, emph: true },
+  focus: { label: 'Foco: cerca → lejos', min: 0, max: 1, step: .01, fmt: pct },
+  focusBand: { label: 'Zona nítida', min: 0, max: 1, step: .01, fmt: pct },
   radius: { label: 'Radio', min: 30, max: 900, step: 10, fmt: v => v + ' px' },
   force: { label: 'Fuerza', min: .05, max: 2, step: .01, fmt: pct },
   drift: { label: 'Deriva', min: 0, max: 2, step: .01, fmt: pct },
@@ -815,7 +886,10 @@ function sync() {
   const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.contrast, S.threshold, S.invert,
     S.style, S.count, S.size, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
-  if (key !== genKey) { gen0 = generate(S); genKey = key; placeKey = pkey; rebuild(true); }
+  if (key !== genKey) {
+    gen0 = generate(S); genKey = key; placeKey = pkey; rebuild(true);
+    if (gen0.W + 'x' + gen0.H !== cropKey) { cropKey = gen0.W + 'x' + gen0.H; crop = null; cropStack = []; cropUI(); }
+  }
   else if (pkey !== placeKey && gen0.lx) {
     // Rotating moves the cubes still at home; dispersed ones stay where they drifted.
     placeKey = pkey; place(gen0, S); rebuild(false);
@@ -842,7 +916,8 @@ function frameLoop(now) {
   if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
   const ctx = cv.getContext('2d'), sx = pw / gen.W, sy = ph / gen.H;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, pw, ph);
-  ctx.setTransform(sx, 0, 0, sy, panX * sx, panY * sy);
+  const v = viewBox(), c = gen.W / v.w;
+  ctx.setTransform(sx * c, 0, 0, sy * c, (panX - v.x) * sx * c, (panY - v.y) * sy * c);
   draw(ctx, S);
   let out = 0, del = 0; for (let i = 0; i < gen.n; i++) { out += gone[i] && !gen.del[i]; del += gen.del[i]; }
   $('#stats').textContent = `${(gen.n - out - del).toLocaleString('es')} cubos · ${active.size.toLocaleString('es')} en movimiento${out ? ` · ${out.toLocaleString('es')} fuera` : ''} · ${gen.W} × ${gen.H} px`;
@@ -860,7 +935,7 @@ const flat = g => { const v = new Float32Array(g.n * 2); for (let i = 0; i < g.n
 // gen0 + strokes: each point copies the look of its source cube; removed points stay (del) so indices hold.
 function derive() {
   const { v, src } = edit, m = v.length / 2, g = { W: gen0.W, H: gen0.H, n: m, del: new Uint8Array(m) };
-  for (const k of ['size', 'shade', 'pal', 'rgb', 'tlen', 'dp']) if (gen0[k]) { const a = new gen0[k].constructor(m); for (let i = 0; i < m; i++) a[i] = gen0[k][src[i]]; g[k] = a; }
+  for (const k of ['size', 'shade', 'pal', 'rgb', 'tlen', 'dp', 'dep']) if (gen0[k]) { const a = new gen0[k].constructor(m); for (let i = 0; i < m; i++) a[i] = gen0[k][src[i]]; g[k] = a; }
   g.hx = new Float32Array(m); g.hy = new Float32Array(m);
   for (let i = 0; i < m; i++) { const x = v[i * 2]; if (x !== x) { g.del[i] = 1; g.hx[i] = gen0.hx[src[i]]; g.hy[i] = gen0.hy[src[i]]; } else { g.hx[i] = x; g.hy[i] = v[i * 2 + 1]; } }
   return g;
@@ -889,19 +964,87 @@ function clampPan() {
   const fit = (p, lo, hi) => lo <= hi ? clamp(p, lo, hi) : clamp(p, hi, lo);
   panX = fit(panX, half - x0, gen.W - half - x1); panY = fit(panY, half - y0, gen.H - half - y1);
 }
-const board = e => { const r = frame.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * gen.W, (e.clientY - r.top) / r.height * gen.H]; };
+// Recorte: the view shows a part of the artboard (x, y, w, h; same proportions) filling the frame, and the
+// exports are that part at the full size. Nothing is regenerated. Earlier recortes stack, for Vista anterior.
+let crop = null, cropStack = [], cropHold = null, cropDrag = null, cropKey = '';
+const viewBox = () => crop || { x: 0, y: 0, w: gen.W, h: gen.H };
+const cropScale = () => gen.W / viewBox().w;
+const board = e => { const r = frame.getBoundingClientRect(), v = cropHold || viewBox(); return [v.x + (e.clientX - r.left) / r.width * v.w, v.y + (e.clientY - r.top) / r.height * v.h]; };
+const fitCrop = c => { const w = clamp(c.w, gen.W / 64, gen.W), h = w * gen.H / gen.W; return { w, h, x: clamp(c.x, 0, gen.W - w), y: clamp(c.y, 0, gen.H - h) }; };
+function setCrop(c, push = true) {
+  if (push) cropStack.push(crop);
+  crop = c && c.w < gen.W - .5 ? fitCrop(c) : null;
+  cropUI(); wake();
+}
+function cropUI() {
+  $('#crop-hud').hidden = !crop;
+  if (crop) $('#crop-label').textContent = `Recorte ×${cropScale().toFixed(1)}`;
+  $('#crop-back').hidden = !cropStack.length;
+}
+$('#crop-back').addEventListener('click', () => { crop = cropStack.pop() ?? null; cropUI(); wake(); });
+$('#crop-clear').addEventListener('click', () => { if (crop) setCrop(null); });
+// Arrows move the recorte a tenth of its size (Shift: a fortieth).
+addEventListener('keydown', e => {
+  if (!crop || e.target.closest('input, textarea, select') || e.metaKey || e.ctrlKey || e.altKey) return;
+  const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (!d) return;
+  e.preventDefault();
+  const k = e.shiftKey ? .025 : .1;
+  crop = fitCrop({ ...crop, x: crop.x + d[0] * crop.w * k, y: crop.y + d[1] * crop.h * k }); wake();
+});
+function cropBox(a, b) {
+  const v = viewBox(), ar = gen.W / gen.H;
+  let w = Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]) * ar);
+  if (w < v.w * .03) return null;
+  const h = w / ar;
+  return fitCrop({ x: b[0] >= a[0] ? a[0] : a[0] - w, y: b[1] >= a[1] ? a[1] : a[1] - h, w, h });
+}
+function showCropBox(c) {
+  let el = $('.crop-box');
+  if (!c) { el?.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.className = 'crop-box'; stage.append(el); }
+  const r = frame.getBoundingClientRect(), sr = stage.getBoundingClientRect(), v = viewBox();
+  Object.assign(el.style, { left: r.left - sr.left + (c.x - v.x) / v.w * r.width + 'px', top: r.top - sr.top + (c.y - v.y) / v.h * r.height + 'px', width: c.w / v.w * r.width + 'px', height: c.h / v.h * r.height + 'px' });
+}
 const toArt = e => { const p = board(e); return [p[0] - panX, p[1] - panY]; };
 let turning = null, pan0 = null;
 const tools = RetouchTools({
-  stage, frame, initial: 'scatter', toBoard: board, toArt,
+  stage, frame, initial: 'scatter', toBoard: board, toArt, ignore: '.crop-hud, .hud',
   extra: [
     { id: 'scatter', key: 'x', title: 'Dispersar (X): mantené el clic; los cubos se abren y derivan',
       icon: '<svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke-dasharray="2 2.4"/><circle cx="11" cy="11" r="2"/></svg>',
-      brush: () => S.radius * frame.getBoundingClientRect().height / gen.H,
+      brush: () => S.radius * frame.getBoundingClientRect().height / gen.H * cropScale(),
       down(e) { pointer = toArt(e); pressing = true; reform = null; kicked = new Set(); wake(); },
       move(e) { pointer = toArt(e); },
       hover(e) { pointer = toArt(e); },
       up() { pressing = false; kicked = new Set(); } },
+    { id: 'crop', key: 'c', title: 'Recortar (C): arrastrá un recuadro, o clic para acercar ×2. Mover (H) o las flechas lo desplazan',
+      icon: '<svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2.5V16h13.5"/><path d="M2.5 6H16v13.5"/></svg>',
+      down(e) { cropDrag = { a: board(e) }; },
+      move(e) { if (cropDrag) showCropBox(cropBox(cropDrag.a, board(e))); },
+      up(e) {
+        if (!cropDrag) return;
+        const a = cropDrag.a, c = cropBox(a, board(e)), v = viewBox();
+        cropDrag = null; showCropBox(null);
+        setCrop(c || { x: a[0] - v.w / 4, y: a[1] - v.h / 4, w: v.w / 2, h: v.h / 2 });
+      } },
+    { id: 'focus', key: 'f', title: 'Foco (F): clic sobre un cubo para enfocar a su distancia',
+      icon: '<svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 7.5V3h4.5M14.5 3H19v4.5M19 14.5V19h-4.5M7.5 19H3v-4.5"/><circle cx="11" cy="11" r="2.5"/></svg>',
+      down(e) {
+        if (!gen.dep) return;
+        const [x, y] = toArt(e), R2 = (gen.H * .02 / cropScale()) ** 2;
+        let sum = 0, cnt = 0, best = Infinity, bi = -1;
+        for (let i = 0; i < gen.n; i++) {
+          if (gone[i] || gen.del[i]) continue;
+          const d2 = (X[i] - x) ** 2 + (Y[i] - y) ** 2;
+          if (d2 < R2) { sum += gen.dep[i]; cnt++; }
+          if (d2 < best) { best = d2; bi = i; }
+        }
+        if (!cnt && bi < 0) return;
+        S.focus = Math.round((cnt ? sum / cnt : gen.dep[bi]) * 100) / 100;
+        if (!S.dof) S.dof = .5;
+        sync(); toast(`Foco en ${Math.round(S.focus * 100)}%`);
+      } },
     { id: 'rotate', key: 'o', title: 'Rotar la imagen (O): arrastrá; con Shift, gira en el plano',
       icon: '<svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 8.5A7 7 0 1 0 18 13"/><path d="M18 4v4.5h-4.5"/></svg>',
       down(e) { turning = { x: e.clientX, y: e.clientY, x0: S.rotX, y0: S.rotY, z: S.rotZ }; },
@@ -915,12 +1058,19 @@ const tools = RetouchTools({
       up() { turning = null; } },
   ],
   onStroke(op, phase) {
-    if (phase === 'start') ops.push(op);
+    if (phase === 'start') { op.size /= cropScale(); ops.push(op); }
     if (phase === 'end') { if (op.tool === 'smudge' && op.pts.length < 2) { ops.pop(); rebuild(false); } clampPan(); wake(); return; }
     if (op.tool === 'smudge' && phase === 'start') return;
     RetouchTools.apply(edit, op, env()); restroke();
   },
+  // Mover: inside a recorte it moves the recorte over the picture; otherwise the picture inside the frame.
   onMove(dx, dy, phase) {
+    if (crop) {
+      if (phase === 'start') cropHold = { ...crop };
+      else if (phase === 'move' && cropHold) { crop = fitCrop({ ...cropHold, x: cropHold.x - dx, y: cropHold.y - dy }); wake(); }
+      else if (phase === 'end') cropHold = null;
+      return;
+    }
     if (phase === 'start') pan0 = [panX, panY];
     else if (phase === 'move') { panX = pan0[0] + dx; panY = pan0[1] + dy; clampPan(); wake(); }
   },
@@ -961,7 +1111,8 @@ $('#png').addEventListener('click', () => {
   const c = document.createElement('canvas'); c.width = gen.W; c.height = gen.H;
   const ctx = c.getContext('2d');
   if (S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, gen.W, gen.H); }
-  ctx.translate(panX, panY);
+  const v = viewBox(), k = gen.W / v.w;
+  ctx.setTransform(k, 0, 0, k, (panX - v.x) * k, (panY - v.y) * k);
   draw(ctx, S);
   c.toBlob(b => b ? download(`pixel-waves-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
 });
