@@ -172,6 +172,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <div class="row" style="grid-template-columns:56px 1fr"><span>Flor</span><select class="text" id="blModel" aria-label="Flor"></select></div>
           <div id="sl-blYaw"></div>
           <div id="sl-blPitch"></div>
+          <div id="sl-blLength"></div>
+          <div id="sl-blChannel"></div>
           <div id="sl-blTravel"></div>
           <div id="sl-blFlowers"></div>
           <div id="sl-blSize"></div>
@@ -230,14 +232,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       </section>
 
       <section>
-        <h2>Trail</h2>
-        <p class="hint">Cada cubo deja una estela que va de 100% a 0% de opacidad.</p>
-        <div id="sl-trail"></div>
-        <div id="sl-trailAngle"></div>
-        <div id="sl-trailJitter"></div>
-      </section>
-
-      <section>
         <h2>Profundidad</h2>
         <p class="hint">Desenfoca lo que queda lejos del foco. Con la herramienta Foco (F) hacé clic sobre un cubo para enfocar a su distancia.</p>
         <div id="sl-dof"></div>
@@ -288,7 +282,7 @@ const DEFAULTS = {
   seed: 1, aspect: '3:2', source: 'waves',
   layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5,
   rfChannels: 3, rfFocus: .42, rfChaos: .7, rfSpread: .6, rfAmp: .5, rfFreq: 1, rfOrder: .7, rfWaist: 0,
-  blModel: 'hortensia', blYaw: 0, blPitch: 0, blTravel: .5, blFlowers: 3, blSize: .5, blFlorets: 32, blShare: .5, orient: 'h',
+  blModel: 'hortensia', blYaw: 0, blPitch: 0, blTravel: .5, blLength: 1, blChannel: .45, blFlowers: 3, blSize: .5, blFlorets: 32, blShare: .5, orient: 'h',
   contrast: 1.2, threshold: .1, invert: false, grid: false, gridCols: 140, rotX: 0, rotY: 0, rotZ: 0,
   style: 'mono', count: 45000, size: 3.5, mod: .6, variation: .35, grain: .12,
   colorMode: 'single', ink: '#272727', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89'],
@@ -372,6 +366,23 @@ function generate(st) {
     tlen[got] = Math.max(0, 1 + st.trailJitter * (r() * 2 - 1));
     got++;
   };
+  // Olas' sheets: Capas height fields of a few long sine waves, seen in perspective (Hortensia uses them too).
+  const waveField = () => {
+    const layers = Array.from({ length: st.layers }, (_, l) => ({
+      waves: Array.from({ length: st.complexity }, (_, k) => ({
+        f: st.freq * (k === 0 ? 1 : 1 + k * .7) * (.7 + r() * .6) * Math.PI * 2,
+        th: (r() - .5) * 1.1, ph: r() * Math.PI * 2, a: 1 / (1 + k * 1.1),
+      })),
+      base: (l - (st.layers - 1) / 2) * .35 + (r() - .5) * .15, tilt: (r() - .5) * .3,
+    }));
+    const height = (L, u, v) => {
+      let h = 0, norm = 0;
+      for (const w of L.waves) { h += w.a * Math.sin(w.f * (u * Math.cos(w.th) + v * Math.sin(w.th)) + w.ph); norm += w.a; }
+      return L.base + L.tilt * (u - .5) + (h / norm) * st.amp;
+    };
+    const focal = .4 + st.persp * 1.4, zNear = 1, zFar = 1 + 1.5 + st.persp * 2.5;
+    return { layers, height, focal, zNear, zFar };
+  };
   if (image) {
     const { gw, gh, lum, rgb: col } = img, cells = gw * gh, t = st.threshold, M = new Float32Array(cells), cdf = new Float64Array(cells);
     let sum = 0;
@@ -405,13 +416,13 @@ function generate(st) {
     const norm = ws.reduce((t, w) => t + w.a, 0);
     const sheet = (s, w) => { let h = 0; for (const q of ws) h += q.a * Math.sin(q.f * (s * Math.cos(q.th) + w * Math.sin(q.th)) + q.ph); return h / norm; };
     const tight = (1 - st.rfOrder) * .02 + .002, g = () => clamp(gauss(r), -2.6, 2.6);
-    // Hortensia: a loose, wide cloud on the left that draws in as it travels, a sheet that twists over itself
-    // (where it turns edge-on the points bunch into dark folds) and knots tight at its end; from the knot one thin
-    // stem per flower runs out and into the base of a flower head, modelled in 3D and stippled (flora3d.js), and on
-    // behind it to its middle: what falls behind a head is hidden, so stem and flower are one.
-    const bloom = st.source === 'bloom', fEnd = bloom ? .85 : 1, F = st.blFlowers, heads = [];
+    // Hortensia: Olas' sheets (Capas, Altura, Frecuencia…) that, from Encauce on, are channelled into one strand,
+    // turning over themselves into a knot (Recorrido y nudo); from the knot one thin stem per flower runs out and
+    // into the base of a flower head, modelled in 3D and stippled (flora3d.js), and on behind it to its middle:
+    // what falls behind a head is hidden, and a stalk of the model fades in over the stem, so they are one.
+    const bloom = st.source === 'bloom', fEnd = bloom ? .85 * st.blLength : 1, F = st.blFlowers, heads = [];
     if (bloom) {
-      const Rh = .13 + st.blSize * .2, travel = .06 + st.blTravel * .5, side = Math.ceil(Math.sqrt(F)), cw = Rh * 2.1 * side, ch = Rh * 2.1 * Math.ceil(F / side);
+      const Rh = .08 + st.blSize * .3, travel = .06 + st.blTravel * .5, side = Math.ceil(Math.sqrt(F)), cw = Rh * 2.1 * side, ch = Rh * 2.1 * Math.ceil(F / side);
       const x0 = fEnd * AR + travel + Rh;
       for (let i = 0; i < F; i++) {
         let best = null;
@@ -423,7 +434,7 @@ function generate(st) {
         }
         // The chosen flower (Pixel Model's models), turned by Giro / Inclinación. The hydrangea takes Florecillas
         // (they count the front half; the head is florets all round so it can turn).
-        const src = st.blModel !== 'hortensia' ? Flora3D.MODELS[st.blModel](r) : (() => {
+        const src = st.blModel !== 'hortensia' ? Flora3D.MODELS[st.blModel](r, { trim: true }) : (() => {
           const t = Flora3D.hydrangea(1, Math.round(st.blFlorets * 1.9), r, { cap: 1.85 });
           for (let i = 1; i < t.length; i += 3) t[i] = -t[i];
           return t;
@@ -437,7 +448,9 @@ function generate(st) {
         for (let k = 0; k < mesh.length; k += 18) for (let j = 0; j < 9; j += 3) mx = Math.min(mx, mesh[k + j]);
         for (let k = 0; k < mesh.length; k += 18) for (let j = 0; j < 9; j += 3) if (mesh[k + j] < mx + best.R * .06) { sy += mesh[k + j + 1]; c++; }
         const A = [best.x + mx + best.R * .02, best.y + sy / c];
-        heads.push({ x: best.x, y: best.y, R: best.R, A, mesh, turns: .75 + st.blTravel * 1.75, ph: r() * Math.PI * 2 });
+        // Over its first stretch the model fades in (a long one for a stalk, a short one for leaves).
+        const fade = best.R * (st.blModel === 'cala' || st.blModel === 'tulipan' ? .7 : .2);
+        heads.push({ x: best.x, y: best.y, R: best.R, A, mesh, mx, fade, turns: .75 + st.blTravel * 1.75, ph: r() * Math.PI * 2 });
       }
     }
     // Each head is rendered as a 3D model (Flora3D.hydrangea) and stippled: Puntos en las flores of the points go to
@@ -448,6 +461,7 @@ function generate(st) {
       h.buf = buf;
       const pts = Stipple3D.sample(buf, e, Math.round(n * st.blShare / F), r, { gamma: 1.9, edge: .8, floor: .01, gain: 1.25 });
       for (let i = 0; i < pts.length && got < n; i += 3) {
+        if (r() > smooth(h.mx, h.mx + h.fade, pts[i])) continue;
         const ix = Math.min(buf.W - 1, Math.floor((pts[i] - box.x0) * buf.k)), iy = Math.min(buf.H - 1, Math.floor((pts[i + 1] - box.y0) * buf.k)), z = buf.depth[iy * buf.W + ix];
         add(h.x + pts[i], h.y + pts[i + 1], .85, 0, undefined, clamp(.5 - (z > -1e9 ? z : 0) / (R * 1.55) * .3)); // every flower carries all the colours
       }
@@ -455,26 +469,24 @@ function generate(st) {
     if (bloom) {
       const behind = (x, y) => heads.some(h => {
         const b = h.buf, ix = Math.floor((x - h.x - b.box.x0) * b.k), iy = Math.floor((y - h.y - b.box.y0) * b.k);
-        return ix >= 0 && iy >= 0 && ix < b.W && iy < b.H && b.mask[iy * b.W + ix];
+        return x - h.x > h.mx + h.fade * .8 && ix >= 0 && iy >= 0 && ix < b.W && iy < b.H && b.mask[iy * b.W + ix];
       });
-      // The body runs from x = 0 to the knot E, its middle line rolling on the sheet's long waves and settling
-      // on E's height; its half-width (Apertura, Desorden) closes in to almost nothing at the knot, while it turns
-      // over Recorrido-many times, faster towards the end.
-      const xE = fEnd * AR, E = [xE, heads.reduce((t, h) => t + h.A[1], 0) / F * .5], A0 = st.rfAmp * .7;
-      const mid = q => A0 * (sheet(q, 0) - sheet(1, 0) * q) * (1 - q * q * .5) + E[1] * smooth(0, 1, q);
-      const turns = .8 + st.blTravel * 2, ph0 = r() * 6.3, open = .2 + st.rfSpread * .38 + st.rfChaos * .12;
-      const stemShare = .14 + .06 * F / 10, len = heads.map(h => Math.hypot(h.A[0] - E[0], h.A[1] - E[1]));
+      // The body: Olas' sheets along x from 0 to the knot E. From Encauce on, the sheets close in on E's height,
+      // turning over as they go, so they cross and knot; the far edge and the start fade as in Olas.
+      const xE = fEnd * AR, E = [xE, heads.reduce((t, h) => t + h.A[1], 0) / F * .5];
+      const { layers, height, focal, zNear, zFar } = waveField(), zMid = (zNear + zFar) / 2, y0 = .9 / zMid * focal;
+      const c0 = 1 - st.blChannel, turns = .5 + st.blTravel * 1.5, ph0 = r() * 6.3, sc = 1.1 * Math.min(1.4, st.blLength);
+      const stemShare = .1 + .05 * F / 10, len = heads.map(h => Math.hypot(h.A[0] - E[0], h.A[1] - E[1]));
       for (let tries = 0; got < n && tries < n * 6; tries++) {
         const w = r() - .5;
         let x, y, d = .5;
         if (r() > stemShare) {
-          const q = r();
-          if (r() > smooth(0, .12, q)) continue;
-          const hw = open * (1 - Math.pow(q, 2.4)) + .006, th = ph0 + 2 * Math.PI * turns * Math.pow(q, 1.3);
-          const loose = (st.rfChaos * .1 * Math.pow(1 - q, 4) + tight * (1 - q * .7)) * (r() < .08 ? 2 : 1);
-          x = q * xE + hw * w * Math.sin(th) * .35 + g() * loose * .6;
-          d = .5 + .9 * w * Math.sin(th) * (hw / open) + g() * loose * 2;
-          y = mid(q) + hw * w * Math.cos(th) + st.rfAmp * .25 * hw * sheet(q, w) + (g() * loose + Math.abs(g()) * st.rfChaos * .2 * Math.pow(1 - q, 5)) ;
+          const L = layers[Math.floor(r() * layers.length)], u = r(), v = r();
+          const keep = smooth(0, .12 + st.fade * .2, v) * (1 - smooth(1 - st.fade * .7, 1, v)) * smooth(0, .05 + st.fade * .12, u);
+          if (r() > keep) continue;
+          const z = zNear + v * (zFar - zNear), yw = ((.9 - height(L, u, v) - gauss(r) * st.thickness * .06) / z * focal - y0) * sc;
+          const c = smooth(c0, 1, u), tw = Math.cos(Math.PI * turns * c * c);
+          x = u * xE + (1 - c) * .04 * (v - .5); y = E[1] * c + yw * Math.pow(1 - c, 1.6) * tw + g() * .0025 * c; d = v;
         } else {
           // A stem: a gentle S from the knot that meets the flower's base head-on, then straight on to its middle.
           const hi = Math.floor(r() * F), h = heads[hi], q = r() * 1.15, L = len[hi];
@@ -509,19 +521,7 @@ function generate(st) {
       }
     }
   } else {
-    const layers = Array.from({ length: st.layers }, (_, l) => ({
-      waves: Array.from({ length: st.complexity }, (_, k) => ({
-        f: st.freq * (k === 0 ? 1 : 1 + k * .7) * (.7 + r() * .6) * Math.PI * 2,
-        th: (r() - .5) * 1.1, ph: r() * Math.PI * 2, a: 1 / (1 + k * 1.1),
-      })),
-      base: (l - (st.layers - 1) / 2) * .35 + (r() - .5) * .15, tilt: (r() - .5) * .3,
-    }));
-    const height = (L, u, v) => {
-      let h = 0, norm = 0;
-      for (const w of L.waves) { h += w.a * Math.sin(w.f * (u * Math.cos(w.th) + v * Math.sin(w.th)) + w.ph); norm += w.a; }
-      return L.base + L.tilt * (u - .5) + (h / norm) * st.amp;
-    };
-    const focal = .4 + st.persp * 1.4, zNear = 1, zFar = 1 + 1.5 + st.persp * 2.5;
+    const { layers, height, focal, zNear, zFar } = waveField();
     for (let tries = 0; got < n && tries < n * 6; tries++) {
       const L = layers[Math.floor(r() * layers.length)], u = r(), v = r();
       const keep = smooth(0, .12 + st.fade * .2, v) * (1 - smooth(1 - st.fade * .7, 1, v)) * smooth(0, .05 + st.fade * .12, u) * smooth(0, .05 + st.fade * .12, 1 - u);
@@ -783,9 +783,11 @@ const SLIDERS = {
   rfWaist: { label: 'Cintura (punto de encauce)', min: 0, max: 1, step: .01, fmt: pct },
   blYaw: { label: 'Giro de las flores', min: -180, max: 180, step: 1, fmt: v => Math.round(v) + '°', emph: true },
   blPitch: { label: 'Inclinación de las flores', min: -89, max: 89, step: 1, fmt: v => Math.round(v) + '°' },
+  blLength: { label: 'Largo de la ola', min: .4, max: 1.8, step: .01, fmt: v => '×' + v.toFixed(2), emph: true },
+  blChannel: { label: 'Encauce', min: .1, max: .9, step: .01, fmt: pct },
   blTravel: { label: 'Recorrido y nudo', min: 0, max: 1, step: .01, fmt: pct, emph: true },
   blFlowers: { label: 'Flores', min: 1, max: 10, step: 1, fmt: String, emph: true },
-  blSize: { label: 'Tamaño de las flores', min: 0, max: 1, step: .01, fmt: pct },
+  blSize: { label: 'Tamaño de las flores', min: 0, max: 1.5, step: .01, fmt: pct, emph: true },
   blFlorets: { label: 'Florecillas por flor', min: 8, max: 80, step: 1, fmt: String },
   blShare: { label: 'Puntos en las flores', min: .2, max: .85, step: .01, fmt: pct },
   rfOrder: { label: 'Orden', min: 0, max: 1, step: .01, fmt: pct },
@@ -796,9 +798,6 @@ const SLIDERS = {
   mod: { label: 'Tamaño según profundidad o tono', min: 0, max: 1, step: .01, fmt: pct },
   variation: { label: 'Variación', min: 0, max: 1, step: .01, fmt: pct },
   grain: { label: 'Variación de tono', min: 0, max: .4, step: .01, fmt: pct },
-  trail: { label: 'Longitud del trail', min: 0, max: 400, step: 1, fmt: v => v ? v + ' px' : 'sin trail', emph: true },
-  trailAngle: { label: 'Dirección', min: 0, max: 360, step: 1, fmt: v => v + '°' },
-  trailJitter: { label: 'Variación de largo', min: 0, max: 1, step: .01, fmt: pct },
   soft: { label: 'Suavidad del borde', min: 0, max: 1, step: .01, fmt: pct },
   gridCols: { label: 'Columnas', min: 20, max: 400, step: 1, fmt: String, emph: true },
   rotX: { label: 'Rotación arriba–abajo', min: -85, max: 85, step: 1, fmt: v => Math.round(v) + '°' },
@@ -870,7 +869,7 @@ function sync() {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   const waves = S.source === 'waves', image = S.source === 'image', mono = S.style === 'mono';
-  $('#wave-controls').hidden = !waves; $('#image-controls').hidden = !image; $('#refract-controls').hidden = S.source !== 'refract' && S.source !== 'bloom'; $('#bloom-controls').hidden = S.source !== 'bloom'; $('#sl-rfFocus').hidden = $('#sl-rfWaist').hidden = S.source === 'bloom';
+  $('#wave-controls').hidden = !waves && S.source !== 'bloom'; $('#image-controls').hidden = !image; $('#refract-controls').hidden = S.source !== 'refract'; $('#bloom-controls').hidden = S.source !== 'bloom';
   $('#source-hint').textContent = image ? 'Más cubos en las zonas oscuras, menos en las claras.' : 'También podés arrastrar o pegar una imagen: más cubos en lo oscuro, menos en lo claro.';
   $('#cm-image').hidden = !image;
   $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = mono;
@@ -878,12 +877,11 @@ function sync() {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase())); $('#palette-box').hidden = S.colorMode !== 'random';
   $('#blModel').value = S.blModel; $('#sl-blFlorets').hidden = S.blModel !== 'hortensia';
   $('#bg').value = S.bg; $('#bg-chip').style.background = S.bg;
-  $('#sl-trailAngle').hidden = $('#sl-trailJitter').hidden = !S.trail;
   $('#sl-gridCols').hidden = !S.grid; $('#sl-count').hidden = image && S.grid;
   $('.rt-bar [data-tool="rotate"]').hidden = !image; if (!image && tools.tool === 'rotate') tools.setTool('scatter');
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
-  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.contrast, S.threshold, S.invert,
+  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.contrast, S.threshold, S.invert,
     S.style, S.count, S.size, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {

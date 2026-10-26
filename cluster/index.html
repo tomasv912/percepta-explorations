@@ -130,13 +130,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       </section>
 
       <section>
-        <h2>Trail</h2>
-        <div id="sl-trail"></div>
-        <div id="sl-trailAngle"></div>
-        <div id="sl-trailJitter"></div>
-      </section>
-
-      <section>
         <h2>Color</h2>
         <div class="levels" id="levels" aria-label="Colores"></div>
         <div class="row" style="grid-template-columns:56px 1fr">
@@ -288,9 +281,6 @@ const SLIDERS = {
   spread: { label: 'Dispersión', min: 0, max: 1, step: .01, fmt: pct },
   core: { label: 'Centro', min: 0, max: 1, step: .01, fmt: pct },
   clump: { label: 'Agrupamiento', min: 0, max: .9, step: .01, fmt: pct },
-  trail: { label: 'Longitud del trail', min: 0, max: 600, step: 1, fmt: v => v ? v + ' px' : 'sin trail', emph: true },
-  trailAngle: { label: 'Dirección', min: 0, max: 360, step: 1, fmt: v => v + '°' },
-  trailJitter: { label: 'Variación de largo', min: 0, max: 1, step: .01, fmt: pct },
 };
 for (const [key, d] of Object.entries(SLIDERS)) {
   const host = $('#sl-' + key);
@@ -321,7 +311,6 @@ function sync() {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('#levels [data-i]').forEach(b => b.setAttribute('aria-pressed', S.on[+b.dataset.i]));
   $('#bg').value = S.bg; $('#bg-chip').style.background = S.bg;
-  $('#sl-trailAngle').hidden = !S.trail || S.shape === 'firework'; $('#sl-trailJitter').hidden = !S.trail;
   $('#sl-arms').hidden = S.shape === 'cloud' || S.shape === 'ring';
   $('#sl-arms label').textContent = { firework: 'Rayos', spiral: 'Brazos', wave: 'Ondas' }[S.shape] || 'Rayos';
   $('#out-arms').textContent = S.shape === 'spiral' ? Math.max(2, Math.round(S.arms / 3)) : S.shape === 'wave' ? (Math.max(1, S.arms / 6)).toFixed(1) : S.arms;

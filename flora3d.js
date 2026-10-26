@@ -90,10 +90,10 @@
   }
   const pick = (r, a, b) => a + r() * (b - a), warp = r => r() * r() * 1.3; // mostly a little, now and then a lot
 
-  // A stem from the origin down, gently curved; returns its curve so leaves can sit on it.
-  function stem(out, r, len, rad) {
+  // A stem from the origin down, gently curved, drawn as far as tEnd of it; returns its curve so leaves can sit on it.
+  function stem(out, r, len, rad, tEnd = 1) {
     const cx = (r() - .5) * .3, cz = (r() - .5) * .2, k = pick(r, 1.5, 3), c = t => [Math.sin(t * k) * cx, -t * len, Math.sin(t * k * .7) * cz];
-    tube(out, c, () => rad, 16, 8);
+    tube(out, t => c(t * tEnd), () => rad, 16, 8);
     return c;
   }
   // A long leaf rising from p, leaning out towards azimuth az, its tip falling away by droop.
@@ -128,8 +128,8 @@
       return distort(flipY(out), r, warp(r));
     },
     // Six cupped petals in two rings on a stem, with leaves. Openness runs from a tight bud through a cup and a
-    // flower spread wide to one past its best, petals falling outwards.
-    tulipan: r => {
+    // flower spread wide to one past its best, petals falling outwards. opts.trim ends the stem at the lowest leaf.
+    tulipan: (r, opts = {}) => {
       const out = [], open = Math.pow(r(), 1.3) * 1.2, H = pick(r, .95, 1.3), W = pick(r, .17, .24) * (1 + .45 * open), cup = pick(r, .4, .9);
       for (let k = 0; k < 6; k++) {
         const inner = k % 2, th0 = k / 6 * Math.PI * 2 + (r() - .5) * .2, o = open * (inner ? .8 : 1) + (r() - .5) * .12;
@@ -143,8 +143,9 @@
           return add3(mul(radial, R0 + a * L - Math.cos(t) * inw), [0, .05 + b * L + Math.sin(t) * inw, 0], mul(side, vv * half));
         }, 14, 10);
       }
-      const c = stem(out, r, pick(r, 1.6, 2.7), pick(r, .038, .055)), nl = 1 + Math.floor(r() * 3), az0 = r() * 6.3;
-      for (let i = 0; i < nl; i++) longLeaf(out, c(pick(r, .55, .85)), az0 + i * Math.PI * 2 / nl + (r() - .5) * .8, pick(r, 1, 1.9), pick(r, .14, .26), pick(r, .1, .6));
+      const nl = 1 + Math.floor(r() * 3), az0 = r() * 6.3, at = Array.from({ length: nl }, () => pick(r, .55, .85));
+      const c = stem(out, r, pick(r, 1.6, 2.7), pick(r, .038, .055), opts.trim ? Math.max(...at) : 1);
+      for (let i = 0; i < nl; i++) longLeaf(out, c(at[i]), az0 + i * Math.PI * 2 / nl + (r() - .5) * .8, pick(r, 1, 1.9), pick(r, .14, .26), pick(r, .1, .6));
       return distort(out, r, warp(r));
     },
     // A rolled spathe that opens towards the front and peaks at the back, a spadix in it, a stem and maybe leaves.
