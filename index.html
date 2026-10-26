@@ -389,7 +389,6 @@ function generate(st) {
     // colour to its head.
     const bloom = st.source === 'bloom', fEnd = bloom ? Math.max(f + .2, .8) : 1, F = st.blFlowers, heads = [];
     const sR = .74 - st.blTravel * .24; // where the ribbon starts, along the sheet
-    const upright = (cx, cy, [x, y]) => st.orient === 'v' ? [cx - (y - cy), cy + (x - cx)] : [x, y];
     if (bloom) {
       const Rh = .13 + st.blSize * .2, travel = .12 + st.blTravel * 1.1, side = Math.ceil(Math.sqrt(F)), cw = Rh * 2.1 * side, ch = Rh * 2.1 * Math.ceil(F / side);
       const x0 = fEnd * AR + travel + Rh;
@@ -401,8 +400,6 @@ function generate(st) {
           if (!best || gap > best.gap) best = { x: c[0], y: c[1], R, gap };
           if (gap > -R * .2) break;
         }
-        // In Vertical the whole picture turns a quarter (so it flows upwards); the flower is built turned the
-        // other way about its centre, so it ends up upright with the stem coming from below.
         // The chosen flower (Pixel Model's models), turned by Giro / Inclinación. The hydrangea takes Florecillas
         // (they count the front half; the head is florets all round so it can turn).
         const src = st.blModel !== 'hortensia' ? Flora3D.MODELS[st.blModel](r) : (() => {
@@ -410,12 +407,15 @@ function generate(st) {
           for (let i = 1; i < t.length; i += 3) t[i] = -t[i];
           return t;
         })();
+        // Then laid along the flow (its up turned to point downstream), so the ray it sits on is its stem and
+        // the leaves stand across it. In Vertical the whole picture turns a quarter and the flower stands up.
         const mesh = Flora3D.view(src, st.blYaw, st.blPitch, best.R * 1.55);
-        // The ray runs into the lowest point of the model as it is turned (the middle of its lowest sliver).
-        let my = -Infinity, sx = 0, c = 0;
-        for (let k = 0; k < mesh.length; k += 18) for (let j = 1; j < 9; j += 3) my = Math.max(my, mesh[k + j]);
-        for (let k = 0; k < mesh.length; k += 18) for (let j = 1; j < 9; j += 3) if (mesh[k + j] > my - best.R * .06) { sx += mesh[k + j - 1]; c++; }
-        const A0 = [best.x + sx / c, best.y + my - best.R * .02], A = upright(best.x, best.y, A0), B = [fEnd * AR, A[1] * .25];
+        for (let k = 0; k < mesh.length; k += 3) { const x = mesh[k]; mesh[k] = -mesh[k + 1]; mesh[k + 1] = x; }
+        // The ray runs into the base of the model as it is turned (the middle of its rearmost sliver).
+        let mx = Infinity, sy = 0, c = 0;
+        for (let k = 0; k < mesh.length; k += 18) for (let j = 0; j < 9; j += 3) mx = Math.min(mx, mesh[k + j]);
+        for (let k = 0; k < mesh.length; k += 18) for (let j = 0; j < 9; j += 3) if (mesh[k + j] < mx + best.R * .06) { sy += mesh[k + j + 1]; c++; }
+        const A = [best.x + mx + best.R * .02, best.y + sy / c], B = [fEnd * AR, A[1] * .25];
         heads.push({ x: best.x, y: best.y, R: best.R, A, B, mesh, turns: .75 + st.blTravel * 1.75, ph: r() * Math.PI * 2 });
       }
     }
@@ -426,8 +426,7 @@ function generate(st) {
       const buf = Stipple3D.render(mesh, box, 640, [-.35, -.5, .8], { ambient: .3, shadowDim: .4 }), e = Stipple3D.edges(buf, R * .015);
       const pts = Stipple3D.sample(buf, e, Math.round(n * st.blShare / F), r, { gamma: 1.9, edge: .8, floor: .01, gain: 1.25 });
       for (let i = 0; i < pts.length && got < n; i += 3) {
-        const [x, y] = upright(h.x, h.y, [h.x + pts[i], h.y + pts[i + 1]]);
-        add(x, y, .85, 0); // every flower carries all the colours
+        add(h.x + pts[i], h.y + pts[i + 1], .85, 0); // every flower carries all the colours
       }
     });
     for (let tries = 0; got < n && tries < n * 4; tries++) {
