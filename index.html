@@ -262,7 +262,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 const SIZES = { '3:2': [3000, 2000], '4:3': [3000, 2250], '1:1': [3000, 3000], '4:5': [2400, 3000], '16:9': [3200, 1800] };
 // Background: white or one of the palette colours. Cubes of the background's colour would vanish into it,
 // so they turn white instead (white cubes on white turn ink).
-const BACKGROUNDS = [['#F6F6F6', 'Blanco'], ['#D9D0FA', 'Lila'], ['#A8A5EC', 'Violeta'], ['#A0C2FF', 'Celeste'], ['#98DEDF', 'Agua'], ['#7FE4B0', 'Verde']];
+const BACKGROUNDS = [['#F6F6F6', 'Blanco'], ['#E4DEFC', 'Lila'], ['#A8A5EC', 'Violeta'], ['#A0C2FF', 'Celeste'], ['#98DEDF', 'Agua'], ['#3DDB89', 'Verde']];
 const WHITE = '#F6F6F6', INK = '#14191F';
 const onBg = (c, bg) => c.toLowerCase() !== bg.toLowerCase() ? c : bg.toLowerCase() === WHITE.toLowerCase() ? INK : WHITE;
 const DEFAULTS = {
@@ -272,7 +272,7 @@ const DEFAULTS = {
   blModel: 'hortensia', blYaw: 0, blPitch: 0, blTravel: .5, blFlowers: 3, blSize: .5, blFlorets: 32, blShare: .5, orient: 'h',
   contrast: 1.2, threshold: .1, invert: false, grid: false, gridCols: 140, rotX: 0, rotY: 0, rotZ: 0,
   style: 'mono', count: 45000, size: 3.5, mod: .6, variation: .35, grain: .12,
-  colorMode: 'single', ink: '#272727', palette: ['#D9D0FA', '#A8A5EC', '#A0C2FF', '#98DEDF', '#7FE4B0'],
+  colorMode: 'single', ink: '#272727', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89'],
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
@@ -759,7 +759,7 @@ document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('c
 $('#palette').innerHTML = S.palette.map((_, i) => `<label title="Color ${i + 1}"><input type="color" data-pal="${i}" aria-label="Color ${i + 1}"></label>`).join('');
 document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('input', () => { S.palette[+inp.dataset.pal] = inp.value; sync(); }));
 // Un color: the five palette colours plus a black and a white, one click each; the picker below takes any other.
-const INKS = ['#D9D0FA', '#A8A5EC', '#A0C2FF', '#98DEDF', '#7FE4B0', '#272727', '#F6F6F6'];
+const INKS = ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89', '#272727', '#F6F6F6'];
 $('#inks').innerHTML = INKS.map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join('');
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
 $('#blModel').innerHTML = Flora3D.NAMES.map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
