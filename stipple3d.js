@@ -33,7 +33,7 @@
       const SW = Math.round(res * 1.2), sk = SW / Math.max(1e-9, Math.max(u1 - u0, v1 - v0)), SH = SW;
       const sdepth = new Float32Array(SW * SH).fill(-Infinity);
       raster(lt, n, SW, SH, (u, v) => [(u - u0) * sk, (v - v0) * sk], sdepth, null);
-      shadow = { toL, sdepth, SW, SH, sk, u0, v0, bias: 2.5 / sk };
+      shadow = { toL, sdepth, SW, SH, sk, u0, v0, bias: (opts.bias ?? 6) / sk }; // margin against thin surfaces shadowing themselves
     }
     // Light: ambient plus diffuse, two-sided (a surface seen from behind is lit as its front), shadowed where
     // something nearer the light covers it.

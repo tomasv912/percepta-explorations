@@ -84,6 +84,9 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 
 .bg-pick select { flex: 1; min-width: 0; height: 100%; border: 0; background: none; color: var(--text); font: 12px var(--font); cursor: pointer; padding: 0; }
 .bg-pick select:focus-visible { outline: none; }
 .bg-pick:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.presets button { appearance: none; border: 0; height: 28px; border-radius: 6px; background: var(--fill); color: var(--text-2); font: 500 12px var(--font); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); }
+.presets button[aria-pressed="true"] { background: var(--text); color: var(--surface); box-shadow: none; }
 .levels { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 .levels button { appearance: none; border: 0; height: 26px; border-radius: 0; cursor: pointer; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .14); position: relative; }
 .levels button[aria-pressed="false"] { opacity: .25; }
@@ -101,6 +104,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <body>
 <script src="../toolbar.js"></script>
 <script src="../stipple3d.js"></script>
+<script src="../flora3d.js"></script>
 <div class="app">
   <main id="stage">
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Un modelo 3D dibujado con píxeles"></canvas></div>
@@ -112,6 +116,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
     <div class="controls">
       <section>
         <h2>Modelo</h2>
+        <div class="presets" id="presets" aria-label="Modelos"></div>
         <button class="btn" id="upload">Subir .obj, .glb o .gltf</button>
         <input type="file" id="file" accept=".obj,.glb,.gltf" hidden>
         <div id="sl-yaw"></div>
@@ -176,7 +181,7 @@ const WHITE = '#F6F6F6', INK = '#14191F';
 const onBg = (c, bg) => c.toLowerCase() !== bg.toLowerCase() ? c : bg.toLowerCase() === WHITE.toLowerCase() ? INK : WHITE;
 const AW = 1600, AH = 1200, RES = 2;
 const DEFAULTS = {
-  yaw: 30, pitch: 18, zoom: 1, lightAz: 220, lightEl: 40, ambient: .25, shadow: .65,
+  yaw: -20, pitch: 12, zoom: 1, lightAz: 220, lightEl: 40, ambient: .25, shadow: .65,
   count: 40000, size: 3, contrast: 1.6, edge: .8, jitter: 1, seed: 1,
   colorMode: 'ink', ink: '#272727', bg: '#F6F6F6', bgExport: false,
 };
@@ -188,8 +193,23 @@ function rng(seed) {
 }
 
 // ---------- Model ----------
-// Positions (9 per triangle), centred and scaled to fit a unit sphere. The sample is a torus knot.
-let model = null, modelName = '';
+// Built-in flowers and plants (flora3d.js; the seed gives a variant), a trefoil knot, or an uploaded file.
+// Positions are centred and scaled to fit a unit sphere.
+const PRESETS = [['hortensia', 'Hortensia'], ['florecilla', 'Florecilla'], ['tulipan', 'Tulipán'], ['cala', 'Cala'], ['margarita', 'Margarita'], ['suculenta', 'Suculenta'], ['nudo', 'Nudo']];
+let model = null, modelName = '', preset = 'hortensia', presetSeed = -1;
+function loadPreset() {
+  const tris = preset === 'nudo' ? Stipple3D.withNormals(torusKnot()) : new Float32Array(Flora3D.MODELS[preset](rng(S.seed * 7 + 3)));
+  setModelTris(tris, PRESETS.find(p => p[0] === preset)[1]); presetSeed = S.seed;
+}
+// Triangles with normals (18 per triangle): centred and scaled like setModel, normals kept.
+function setModelTris(tris, name) {
+  let cx = 0, cy = 0, cz = 0, n = 0;
+  for (let i = 0; i < tris.length; i += 18) for (let j = 0; j < 9; j += 3) { cx += tris[i + j]; cy += tris[i + j + 1]; cz += tris[i + j + 2]; n++; }
+  cx /= n; cy /= n; cz /= n;
+  let r = 0; for (let i = 0; i < tris.length; i += 18) for (let j = 0; j < 9; j += 3) r = Math.max(r, Math.hypot(tris[i + j] - cx, tris[i + j + 1] - cy, tris[i + j + 2] - cz));
+  for (let i = 0; i < tris.length; i += 18) for (let j = 0; j < 9; j += 3) { tris[i + j] = (tris[i + j] - cx) / r; tris[i + j + 1] = (tris[i + j + 1] - cy) / r; tris[i + j + 2] = (tris[i + j + 2] - cz) / r; }
+  model = tris; modelName = name;
+}
 function setModel(pos, name) {
   let cx = 0, cy = 0, cz = 0, n = pos.length / 3;
   for (let i = 0; i < pos.length; i += 3) { cx += pos[i]; cy += pos[i + 1]; cz += pos[i + 2]; }
@@ -231,7 +251,11 @@ function build(fast) {
   const light = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.cos(el) * Math.sin(az) * -1 + .0001];
   const buf = Stipple3D.render(tris, box, fast ? 420 : 900, [light[0], light[1], Math.abs(light[2]) + .35], { ambient: S.ambient, shadowDim: 1 - S.shadow });
   const e = Stipple3D.edges(buf, .02 / S.zoom), r = rng(S.seed);
-  const raw = Stipple3D.sample(buf, e, fast ? Math.min(S.count, 15000) : S.count, r, { gamma: S.contrast, edge: S.edge, floor: .01, gain: 1.2 });
+  // Cantidad is a density: the count for a model that would fill a third of the frame, scaled by the area it
+  // actually covers, so a slender model is not crammed darker than a broad one.
+  let area = 0; for (let i = 0; i < buf.mask.length; i++) area += buf.mask[i];
+  const want = Math.round(S.count * Math.min(2, area / buf.mask.length * 3));
+  const raw = Stipple3D.sample(buf, e, fast ? Math.min(want, 15000) : want, r, { gamma: S.contrast, edge: S.edge, floor: .01, gain: 1.2 });
   // Into artboard units, square pixels never rotated, each a little off its sample (Superposición).
   const k = AW / (box.x1 - box.x0), out = [];
   for (let i = 0; i < raw.length; i += 3) {
@@ -273,7 +297,7 @@ const SLIDERS = {
   lightEl: { label: 'Altura', min: 0, max: 85, step: 1, fmt: deg },
   ambient: { label: 'Luz ambiente', min: 0, max: .8, step: .01, fmt: pct },
   shadow: { label: 'Sombras proyectadas', min: 0, max: 1, step: .01, fmt: pct },
-  count: { label: 'Cantidad', min: 2000, max: 200000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
+  count: { label: 'Densidad', min: 2000, max: 200000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño del píxel', min: 1, max: 24, step: .5, fmt: v => v + ' px', emph: true },
   contrast: { label: 'Contraste', min: .5, max: 4, step: .05, fmt: v => v.toFixed(2) },
   edge: { label: 'Bordes y superposiciones', min: 0, max: 2, step: .01, fmt: pct },
@@ -288,6 +312,8 @@ for (const [key, d] of Object.entries(SLIDERS)) {
   input.addEventListener('change', () => sync());
   input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
 }
+$('#presets').innerHTML = PRESETS.map(([k, n]) => `<button data-p="${k}">${n}</button>`).join('');
+$('#presets').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (b) { preset = b.dataset.p; loadPreset(); key = ''; sync(); } });
 $('#inks').innerHTML = INKS.map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join('');
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
 $('#bg').innerHTML = BACKGROUNDS.map(([h, n]) => `<option value="${h}">${n} · ${h}</option>`).join('');
@@ -312,9 +338,11 @@ function sync(fast) {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink';
+  document.querySelectorAll('[data-p]').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === preset && !modelName.includes('.')));
+  if (preset && !modelName.includes('.') && presetSeed !== S.seed && !fast) loadPreset();
   $('#bg').value = S.bg; $('#bg-chip').style.background = S.bg;
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
-  const k = JSON.stringify([modelName, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, S.count, S.size, S.contrast, S.edge, S.jitter, S.seed]);
+  const k = JSON.stringify([modelName, presetSeed, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, S.count, S.size, S.contrast, S.edge, S.jitter, S.seed]);
   if (k !== key || (!fast && fastNext)) { fastNext = !!fast; pts = build(fast); key = k; }
   schedule();
 }
@@ -389,7 +417,7 @@ $('#svg').addEventListener('click', () => {
   download(`pixel-model-${S.seed}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));
 });
 
-setModel(torusKnot(), 'Nudo (ejemplo)');
+loadPreset();
 sync();
 </script>
 </body>

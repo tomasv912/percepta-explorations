@@ -117,6 +117,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <script src="toolbar.js"></script>
 <script src="tools.js"></script>
 <script src="stipple3d.js"></script>
+<script src="flora3d.js"></script>
 <div class="app">
   <main id="stage">
     <div class="frame" id="frame">
@@ -381,7 +382,7 @@ function generate(st) {
     const tight = (1 - st.rfOrder) * .02 + .002, g = () => clamp(gauss(r), -2.6, 2.6);
     // Hortensia: past the waves the rays of each flower gather at a point and travel on as a ribbon that
     // twists around itself (Recorrido sets how far, and how many turns), narrowing into a stem that runs into
-    // the underside of a hydrangea head, modelled in 3D and stippled (see hydrangeaMesh). Each ray carries its
+    // the underside of a hydrangea head, modelled in 3D and stippled (flora3d.js). Each ray carries its
     // colour to its head.
     const bloom = st.source === 'bloom', fEnd = bloom ? Math.max(f + .2, .8) : 1, F = st.blFlowers, heads = [];
     const sR = .74 - st.blTravel * .24; // where the ribbon starts, along the sheet
@@ -403,10 +404,10 @@ function generate(st) {
         heads.push({ x: best.x, y: best.y, R: best.R, A, B, turns: .75 + st.blTravel * 1.75, ph: r() * Math.PI * 2 });
       }
     }
-    // Each head is rendered as a 3D model (hydrangeaMesh) and stippled: Puntos en las flores of the points go to
+    // Each head is rendered as a 3D model (Flora3D.hydrangea) and stippled: Puntos en las flores of the points go to
     // the flowers, falling on shadows and on the edges where one sepal passes over another.
     if (bloom) heads.forEach((h, hi) => {
-      const R = h.R, mesh = hydrangeaMesh(R, st.blFlorets, r), box = { x0: -1.8 * R, y0: -1.35 * R, x1: 1.8 * R, y1: 2.15 * R };
+      const R = h.R, mesh = new Float32Array(Flora3D.hydrangea(R, st.blFlorets, r)), box = { x0: -1.8 * R, y0: -1.35 * R, x1: 1.8 * R, y1: 2.15 * R };
       const buf = Stipple3D.render(mesh, box, 640, [-.35, -.5, .8], { ambient: .3, shadowDim: .4 }), e = Stipple3D.edges(buf, R * .015);
       const pts = Stipple3D.sample(buf, e, Math.round(n * st.blShare / F), r, { gamma: 1.9, edge: .8, floor: .01, gain: 1.25 });
       for (let i = 0; i < pts.length && got < n; i += 3) {
@@ -514,56 +515,6 @@ function place(g, st) {
     const p = cam / (cam + z2);
     g.hx[i] = ox + x2 * p * k; g.hy[i] = oy + y2 * p * k; g.size[i] = g.bs[i] * p; g.dp[i] = p;
   }
-}
-
-// ---------- Hydrangea ----------
-// One head as triangles, centred on the origin (x right, y down, z towards the viewer), radius R. A lumpy dome
-// of N florets on a sunflower spiral, each facing out from the dome: four broad, rounded sepals that rise
-// towards their tips, curl up at the edges and ripple a little, alternate ones lifted so they overlap, around
-// a small bead. Two leaves under it, folded along the midrib and drooping at the tip. 18 floats per triangle.
-function hydrangeaMesh(R, N, r) {
-  const out = [], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-  const unit = v => { const l = Math.hypot(...v) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
-  const add3 = (...vs) => vs.reduce((a, v) => [a[0] + v[0], a[1] + v[1], a[2] + v[2]], [0, 0, 0]), mul = (v, k) => [v[0] * k, v[1] * k, v[2] * k];
-  // A parametric patch f(u, v), u and v in [0, 1], as a grid of quads with normals from its partials.
-  const patch = (f, nu, nv) => {
-    const P = [], Nn = [], e = 1e-3;
-    for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
-      const u = i / nu, v = j / nv, p = f(u, v);
-      P.push(p); Nn.push(unit(cross(sub(f(Math.min(1, u + e), v), f(Math.max(0, u - e), v)), sub(f(u, Math.min(1, v + e)), f(u, Math.max(0, v - e))))));
-    }
-    const at = (i, j) => j * (nu + 1) + i, tri = (a, b, c) => out.push(...P[a], ...P[b], ...P[c], ...Nn[a], ...Nn[b], ...Nn[c]);
-    for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) { tri(at(i, j), at(i + 1, j), at(i + 1, j + 1)); tri(at(i, j), at(i + 1, j + 1), at(i, j + 1)); }
-  };
-  const lump = [r() * 6.3, r() * 6.3], rot0 = r() * Math.PI * 2;
-  for (let k = 0; k < N; k++) {
-    const z = 1 - (k + .5) / N * .9, rr = Math.sqrt(1 - z * z), a = k * 2.39996 + rot0;
-    const n = [Math.cos(a) * rr, Math.sin(a) * rr, z], bump = 1 + .07 * Math.sin(3 * a + lump[0]) * rr + .05 * Math.sin(5 * a + lump[1]) * rr;
-    const C = mul(n, R * bump * .82), t1 = unit(Math.abs(n[2]) > .95 ? cross(n, [0, 1, 0]) : cross(n, [0, 0, 1])), t2 = cross(n, t1);
-    const rf = R * 1.55 / Math.sqrt(N) * (.85 + r() * .3), rot = r() * Math.PI / 2, ph = r() * 6.3;
-    for (let s4 = 0; s4 < 4; s4++) {
-      const th = rot + s4 * Math.PI / 2 + (r() - .5) * .25, dir = add3(mul(t1, Math.cos(th)), mul(t2, Math.sin(th))), side = add3(mul(t1, -Math.sin(th)), mul(t2, Math.cos(th)));
-      const L = rf * (.95 + r() * .15), Wd = L * .66, lift = (s4 % 2) * .07 * L;
-      patch((u, v) => {
-        const vv = v * 2 - 1, half = Wd * Math.pow(Math.sin(Math.PI * Math.min(1, u * .98 + .02)), .55) * (.7 + .4 * u);
-        const h = L * (.2 * u * u - .1 * u * u * u) + .16 * Wd * vv * vv * u + .03 * L * Math.sin(6 * vv + 4 * u + ph) * u + lift * (.3 + u);
-        return add3(C, mul(dir, u * L * 1.05), mul(side, vv * half), mul(n, h));
-      }, 7, 6);
-    }
-    // The bead in the middle.
-    patch((u, v) => { const th = u * Math.PI * 2, ph2 = v * Math.PI / 2, rb = rf * .11; return add3(C, mul(n, rf * .1 + Math.sin(ph2) * rb), mul(t1, Math.cos(th) * Math.cos(ph2) * rb), mul(t2, Math.sin(th) * Math.cos(ph2) * rb)); }, 8, 3);
-  }
-  // Leaves: from under the head, out to each side and a little towards us.
-  for (const sd of [-1, 1]) {
-    const base = [-R * .2, R * .8, -R * .3], ang = Math.PI / 2 + sd * (1.1 + r() * .3), D = unit([Math.cos(ang), Math.sin(ang) * .7, .35]), S = unit(cross(D, [0, 0, 1])), U = cross(S, D);
-    const L = R * (1.25 + r() * .2), Wd = L * .36;
-    patch((u, v) => {
-      const vv = v * 2 - 1, half = Wd * Math.pow(Math.sin(Math.PI * Math.pow(u, .75)), .9) * (1 - .15 * u) * (1 + .03 * Math.abs(Math.sin(u * 40)));
-      const h = Wd * .28 * Math.abs(vv) - L * .18 * u * u + .02 * L * Math.sin(5 * vv + 6 * u);
-      return add3(base, mul(D, u * L), mul(S, vv * half), mul(U, h));
-    }, 16, 8);
-  }
-  return new Float32Array(out);
 }
 
 // ---------- Color ----------
