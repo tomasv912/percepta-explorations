@@ -47,12 +47,16 @@ main { position: relative; display: grid; place-items: center; overflow: hidden;
 .busy { position: absolute; top: 12px; right: 14px; font: 11px var(--mono); color: var(--text-3); }
 .hud { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
 .tt { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 4px 16px rgb(0 0 0 / .06); white-space: nowrap; z-index: 1; }
+.tt { flex-wrap: wrap; justify-content: center; width: max-content; max-width: calc(100% - 24px); }
+.tt-sep { width: 1px; height: 28px; background: var(--line); flex: none; }
+.tt-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+.tt-check input { accent-color: var(--text); margin: 0; }
 .tt-play { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--fill); color: var(--text); font: 500 12px var(--font); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); }
 .tt-play:hover { background: var(--line); }
 .tt-play .i-stop, .tt-play[aria-pressed="true"] .i-play { display: none; }
 .tt-play[aria-pressed="true"] .i-stop { display: block; }
 .tt-play:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.tt .slider { width: 132px; gap: 0 8px; }
+.tt .slider { width: 120px; gap: 0 8px; }
 .tt .slider label { font-size: 11px; }
 .tt .slider output { font-size: 11px; }
 .tt .seg button { flex: none; padding: 0 8px; font-variant-numeric: tabular-nums; }
@@ -123,20 +127,28 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Un modelo 3D dibujado con píxeles"></canvas></div>
     <div class="drop" id="drop" hidden>Soltá el modelo (.obj, .glb, .gltf)</div>
     <div class="hud" id="stats">—</div>
-    <div class="tt" role="toolbar" aria-label="Turntable">
-      <button class="tt-play" id="ttPlay" aria-pressed="false" title="Vista previa: una vuelta en loop">
-        <svg class="i-play" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>
-        <svg class="i-stop" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7" rx="1" fill="currentColor"/></svg>
-        Turntable
-      </button>
-      <div id="sl-ttDur"></div>
-      <div class="seg" data-key="ttFps" aria-label="Cuadros por segundo">
-        <button data-v="12">12</button><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button>
+    <div class="tt" role="toolbar" aria-label="Animación">
+      <div class="seg" data-key="anim" aria-label="Animación">
+        <button data-v="none">Quieta</button><button data-v="boil">A mano</button><button data-v="float">Flotar</button><button data-v="hover">Hover</button><button data-v="turntable">Turntable</button>
       </div>
-      <div class="seg" data-key="ttDir" aria-label="Sentido">
+      <i class="tt-sep" data-for="boil float hover turntable"></i>
+      <div id="sl-fps" data-for="boil"></div>
+      <div id="sl-boil" data-for="boil"></div>
+      <div id="sl-floatAmp" data-for="float"></div>
+      <div id="sl-floatSpeed" data-for="float"></div>
+      <div id="sl-floatScale" data-for="float"></div>
+      <div id="sl-hoverRadius" data-for="hover"></div>
+      <div id="sl-hoverForce" data-for="hover"></div>
+      <div class="seg" data-key="ttDir" aria-label="Sentido" data-for="turntable">
         <button data-v="1" title="A la derecha" aria-label="A la derecha">→</button><button data-v="-1" title="A la izquierda" aria-label="A la izquierda">←</button>
       </div>
-      <button class="btn primary" id="video" title="MP4 en loop, recortado al modelo, con el fondo (MP4 no tiene transparencia)">Exportar video</button>
+      <label class="tt-check" data-for="turntable" title="Los píxeles quedan pegados al modelo y giran con él; apagado, cada cuadro se dibuja de nuevo"><input type="checkbox" data-check="ttFixed"> Píxeles fijos</label>
+      <div id="sl-ttDur" data-for="boil float hover turntable"></div>
+      <i class="tt-sep" data-for="boil float hover turntable"></i>
+      <div class="seg" data-key="ttFps" aria-label="Cuadros por segundo del video" data-for="boil float hover turntable">
+        <button data-v="12">12</button><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button>
+      </div>
+      <button class="btn primary" id="video" data-for="boil float hover turntable" title="MP4 en loop, recortado al modelo, con el fondo (MP4 no tiene transparencia)">Exportar video</button>
     </div>
   </main>
 
@@ -177,20 +189,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       </section>
 
       <section>
-        <h2>Animación</h2>
-        <div class="seg" data-key="anim" aria-label="Animación">
-          <button data-v="none">Quieta</button><button data-v="boil">A mano</button><button data-v="float">Flotar</button><button data-v="hover">Hover</button>
-        </div>
-        <div id="sl-fps"></div>
-        <div id="sl-boil"></div>
-        <div id="sl-floatAmp"></div>
-        <div id="sl-floatSpeed"></div>
-        <div id="sl-floatScale"></div>
-        <div id="sl-hoverRadius"></div>
-        <div id="sl-hoverForce"></div>
-      </section>
-
-      <section>
         <h2>Color</h2>
         <div class="seg" data-key="colorMode" aria-label="Color">
           <button data-v="ink">Un color</button><button data-v="tone">Por tono</button><button data-v="random">Al azar</button>
@@ -226,7 +224,7 @@ const DEFAULTS = {
   yaw: -20, pitch: 12, zoom: 1, lightAz: 220, lightEl: 40, ambient: .25, shadow: .65,
   count: 40000, size: 3, contrast: 1.6, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
-  ttDur: 6, ttFps: '24', ttDir: '1',
+  ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true,
   colorMode: 'ink', ink: '#272727', bg: '#F6F6F6', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -265,15 +263,16 @@ function setModel(pos, name) {
 }
 // ---------- Render ----------
 // The model turned (yaw about the vertical, then pitch) into view space: x right, y down, z towards us.
-function viewTris() {
-  const y = S.yaw * Math.PI / 180, p = S.pitch * Math.PI / 180, cy = Math.cos(y), sy = Math.sin(y), cp = Math.cos(p), sp = Math.sin(p), out = new Float32Array(model.length);
+function viewTris(yaw = S.yaw) {
+  const y = yaw * Math.PI / 180, p = S.pitch * Math.PI / 180, cy = Math.cos(y), sy = Math.sin(y), cp = Math.cos(p), sp = Math.sin(p), out = new Float32Array(model.length);
   const rot = (x, yy, z, o) => { const x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y1 = yy * cp - z1 * sp, z2 = yy * sp + z1 * cp; out[o] = x1; out[o + 1] = -y1; out[o + 2] = z2; };
   for (let i = 0; i < model.length; i += 18) for (let j = 0; j < 6; j++) rot(model[i + j * 3], model[i + j * 3 + 1], model[i + j * 3 + 2], i + j * 3);
   return out;
 }
 let pts = null;
-function build(fast) {
-  const tris = viewTris(), ar = AW / AH, h = 1.15 / S.zoom, box = { x0: -h * ar, y0: -h, x1: h * ar, y1: h };
+// The render at yaw (Giro unless given); only a render at Giro becomes the scene that A mano re-samples.
+function build(fast, yaw) {
+  const tris = viewTris(yaw), ar = AW / AH, h = 1.15 / S.zoom, box = { x0: -h * ar, y0: -h, x1: h * ar, y1: h };
   const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180;
   const light = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.cos(el) * Math.sin(az) * -1 + .0001];
   const buf = Stipple3D.render(tris, box, fast ? 420 : 900, [light[0], light[1], Math.abs(light[2]) + .35], { ambient: S.ambient, shadowDim: 1 - S.shadow });
@@ -282,14 +281,15 @@ function build(fast) {
   // actually covers, so a slender model is not crammed darker than a broad one.
   let area = 0; for (let i = 0; i < buf.mask.length; i++) area += buf.mask[i];
   const want = Math.round(S.count * Math.min(2, area / buf.mask.length * 3));
-  scene = { buf, e, box };
-  return stipple(fast ? Math.min(want, 15000) : want, r);
+  const sc = { buf, e, box };
+  if (yaw === undefined) scene = sc;
+  return stipple(fast ? Math.min(want, 15000) : want, r, sc);
 }
 // n pixels from the last render: into artboard units, square, never rotated, each a little off its sample
 // (Superposición).
 let scene = null;
-function stipple(n, r) {
-  const { buf, e, box } = scene, raw = Stipple3D.sample(buf, e, n, r, { gamma: S.contrast, edge: S.edge, floor: .01, gain: 1.2 });
+function stipple(n, r, sc = scene) {
+  const { buf, e, box } = sc, raw = Stipple3D.sample(buf, e, n, r, { gamma: S.contrast, edge: S.edge, floor: .01, gain: 1.2 });
   const k = AW / (box.x1 - box.x0), out = [];
   for (let i = 0; i < raw.length; i += 3) {
     const x = (raw[i] - box.x0) * k + (r() - .5) * S.size * S.jitter, y = (raw[i + 1] - box.y0) * k + (r() - .5) * S.size * S.jitter;
@@ -335,14 +335,14 @@ const SLIDERS = {
   size: { label: 'Tamaño del píxel', min: 1, max: 24, step: .5, fmt: v => v + ' px', emph: true },
   contrast: { label: 'Contraste', min: .5, max: 4, step: .05, fmt: v => v.toFixed(2) },
   edge: { label: 'Bordes y superposiciones', min: 0, max: 2, step: .01, fmt: pct },
-  fps: { label: 'Cuadros por segundo', min: 1, max: 24, step: 1, fmt: String, emph: true },
-  boil: { label: 'Variación entre cuadros', min: .02, max: 1, step: .01, fmt: pct },
+  fps: { label: 'Dibujos por segundo', min: 1, max: 24, step: 1, fmt: String, emph: true },
+  boil: { label: 'Variación', min: .02, max: 1, step: .01, fmt: pct },
   floatAmp: { label: 'Amplitud', min: 0, max: 40, step: .5, fmt: v => v + ' px', emph: true },
   floatSpeed: { label: 'Velocidad', min: .02, max: 2, step: .01, fmt: v => v.toFixed(2) },
-  floatScale: { label: 'Escala del ruido', min: .2, max: 4, step: .05, fmt: v => '×' + v.toFixed(2) },
+  floatScale: { label: 'Escala', min: .2, max: 4, step: .05, fmt: v => '×' + v.toFixed(2) },
   hoverRadius: { label: 'Radio', min: 30, max: 500, step: 5, fmt: v => v + ' px', emph: true },
   hoverForce: { label: 'Fuerza', min: .1, max: 3, step: .01, fmt: pct },
-  ttDur: { label: 'Duración', min: 1, max: 30, step: .5, fmt: v => v + ' s', emph: true },
+  ttDur: { label: 'Duración del loop', min: 1, max: 30, step: .5, fmt: v => v + ' s', emph: true },
   jitter: { label: 'Superposición', min: 0, max: 3, step: .01, fmt: pct },
 };
 for (const [key, d] of Object.entries(SLIDERS)) {
@@ -380,8 +380,7 @@ function sync(fast) {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink';
-  const A = { fps: 'boil', boil: 'boil', floatAmp: 'float', floatSpeed: 'float', floatScale: 'float', hoverRadius: 'hover', hoverForce: 'hover' };
-  for (const [k2, a] of Object.entries(A)) $('#sl-' + k2).hidden = S.anim !== a;
+  document.querySelectorAll('[data-for]').forEach(el => el.hidden = !el.dataset.for.split(' ').includes(S.anim));
   document.querySelectorAll('[data-p]').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === preset && !modelName.includes('.')));
   if (preset && !modelName.includes('.') && presetSeed !== S.seed && !fast) loadPreset();
   $('#bg').value = S.bg; $('#bg-chip').style.background = S.bg;
@@ -389,6 +388,7 @@ function sync(fast) {
   const k = JSON.stringify([modelName, presetSeed, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, S.count, S.size, S.contrast, S.edge, S.jitter, S.seed]);
   if (k !== key || (!fast && fastNext)) { fastNext = !!fast; pts = build(fast); key = k; }
   if (S.anim !== prevAnim) { prevAnim = S.anim; for (const p of pts) p.dx = p.dy = p.vx = p.vy = 0; lastT = 0; }
+  play();
   schedule();
 }
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
@@ -400,15 +400,15 @@ function render() {
   if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
   const ctx = cv.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, pw, ph);
   ctx.setTransform(cv.width / AW, 0, 0, cv.height / AH, 0, 0);
-  draw(ctx, pts);
-  if (S.anim === 'boil' || S.anim === 'float') animate();
-  $('#stats').textContent = `${pts.length.toLocaleString('es')} píxeles · ${modelName} · arrastrá para girar`;
+  const list = shown || pts;
+  draw(ctx, list);
+  $('#stats').textContent = `${list.length.toLocaleString('es')} píxeles · ${modelName} · arrastrá para girar`;
 }
 new ResizeObserver(() => pts && schedule()).observe(stage);
 
 // Drag turns the model; the final frame renders in full when the drag ends.
 let turn = null;
-frame.addEventListener('pointerdown', e => { if (spin) stopSpin(); frame.setPointerCapture(e.pointerId); turn = { x: e.clientX, y: e.clientY, yaw: S.yaw, pitch: S.pitch }; });
+frame.addEventListener('pointerdown', e => { frame.setPointerCapture(e.pointerId); turn = { x: e.clientX, y: e.clientY, yaw: S.yaw, pitch: S.pitch }; });
 frame.addEventListener('pointermove', e => {
   if (!turn) return;
   S.yaw = ((turn.yaw + (e.clientX - turn.x) * .5 + 540) % 360) - 180; S.pitch = clamp(turn.pitch + (e.clientY - turn.y) * .4, -89, 89);
@@ -419,11 +419,14 @@ frame.addEventListener('pointerup', endTurn); frame.addEventListener('pointercan
 frame.addEventListener('wheel', e => { e.preventDefault(); S.zoom = clamp(S.zoom * Math.exp(-e.deltaY * .0015), .4, 2.5); sync(true); clearTimeout(frame.t); frame.t = setTimeout(() => sync(), 200); }, { passive: false });
 
 // ---------- Animation ----------
-// A mano: every 1/fps seconds a share of the pixels (Variación) is drawn again from the same render and every
-// pixel shifts 1–3 px on each axis, so the picture boils like stop motion while keeping its tones. Flotar: each pixel drifts on a slow 3D noise field
-// (x, y, time), nothing is re-drawn. Hover: pixels near the pointer are pushed away and spring back home as
-// it leaves. Exports take the frame on screen.
-let anim = 0, lastBoil = 0, boilN = 0, hover = null;
+// Every animation is a loop of Duración del loop seconds, played on screen and exported as is. A mano: the
+// picture is redrawn Dibujos por segundo times a second, each drawing a share (Variación) of the pixels drawn
+// again from the same render and every pixel 1–3 px off on each axis, like stop motion; the drawings repeat once
+// the loop is over. Flotar: each pixel drifts on a noise field, walked round a circle so it comes back to the
+// start. Hover: pixels near the pointer are pushed away and spring back (the video sweeps a pointer across).
+// Turntable: one full turn from Giro; with Píxeles fijos the pixels are stuck to the model and turn with it,
+// otherwise every frame is drawn again.
+let player = 0, t0 = 0, shown = null, lastIdx = -1, hover = null, filming = false, lastT = 0, anim = 0;
 const noise = (() => {
   const p = new Uint8Array(512), r = rng(97);
   for (let i = 0; i < 256; i++) p[i] = i;
@@ -440,48 +443,112 @@ const noise = (() => {
       lerp(lerp(g(p[AA + 1] & 15, x, y, z - 1), g(p[BA + 1] & 15, x - 1, y, z - 1), u), lerp(g(p[AB + 1] & 15, x, y - 1, z - 1), g(p[BB + 1] & 15, x - 1, y - 1, z - 1), u), v), w);
   };
 })();
-function animate() { if (S.anim !== 'none' && !anim) anim = requestAnimationFrame(tick); }
-let lastT = 0;
+const wrapDeg = v => ((v + 540) % 360 + 360) % 360 - 180;
+const boilCount = () => Math.max(1, Math.round(S.ttDur * S.fps));
+function boilFrame(i) {
+  const r = rng(S.seed * 131 + i + 1), out = pts.map(p => ({ x: p.x, y: p.y, tone: p.tone, pick: p.pick }));
+  for (const q of stipple(Math.round(pts.length * S.boil), r)) out[Math.floor(r() * out.length)] = q;
+  // And every pixel shifts 1 to 3 px on x and on y, either way, as if redrawn by hand.
+  const j = () => (1 + r() * 2) * (r() < .5 ? -1 : 1);
+  for (const p of out) { p.dx = j(); p.dy = j(); }
+  return out;
+}
+function floatFrame(ph) {
+  const f = .004 * S.floatScale, A = S.floatAmp * 2, R = S.floatSpeed * S.ttDur / (2 * Math.PI), cx = R * Math.cos(2 * Math.PI * ph), cy = R * Math.sin(2 * Math.PI * ph);
+  for (const p of pts) { p.dx = noise(p.x * f + cx, p.y * f + cy, .5) * A; p.dy = noise(p.x * f + 31.7 + cx, p.y * f + 17.3 + cy, 7.5) * A; }
+  return pts;
+}
+// Hover's springs: pushed out of the pointer's radius, pulled home. Returns whether anything still moves.
+function hoverStep(list, ptr, dt) {
+  const R = S.hoverRadius, k = 160, damp = Math.pow(.004, dt);
+  let moving = false;
+  for (const p of list) {
+    let vx = p.vx || 0, vy = p.vy || 0, dx = p.dx || 0, dy = p.dy || 0;
+    if (ptr) {
+      const ex = p.x + dx - ptr[0], ey = p.y + dy - ptr[1], d = Math.hypot(ex, ey);
+      if (d < R) { const f = (1 - d / R) * 9000 * S.hoverForce * (.6 + .8 * p.pick); vx += (d ? ex / d : 1) * f * dt; vy += (d ? ey / d : 0) * f * dt; }
+    }
+    vx = (vx - dx * k * dt) * damp; vy = (vy - dy * k * dt) * damp;
+    dx += vx * dt; dy += vy * dt;
+    if (!ptr && Math.abs(dx) + Math.abs(dy) < .15 && Math.abs(vx) + Math.abs(vy) < 2) vx = vy = dx = dy = 0; // home: snap and rest
+    else moving = true;
+    p.vx = vx; p.vy = vy; p.dx = dx; p.dy = dy;
+  }
+  return moving;
+}
+
+// Píxeles fijos: the model is stippled from eight sides (each lit as seen from there) and every pixel is kept
+// once, by the side its surface faces most; its place on the model is stored, so a turn only moves and hides
+// pixels. Hidden: behind something nearer, by a quick depth render of the frame.
+let ring = null;
+const ringKey = () => JSON.stringify([modelName, presetSeed, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, S.count, S.size, S.contrast, S.edge, S.jitter, S.seed]);
+function viewBoxNow() { const ar = AW / AH, h = 1.15 / S.zoom; return { x0: -h * ar, y0: -h, x1: h * ar, y1: h }; }
+function buildRing() {
+  const K = 8, box = viewBoxNow(), k = AW / (box.x1 - box.x0), p = S.pitch * Math.PI / 180, cp = Math.cos(p), sp = Math.sin(p), list = [];
+  const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180, L = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.abs(-Math.cos(el) * Math.sin(az)) + .35];
+  for (let v = 0; v < K; v++) {
+    const yaw = v * 360 / K, y = yaw * Math.PI / 180, cy = Math.cos(y), sy = Math.sin(y), r = rng(S.seed * 977 + v);
+    const buf = Stipple3D.render(viewTris(yaw), box, 700, L, { ambient: S.ambient, shadowDim: 1 - S.shadow }), e = Stipple3D.edges(buf, .02 / S.zoom);
+    let area = 0; for (let i = 0; i < buf.mask.length; i++) area += buf.mask[i];
+    const raw = Stipple3D.sample(buf, e, Math.round(S.count * Math.min(2, area / buf.mask.length * 3)), r, { gamma: S.contrast, edge: S.edge, floor: .01, gain: 1.2 });
+    // view → model: undo the pitch, then the yaw (x right, y down in view; y up in the model)
+    const back = (X, Y, Z) => { const y1 = -Y, yy = y1 * cp + Z * sp, z1 = -y1 * sp + Z * cp; return [X * cy - z1 * sy, yy, X * sy + z1 * cy]; };
+    for (let i = 0; i < raw.length; i += 3) {
+      const ix = Math.min(buf.W - 1, Math.floor((raw[i] - box.x0) * buf.k)), iy = Math.min(buf.H - 1, Math.floor((raw[i + 1] - box.y0) * buf.k)), o = iy * buf.W + ix;
+      if (!buf.mask[o]) continue;
+      let n = [buf.nrm[o * 3], buf.nrm[o * 3 + 1], buf.nrm[o * 3 + 2]]; if (n[2] < 0) n = n.map(c => -c);
+      const nm = back(...n), side = ((Math.round(-Math.atan2(nm[0], nm[2]) * 180 / Math.PI / (360 / K)) % K) + K) % K;
+      if (side !== v) continue;
+      list.push({ m: back(raw[i], raw[i + 1], buf.depth[o]), jx: (r() - .5) * S.size * S.jitter, jy: (r() - .5) * S.size * S.jitter, tone: raw[i + 2], pick: r() });
+    }
+  }
+  return { key: ringKey(), list, box, k };
+}
+function ringFrame(yaw) {
+  if (!ring || ring.key !== ringKey()) ring = buildRing();
+  const { list, box, k } = ring, y = yaw * Math.PI / 180, p = S.pitch * Math.PI / 180, cy = Math.cos(y), sy = Math.sin(y), cp = Math.cos(p), sp = Math.sin(p);
+  const zb = Stipple3D.render(viewTris(yaw), box, 420, [0, 0, 1], { shadows: false }), eps = .03 / S.zoom, out = [];
+  for (const q of list) {
+    const [x, yy, z] = q.m, x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y1 = yy * cp - z1 * sp, z2 = yy * sp + z1 * cp, X = x1, Y = -y1;
+    const ix = Math.floor((X - box.x0) * zb.k), iy = Math.floor((Y - box.y0) * zb.k);
+    if (ix < 0 || iy < 0 || ix >= zb.W || iy >= zb.H) continue;
+    let near = -Infinity; // the nearest surface around it, so pixels on an edge don't flicker
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const u = ix + a, v = iy + b; if (u >= 0 && v >= 0 && u < zb.W && v < zb.H) near = Math.max(near, zb.depth[v * zb.W + u]); }
+    if (z2 < near - eps) continue;
+    out.push({ x: (X - box.x0) * k + q.jx, y: (Y - box.y0) * k + q.jy, tone: q.tone, pick: q.pick });
+  }
+  return out;
+}
+function turnFrame(ph, fast) {
+  const yaw = wrapDeg(S.yaw + +S.ttDir * 360 * ph);
+  return S.ttFixed ? ringFrame(yaw) : build(fast, yaw);
+}
+// The loop on screen.
+function play() {
+  cancelAnimationFrame(player); player = 0; shown = null; lastIdx = -1; t0 = performance.now();
+  if (S.anim === 'boil' || S.anim === 'float' || S.anim === 'turntable') player = requestAnimationFrame(step);
+}
+function step(now) {
+  player = 0;
+  if (filming || !pts) return;
+  if (turn && S.anim === 'turntable') { shown = null; player = requestAnimationFrame(step); return; } // dragging: show Giro
+  const t = (now - t0) / 1000;
+  if (S.anim === 'boil') {
+    const i = Math.floor(t * S.fps) % boilCount();
+    if (i !== lastIdx) { lastIdx = i; shown = boilFrame(i); render(); }
+  } else if (S.anim === 'float') { shown = floatFrame((t / S.ttDur) % 1); render(); }
+  else if (S.anim === 'turntable') { shown = turnFrame((t / S.ttDur) % 1, true); render(); }
+  else return;
+  player = requestAnimationFrame(step);
+}
+function animate() { if (S.anim === 'hover' && !anim) anim = requestAnimationFrame(tick); }
 function tick(now) {
   anim = 0;
-  if (S.anim === 'none' || !pts || filming) return;
+  if (S.anim !== 'hover' || !pts || filming) return;
   const dt = Math.min(.05, lastT ? (now - lastT) / 1000 : 1 / 60); lastT = now;
-  if (S.anim === 'boil') {
-    if (now - lastBoil >= 1000 / S.fps) {
-      lastBoil = now; boilN++;
-      const r = rng(S.seed * 131 + boilN), fresh = stipple(Math.round(pts.length * S.boil), r);
-      for (const q of fresh) pts[Math.floor(r() * pts.length)] = q;
-      // And every pixel shifts 1 to 3 px on x and on y, either way, as if redrawn by hand.
-      const j = () => (1 + r() * 2) * (r() < .5 ? -1 : 1);
-      for (const p of pts) { p.dx = j(); p.dy = j(); }
-      render();
-    } else animate();
-    return;
-  }
-  if (S.anim === 'float') {
-    const t = now / 1000 * S.floatSpeed, f = .004 * S.floatScale, A = S.floatAmp;
-    for (const p of pts) { p.dx = noise(p.x * f, p.y * f, t) * A * 2; p.dy = noise(p.x * f + 31.7, p.y * f + 17.3, t) * A * 2; }
-  } else {
-    // Spring home, pushed out of the pointer's radius.
-    const R = S.hoverRadius, k = 160, damp = Math.pow(.004, dt);
-    let moving = false;
-    for (const p of pts) {
-      let vx = p.vx || 0, vy = p.vy || 0, dx = p.dx || 0, dy = p.dy || 0;
-      if (hover) {
-        const ex = p.x + dx - hover[0], ey = p.y + dy - hover[1], d = Math.hypot(ex, ey);
-        if (d < R) { const f = (1 - d / R) * 9000 * S.hoverForce * (.6 + .8 * p.pick); vx += (d ? ex / d : 1) * f * dt; vy += (d ? ey / d : 0) * f * dt; }
-      }
-      vx = (vx - dx * k * dt) * damp; vy = (vy - dy * k * dt) * damp;
-      dx += vx * dt; dy += vy * dt;
-      if (!hover && Math.abs(dx) + Math.abs(dy) < .15 && Math.abs(vx) + Math.abs(vy) < 2) vx = vy = dx = dy = 0; // home: snap and rest
-      else moving = true;
-      p.vx = vx; p.vy = vy; p.dx = dx; p.dy = dy;
-    }
-    render();
-    if (moving || hover) animate(); // settled: sleep until the pointer comes back
-    return;
-  }
+  const moving = hoverStep(pts, hover, dt);
   render();
+  if (moving || hover) animate(); else lastT = 0; // settled: sleep until the pointer comes back
 }
 const toBoard = e => { const r = frame.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * AW, (e.clientY - r.top) / r.height * AH]; };
 frame.addEventListener('pointermove', e => { if (S.anim === 'hover' && !turn) { hover = toBoard(e); animate(); } });
@@ -534,40 +601,45 @@ $('#svg').addEventListener('click', () => {
   download(`pixel-model-${S.seed}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));
 });
 
-// ---------- Turntable ----------
-// One full turn about the vertical from the current Giro, in Duración seconds. The last frame is one step short
-// of the first, so the video loops without a seam. Vista previa spins it on screen (drawn quickly); Exportar video
-// renders every frame in full and encodes an MP4 (WebCodecs), cropped to what the model sweeps.
-let spin = null, filming = false;
-const wrapDeg = v => ((v + 540) % 360 + 360) % 360 - 180;
-function stopSpin() { cancelAnimationFrame(spin.raf); S.yaw = spin.yaw0; spin = null; $('#ttPlay').setAttribute('aria-pressed', 'false');  sync(); }
-$('#ttPlay').addEventListener('click', () => {
-  if (spin) return stopSpin();
-  if (filming) return;
-  spin = { yaw0: S.yaw, t0: performance.now() };
-  $('#ttPlay').setAttribute('aria-pressed', 'true'); 
-  const step = now => {
-    S.yaw = wrapDeg(spin.yaw0 + +S.ttDir * 360 * (((now - spin.t0) / 1000 / S.ttDur) % 1));
-    sync(true); spin.raf = requestAnimationFrame(step);
-  };
-  spin.raf = requestAnimationFrame(step);
-});
+// ---------- Video ----------
+// The loop of the chosen animation, every frame drawn in full, encoded as an MP4 (WebCodecs), cropped to what
+// the pixels cover over the loop. The last frame is one step short of the first, so it loops without a seam.
 $('#video').addEventListener('click', async () => {
-  if (filming) return;
+  if (filming || S.anim === 'none') return;
   if (!('VideoEncoder' in window) || !window.Mp4Muxer) return toast('Este navegador no puede exportar video: probá con Chrome, Edge o Safari.');
-  if (spin) stopSpin();
-  const btn = $('#video'), label = btn.textContent, yaw0 = S.yaw, fps = +S.ttFps, N = Math.max(2, Math.round(S.ttDur * fps)), dir = +S.ttDir;
-  const yawAt = i => wrapDeg(yaw0 + dir * 360 * i / N);
-  filming = true; btn.disabled = true;
+  const btn = $('#video'), label = btn.textContent, fps = +S.ttFps;
+  const T = S.anim === 'boil' ? boilCount() / S.fps : S.ttDur, N = Math.max(2, Math.round(T * fps));
+  // Hover: a pointer sweeps a figure of eight over the model; one loop to settle, then the loop that is kept.
+  let sim = null;
+  const hoverSim = () => {
+    const b = bounds(pts), list = pts.map(p => ({ x: p.x, y: p.y, tone: p.tone, pick: p.pick })), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, rx = (b.x1 - b.x0) * .4, ry = (b.y1 - b.y0) * .3;
+    const at = i => { const a = 2 * Math.PI * i / N; return [cx + rx * Math.sin(a), cy + ry * Math.sin(2 * a)]; };
+    for (let i = 0; i < N; i++) hoverStep(list, at(i), 1 / fps);
+    return { list, at };
+  };
+  const frameAt = i => {
+    if (S.anim === 'boil') return boilFrame(Math.floor(i / fps * S.fps) % boilCount());
+    if (S.anim === 'float') return floatFrame(i / N);
+    if (S.anim === 'hover') { hoverStep(sim.list, sim.at(i), 1 / fps); return sim.list; }
+    return turnFrame(i / N, false);
+  };
+  filming = true; btn.disabled = true; cancelAnimationFrame(player);
   try {
-    // The crop: everything the model covers over the turn, plus room for the pixels and their jitter.
-    const ar = AW / AH, h = 1.15 / S.zoom, k = AW / (2 * h * ar), pad = S.size * (1 + S.jitter) + 4;
+    // The crop: for a turn, everything the model sweeps; otherwise every frame's pixels.
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (let i = 0; i < N; i++) {
-      S.yaw = yawAt(i); const t = viewTris();
-      for (let j = 0; j < t.length; j += 18) for (let v = 0; v < 9; v += 3) { const x = t[j + v], y = t[j + v + 1]; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    const pad = S.size * (1 + S.jitter) + 4;
+    if (S.anim === 'turntable') {
+      const box = viewBoxNow(), k = AW / (box.x1 - box.x0);
+      for (let i = 0; i < N; i++) {
+        const t = viewTris(wrapDeg(S.yaw + +S.ttDir * 360 * i / N));
+        for (let j = 0; j < t.length; j += 18) for (let v = 0; v < 9; v += 3) { const x = (t[j + v] - box.x0) * k, y = (t[j + v + 1] - box.y0) * k; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+      }
+    } else {
+      if (S.anim === 'hover') sim = hoverSim();
+      for (let i = 0; i < N; i++) { const b = bounds(frameAt(i)); if (b) { x0 = Math.min(x0, b.x0); y0 = Math.min(y0, b.y0); x1 = Math.max(x1, b.x1); y1 = Math.max(y1, b.y1); } }
+      if (S.anim === 'hover') sim = hoverSim();
     }
-    const b = { x0: Math.max(0, (x0 + h * ar) * k - pad), y0: Math.max(0, (y0 + h) * k - pad), x1: Math.min(AW, (x1 + h * ar) * k + pad), y1: Math.min(AH, (y1 + h) * k + pad) };
+    const b = { x0: Math.max(0, x0 - pad), y0: Math.max(0, y0 - pad), x1: Math.min(AW, x1 + pad), y1: Math.min(AH, y1 + pad) };
     // At most 1920 px on the long side, even dimensions (H.264).
     const sc = Math.min(RES, 1920 / Math.max(b.x1 - b.x0, b.y1 - b.y0)), W = Math.round((b.x1 - b.x0) * sc / 2) * 2, H = Math.round((b.y1 - b.y0) * sc / 2) * 2;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -585,9 +657,7 @@ $('#video').addEventListener('click', async () => {
     enc.configure(config);
     for (let i = 0; i < N; i++) {
       if (failed) throw failed;
-      S.yaw = yawAt(i);
-      const list = build(false);
-      if (S.anim === 'boil') { const r = rng(S.seed * 131 + i), j = () => (1 + r() * 2) * (r() < .5 ? -1 : 1); for (const p of list) { p.dx = j(); p.dy = j(); } }
+      const list = frameAt(i);
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = S.bg; ctx.fillRect(0, 0, W, H);
       ctx.setTransform(sc, 0, 0, sc, 0, 0); draw(ctx, list, b.x0, b.y0);
       const f = new VideoFrame(c, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) });
@@ -599,11 +669,13 @@ $('#video').addEventListener('click', async () => {
     await enc.flush(); enc.close();
     if (failed) throw failed;
     muxer.finalize();
-    download(`pixel-model-turntable-${S.seed}.mp4`, new Blob([muxer.target.buffer], { type: 'video/mp4' }));
+    const names = { boil: 'a-mano', float: 'flotar', hover: 'hover', turntable: 'turntable' };
+    download(`pixel-model-${names[S.anim]}-${S.seed}.mp4`, new Blob([muxer.target.buffer], { type: 'video/mp4' }));
   } catch (err) {
     console.error(err); toast('No se pudo exportar el video.');
   } finally {
-    S.yaw = yaw0; filming = false; btn.disabled = false; btn.textContent = label; key = ''; sync();
+    for (const p of pts) p.dx = p.dy = p.vx = p.vy = 0;
+    filming = false; btn.disabled = false; btn.textContent = label; key = ''; sync();
   }
 });
 
