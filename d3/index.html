@@ -517,7 +517,7 @@ function shapeView(st, { P, pts, at3 }) {
 
 // Dot centres in artboard units (before the hand's offset), cached until a setting that moves them changes;
 // view is the same dots after the brush strokes.
-let dots = null, tones = null, dotsKey = '', view = null;
+let dots = null, tones = null, scales = null, dotsKey = '', view = null;
 function currentDots() {
   const image = S.source === 'image' && src;
   const key = JSON.stringify([image ? ['i', src.id, S.invert, S.contrast, S.threshold]
@@ -525,30 +525,34 @@ function currentDots() {
   if (key !== dotsKey) {
     let g = image ? imageDots(S) : shapeDots(S);
     if (S.fadeT || S.fadeB) g = fadeEdges(g);
-    const snapped = S.grid ? gridify(g.xy, g.tone, S.pitch) : g;
-    dots = snapped.xy; tones = snapped.tone; dotsKey = key; rebuild();
+    if (!g.scale) g.scale = new Float32Array(g.tone.length).fill(1);
+    const snapped = S.grid ? gridify(g, S.pitch) : g;
+    dots = snapped.xy; tones = snapped.tone; scales = snapped.scale; dotsKey = key; rebuild();
   }
   return view;
 }
 // Desvanecer bordes: within Ancho of the chosen edge(s) of the content (top, bottom), dots let go more
 // the nearer the edge they are; one that lets go is dropped (thinning) or carried outwards by up to
-// Dispersión, so the edge dissolves into scattered dots. With Grilla on they land on the grid too.
+// Dispersión, so the edge dissolves into scattered dots; the further one travels, the smaller it gets.
+// With Grilla on they land on the grid too.
 function fadeEdges({ xy, tone }) {
   let y0 = Infinity, y1 = -Infinity;
   for (let i = 1; i < xy.length; i += 2) { if (xy[i] < y0) y0 = xy[i]; if (xy[i] > y1) y1 = xy[i]; }
-  const H = Math.max(1, y1 - y0), rand = rng(S.seed * 17 + 3), r = maxR(), out = [], t = [];
+  const H = Math.max(1, y1 - y0), rand = rng(S.seed * 17 + 3), r = maxR(), out = [], t = [], sc = [];
   for (let q = 0; q < tone.length; q++) {
-    let x = xy[q * 2], y = xy[q * 2 + 1];
+    let x = xy[q * 2], y = xy[q * 2 + 1], k = 1;
     const u = (y - y0) / H, wt = S.fadeT ? clamp(1 - u / S.fadeW) : 0, wb = S.fadeB ? clamp(1 - (1 - u) / S.fadeW) : 0, w = Math.max(wt, wb);
     if (w > 0 && rand() < w) {
       if (rand() < w * .5) continue;
-      y += (wt > wb ? -1 : 1) * S.fadeD * H * .6 * w * (.2 + .8 * rand());
+      const go = w * (.2 + .8 * rand()); // share of the longest trip, 0..1
+      y += (wt > wb ? -1 : 1) * S.fadeD * H * .6 * go;
+      k = Math.max(.12, 1 - 1.3 * go);
       x += (rand() - .5) * H * .04 * w;
       if (x < r || x > AW - r || y < r || y > AH - r) continue;
     }
-    out.push(x, y); t.push(tone[q]);
+    out.push(x, y); t.push(tone[q]); sc.push(k);
   }
-  return { xy: Float32Array.from(out), tone: Float32Array.from(t) };
+  return { xy: Float32Array.from(out), tone: Float32Array.from(t), scale: Float32Array.from(sc) };
 }
 // Centre of the grid cell a point falls in (the grid is centred on the frame).
 function snap(v, p, o) { return o + (Math.floor((v - o) / p) + .5) * p; }
@@ -563,23 +567,23 @@ function shownDots() {
 }
 // Grilla: every dot moves to the centre of its cell on a square grid (centred on the frame) and each
 // cell keeps one, the last drawn (the nearest, on the shape); its tone is the cell's average.
-function gridify(xy, tone, p) {
+function gridify({ xy, tone, scale }, p) {
   const cells = new Map(), ox = AW / 2 % p, oy = AH / 2 % p;
   for (let q = 0; q < tone.length; q++) {
     const gx = Math.floor((xy[q * 2] - ox) / p), gy = Math.floor((xy[q * 2 + 1] - oy) / p), key = gy * 65536 + gx, c = cells.get(key);
-    if (c) { c.q = q; c.t += tone[q]; c.n++; } else cells.set(key, { q, gx, gy, t: tone[q], n: 1 });
+    if (c) { c.q = q; c.t += tone[q]; c.s += scale[q]; c.n++; } else cells.set(key, { q, gx, gy, t: tone[q], s: scale[q], n: 1 });
   }
-  const list = [...cells.values()].sort((a, b) => a.q - b.q), out = new Float32Array(list.length * 2), t = new Float32Array(list.length);
-  list.forEach((c, o) => { out[o * 2] = ox + (c.gx + .5) * p; out[o * 2 + 1] = oy + (c.gy + .5) * p; t[o] = c.t / c.n; });
-  return { xy: out, tone: t };
+  const list = [...cells.values()].sort((a, b) => a.q - b.q), out = new Float32Array(list.length * 2), t = new Float32Array(list.length), sc = new Float32Array(list.length);
+  list.forEach((c, o) => { out[o * 2] = ox + (c.gx + .5) * p; out[o * 2 + 1] = oy + (c.gy + .5) * p; t[o] = c.t / c.n; sc[o] = c.s / c.n; });
+  return { xy: out, tone: t, scale: sc };
 }
 // Radius of each dot: fixed, or with amplitud modulada from the tone where it was born (between the
 // smallest and the largest dot). Dots the pincel added take the tone under them on an image, the middle
-// size on the shape.
+// size on the shape. Dots carried off by Desvanecer bordes shrink with the distance (scales).
 const maxR = () => (S.am ? Math.max(S.dmin, S.dmax) : S.size) / 2;
 function radii(it) {
   const n = it.length / 2, r = new Float32Array(n), home = tones.length;
-  if (!S.am) return r.fill(S.size / 2);
+  if (!S.am) { for (let q = 0; q < n; q++) r[q] = S.size / 2 * (q < home ? scales[q] : 1); return r; }
   for (let q = 0; q < n; q++) {
     let t = .5;
     if (q < home) t = tones[q];
@@ -588,7 +592,7 @@ function radii(it) {
       const v = clamp(((S.invert ? src.lum[k] : 1 - src.lum[k]) - .5) * S.contrast + .5);
       t = clamp((v - S.threshold) / (1 - S.threshold));
     }
-    r[q] = lerp(S.dmin, S.dmax, t) / 2;
+    r[q] = lerp(S.dmin, S.dmax, t) / 2 * (q < home ? scales[q] : 1);
   }
   return r;
 }
