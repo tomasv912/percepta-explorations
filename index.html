@@ -116,6 +116,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <body>
 <script src="toolbar.js"></script>
 <script src="tools.js"></script>
+<script src="stipple3d.js"></script>
 <div class="app">
   <main id="stage">
     <div class="frame" id="frame">
@@ -380,13 +381,9 @@ function generate(st) {
     const tight = (1 - st.rfOrder) * .02 + .002, g = () => clamp(gauss(r), -2.6, 2.6);
     // Hortensia: past the waves the rays of each flower gather at a point and travel on as a ribbon that
     // twists around itself (Recorrido sets how far, and how many turns), narrowing into a stem that runs into
-    // the underside of a hydrangea head. A head is a lumpy dome of four-sepalled florets (Florecillas, on a
-    // sunflower spiral over a hemisphere): facing us in the middle, edge-on and flattened at the rim, nearer
-    // ones hiding those behind. It is drawn in stipple, lit from the upper left: sepal edges and midribs carry
-    // lines, the shadowed side of the dome and of each floret fills in with dots, the gaps between florets go
-    // dark, and two leaves spread under the head. Each ray carries its colour to its head.
+    // the underside of a hydrangea head, modelled in 3D and stippled (see hydrangeaMesh). Each ray carries its
+    // colour to its head.
     const bloom = st.source === 'bloom', fEnd = bloom ? Math.max(f + .2, .8) : 1, F = st.blFlowers, heads = [];
-    const LIGHT = (() => { const v = [-.55, -.65, .55], l = Math.hypot(...v); return v.map(c => c / l); })();
     const sR = .74 - st.blTravel * .24; // where the ribbon starts, along the sheet
     const upright = (cx, cy, [x, y]) => st.orient === 'v' ? [cx - (y - cy), cy + (x - cx)] : [x, y];
     if (bloom) {
@@ -400,92 +397,24 @@ function generate(st) {
           if (!best || gap > best.gap) best = { x: c[0], y: c[1], R, gap };
           if (gap > -R * .2) break;
         }
-        const N = st.blFlorets, rot = r() * Math.PI * 2, fl = [], rf = best.R * 1.55 / Math.sqrt(N), lump = [r() * 6.3, r() * 6.3];
-        for (let k = 0; k < N; k++) {
-          const z = 1 - (k + .5) / N * .96, rr = Math.sqrt(1 - z * z), a = k * 2.39996 + rot;
-          // Lumps: the head is a few sub-clusters, so its outline bulges and dips.
-          const R = best.R * (1 + .07 * Math.sin(3 * a + lump[0]) * rr + .05 * Math.sin(5 * a + lump[1]) * rr);
-          const nx = Math.cos(a) * rr, ny = Math.sin(a) * rr, sh = clamp(nx * LIGHT[0] + ny * LIGHT[1] + z * LIGHT[2]);
-          fl.push({ c: r() < .3 ? 1 : 0, x: best.x + nx * R, y: best.y + ny * R * .94, z, dx: Math.cos(a), dy: Math.sin(a), f: Math.max(.3, z),
-            rf: rf * (.85 + r() * .3) * (.75 + .25 * z), rot: r() * Math.PI / 2, sh });
-        }
         // In Vertical the whole picture turns a quarter (so it flows upwards); the flower is built turned the
         // other way about its centre, so it ends up upright with the stem coming from below.
         const A0 = [best.x - best.R * .3, best.y + best.R * .88], A = upright(best.x, best.y, A0), B = [fEnd * AR, A[1] * .25];
-        const leaves = [-1, 1].map(sd => ({ base: A0, ang: Math.PI / 2 + sd * (1.15 + r() * .3), len: best.R * (1.1 + r() * .25), wid: best.R * (.4 + r() * .1) }));
-        heads.push({ x: best.x, y: best.y, R: best.R, fl, A, B, leaves, turns: .75 + st.blTravel * 1.75, ph: r() * Math.PI * 2 });
+        heads.push({ x: best.x, y: best.y, R: best.R, A, B, turns: .75 + st.blTravel * 1.75, ph: r() * Math.PI * 2 });
       }
     }
-    // Where a floret is seen: its own plane squashed along the dome's radius by how much it faces us.
-    const project = (q, lx, ly) => { const p = lx * q.dx + ly * q.dy; return [q.x + lx + (q.f - 1) * p * q.dx, q.y + ly + (q.f - 1) * p * q.dy]; };
-    // Is (x, y) behind a floret nearer than depth z0?
-    const hidden = (h, z0, x, y) => {
-      for (const q of h.fl) {
-        if (q.z <= z0) continue;
-        // Back into q's own plane, then inside any of its four sepals (the shapes drawn below)?
-        const ox = x - q.x, oy = y - q.y, p = ox * q.dx + oy * q.dy, lx = ox + (1 / q.f - 1) * p * q.dx, ly = oy + (1 / q.f - 1) * p * q.dy;
-        const pr = q.rf * .54;
-        if (lx * lx + ly * ly > (pr * 2.1) ** 2) continue;
-        for (let s4 = 0; s4 < 4; s4++) {
-          const pa = q.rot + s4 * Math.PI / 2, ex = lx - Math.cos(pa) * pr * .98, ey = ly - Math.sin(pa) * pr * .98;
-          if (ex * ex + ey * ey < (pr * .97) ** 2) return true;
-        }
+    // Each head is rendered as a 3D model (hydrangeaMesh) and stippled: Puntos en las flores of the points go to
+    // the flowers, falling on shadows and on the edges where one sepal passes over another.
+    if (bloom) heads.forEach((h, hi) => {
+      const R = h.R, mesh = hydrangeaMesh(R, st.blFlorets, r), box = { x0: -1.8 * R, y0: -1.35 * R, x1: 1.8 * R, y1: 2.15 * R };
+      const buf = Stipple3D.render(mesh, box, 640, [-.35, -.5, .8], { ambient: .3, shadowDim: .4 }), e = Stipple3D.edges(buf, R * .015);
+      const pts = Stipple3D.sample(buf, e, Math.round(n * st.blShare / F), r, { gamma: 1.9, edge: .8, floor: .01, gain: 1.25 });
+      for (let i = 0; i < pts.length && got < n; i += 3) {
+        const [x, y] = upright(h.x, h.y, [h.x + pts[i], h.y + pts[i + 1]]);
+        add(x, y, .85, 0, (hi + (pts[i + 2] > .62 ? 1 : 0)) % P);
       }
-      return false;
-    };
+    });
     for (let tries = 0; got < n && tries < n * 4; tries++) {
-      if (bloom && r() < st.blShare) {
-        const hi = Math.floor(r() * F), h = heads[hi], m0 = r();
-        let x, y, z0, pal = hi % P;
-        if (m0 < .18) {
-          // A leaf under the head: outline, midrib and veins, a little stipple on its lower half.
-          const L = h.leaves[r() < .5 ? 0 : 1], ca = Math.cos(L.ang), sa = Math.sin(L.ang), m = r();
-          const half = t => L.wid * Math.sin(Math.PI * Math.pow(t, .75)) * (1 - .2 * t);
-          let t, side;
-          // Serrated edge: small teeth along the outline.
-          if (m < .45) { t = r(); side = (r() < .5 ? -1 : 1) * (half(t) * (1 + .04 * Math.abs(Math.sin(t * 60))) + g() * L.wid * .012); }
-          else if (m < .6) { t = r(); side = g() * L.wid * .015; }
-          else if (m < .85) { const v = Math.floor(r() * 6) / 7 + .08, e = r(); t = Math.min(.97, v + e * .14); side = (r() < .5 ? -1 : 1) * e * half(t) + g() * L.wid * .012; }
-          else { t = r(); side = (r() * 2 - 1) * half(t); if (r() > .35 + .6 * Math.abs(side) / (half(t) || 1)) continue; }
-          x = L.base[0] + ca * t * L.len - sa * side; y = L.base[1] + sa * t * L.len + ca * side; z0 = -1;
-          pal = (P - 1) % P;
-        } else if (m0 < .34) {
-          // The dome under the florets, seen through their gaps: dark where it turns from the light.
-          const z = r(), rr = Math.sqrt(1 - z * z), a = r() * Math.PI * 2, nx = Math.cos(a) * rr, ny = Math.sin(a) * rr;
-          const sh = clamp(nx * LIGHT[0] + ny * LIGHT[1] + z * LIGHT[2]);
-          if (r() > Math.pow(1 - sh, 1.1)) continue;
-          x = h.x + nx * h.R * .9; y = h.y + ny * h.R * .9 * .94; z0 = -1;
-        } else {
-          const k = Math.floor(r() * h.fl.length), q = h.fl[k], m = r(), pr = q.rf * .54;
-          let lx, ly;
-          if (m < .07) { const a = r() * Math.PI * 2, rr = Math.sqrt(r()) * q.rf * .1; lx = Math.cos(a) * rr; ly = Math.sin(a) * rr; } // the eye
-          else {
-            const si = Math.floor(r() * 4), pa = q.rot + si * Math.PI / 2, cx = Math.cos(pa) * pr * .98, cy = Math.sin(pa) * pr * .98;
-            let ex, ey;
-            // Lines are lighter where the light hits: fewer of their points survive there.
-            const tone = clamp(q.sh) * (.55 + .45 * q.z);
-            if (m < .6 && r() > .35 + .65 * (1 - tone)) continue;
-            if (m < .2) { const t = r() * .9; ex = t * pr * 2 * .95; ey = g() * pr * .03; }                                              // midrib
-            else if (m < .6) {                                                                                                                 // edge, a touch pointed at the tip
-              const t = r() * Math.PI * 2, rr = pr * (1 + .08 * Math.cos(2 * t) + .12 * Math.pow(Math.max(0, Math.cos(t)), 8)) + g() * pr * .03;
-              ex = pr + Math.cos(t) * rr; ey = Math.sin(t) * rr * .95;
-            } else {                                                                                                                           // shading stipple
-              const t = r() * Math.PI * 2, rr = Math.sqrt(r()) * pr; ex = pr + Math.cos(t) * rr; ey = Math.sin(t) * rr * .95;
-              // A sepal curls away from its eye, so its far half turns from the light on the far side.
-              const tilt = (ex / (2 * pr)) * .5 * (Math.cos(pa) * LIGHT[0] + Math.sin(pa) * LIGHT[1]);
-              const sh = clamp(q.sh + tilt) * (.55 + .45 * q.z);
-              if (r() > Math.pow(1 - sh, 1.1)) continue;
-            }
-            lx = (ex - pr) * Math.cos(pa) - ey * Math.sin(pa) + cx; ly = (ex - pr) * Math.sin(pa) + ey * Math.cos(pa) + cy;
-          }
-          [x, y] = project(q, lx, ly); z0 = q.z;
-          pal = (hi + q.c) % P;
-        }
-        if (hidden(h, z0, x, y)) continue;
-        [x, y] = upright(h.x, h.y, [x, y]);
-        add(x, y, .85, 0, pal);
-        continue;
-      }
       const u = r() * fEnd;
       if (r() > smooth(0, .1, u) * (bloom ? 1 : 1 - smooth(.9, 1, u))) continue;
       if (u < f) {
@@ -585,6 +514,56 @@ function place(g, st) {
     const p = cam / (cam + z2);
     g.hx[i] = ox + x2 * p * k; g.hy[i] = oy + y2 * p * k; g.size[i] = g.bs[i] * p; g.dp[i] = p;
   }
+}
+
+// ---------- Hydrangea ----------
+// One head as triangles, centred on the origin (x right, y down, z towards the viewer), radius R. A lumpy dome
+// of N florets on a sunflower spiral, each facing out from the dome: four broad, rounded sepals that rise
+// towards their tips, curl up at the edges and ripple a little, alternate ones lifted so they overlap, around
+// a small bead. Two leaves under it, folded along the midrib and drooping at the tip. 18 floats per triangle.
+function hydrangeaMesh(R, N, r) {
+  const out = [], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const unit = v => { const l = Math.hypot(...v) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+  const add3 = (...vs) => vs.reduce((a, v) => [a[0] + v[0], a[1] + v[1], a[2] + v[2]], [0, 0, 0]), mul = (v, k) => [v[0] * k, v[1] * k, v[2] * k];
+  // A parametric patch f(u, v), u and v in [0, 1], as a grid of quads with normals from its partials.
+  const patch = (f, nu, nv) => {
+    const P = [], Nn = [], e = 1e-3;
+    for (let j = 0; j <= nv; j++) for (let i = 0; i <= nu; i++) {
+      const u = i / nu, v = j / nv, p = f(u, v);
+      P.push(p); Nn.push(unit(cross(sub(f(Math.min(1, u + e), v), f(Math.max(0, u - e), v)), sub(f(u, Math.min(1, v + e)), f(u, Math.max(0, v - e))))));
+    }
+    const at = (i, j) => j * (nu + 1) + i, tri = (a, b, c) => out.push(...P[a], ...P[b], ...P[c], ...Nn[a], ...Nn[b], ...Nn[c]);
+    for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) { tri(at(i, j), at(i + 1, j), at(i + 1, j + 1)); tri(at(i, j), at(i + 1, j + 1), at(i, j + 1)); }
+  };
+  const lump = [r() * 6.3, r() * 6.3], rot0 = r() * Math.PI * 2;
+  for (let k = 0; k < N; k++) {
+    const z = 1 - (k + .5) / N * .9, rr = Math.sqrt(1 - z * z), a = k * 2.39996 + rot0;
+    const n = [Math.cos(a) * rr, Math.sin(a) * rr, z], bump = 1 + .07 * Math.sin(3 * a + lump[0]) * rr + .05 * Math.sin(5 * a + lump[1]) * rr;
+    const C = mul(n, R * bump * .82), t1 = unit(Math.abs(n[2]) > .95 ? cross(n, [0, 1, 0]) : cross(n, [0, 0, 1])), t2 = cross(n, t1);
+    const rf = R * 1.55 / Math.sqrt(N) * (.85 + r() * .3), rot = r() * Math.PI / 2, ph = r() * 6.3;
+    for (let s4 = 0; s4 < 4; s4++) {
+      const th = rot + s4 * Math.PI / 2 + (r() - .5) * .25, dir = add3(mul(t1, Math.cos(th)), mul(t2, Math.sin(th))), side = add3(mul(t1, -Math.sin(th)), mul(t2, Math.cos(th)));
+      const L = rf * (.95 + r() * .15), Wd = L * .66, lift = (s4 % 2) * .07 * L;
+      patch((u, v) => {
+        const vv = v * 2 - 1, half = Wd * Math.pow(Math.sin(Math.PI * Math.min(1, u * .98 + .02)), .55) * (.7 + .4 * u);
+        const h = L * (.2 * u * u - .1 * u * u * u) + .16 * Wd * vv * vv * u + .03 * L * Math.sin(6 * vv + 4 * u + ph) * u + lift * (.3 + u);
+        return add3(C, mul(dir, u * L * 1.05), mul(side, vv * half), mul(n, h));
+      }, 7, 6);
+    }
+    // The bead in the middle.
+    patch((u, v) => { const th = u * Math.PI * 2, ph2 = v * Math.PI / 2, rb = rf * .11; return add3(C, mul(n, rf * .1 + Math.sin(ph2) * rb), mul(t1, Math.cos(th) * Math.cos(ph2) * rb), mul(t2, Math.sin(th) * Math.cos(ph2) * rb)); }, 8, 3);
+  }
+  // Leaves: from under the head, out to each side and a little towards us.
+  for (const sd of [-1, 1]) {
+    const base = [-R * .2, R * .8, -R * .3], ang = Math.PI / 2 + sd * (1.1 + r() * .3), D = unit([Math.cos(ang), Math.sin(ang) * .7, .35]), S = unit(cross(D, [0, 0, 1])), U = cross(S, D);
+    const L = R * (1.25 + r() * .2), Wd = L * .36;
+    patch((u, v) => {
+      const vv = v * 2 - 1, half = Wd * Math.pow(Math.sin(Math.PI * Math.pow(u, .75)), .9) * (1 - .15 * u) * (1 + .03 * Math.abs(Math.sin(u * 40)));
+      const h = Wd * .28 * Math.abs(vv) - L * .18 * u * u + .02 * L * Math.sin(5 * vv + 6 * u);
+      return add3(base, mul(D, u * L), mul(S, vv * half), mul(U, h));
+    }, 16, 8);
+  }
+  return new Float32Array(out);
 }
 
 // ---------- Color ----------
