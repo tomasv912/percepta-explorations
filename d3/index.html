@@ -43,6 +43,8 @@ main canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 main[data-tool="move"] { cursor: grab; }
 main[data-tool="move"].dragging, main.panning { cursor: grabbing; }
 main[data-tool="zoom"] { cursor: zoom-in; }
+main[data-tool="orbit"] { cursor: grab; }
+main[data-tool="orbit"].dragging { cursor: grabbing; }
 main[data-tool="zoom"].alt { cursor: zoom-out; }
 
 main[data-tool="paint"], main[data-tool="erase"], main[data-tool="smudge"], main[data-tool="blur"] { cursor: none; }
@@ -125,6 +127,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <button data-tool="move" title="Mover la forma (H)" aria-label="Mover">
         <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.5v13M1.5 8h13M8 1.5 6.2 3.3M8 1.5l1.8 1.8M8 14.5l-1.8-1.8M8 14.5l1.8-1.8M1.5 8l1.8-1.8M1.5 8l1.8 1.8M14.5 8l-1.8-1.8M14.5 8l-1.8 1.8"/></svg>
       </button>
+      <button data-tool="orbit" title="Girar la forma (O): arrastrá" aria-label="Girar">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="8" cy="8" rx="6" ry="2.6"/><path d="M8 2v12"/><path d="m12.4 4.6 1.4 1.1-1.7.5"/></svg>
+      </button>
       <button data-tool="zoom" title="Lupa (Z): clic acerca, Alt+clic aleja" aria-label="Lupa">
         <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5M5 7h4M7 5v4"/></svg>
       </button>
@@ -200,7 +205,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <h2>Puntos</h2>
         <div id="sl-count"></div>
         <div id="sl-size"></div>
-        <div id="sl-overlap"></div>
         <label class="check"><input type="checkbox" data-check="grid"> Grilla</label>
         <div id="sl-pitch"></div>
         <label class="check"><input type="checkbox" data-check="am"> Amplitud modulada</label>
@@ -219,19 +223,10 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <label class="swatch"><i></i><input type="color" data-color="p2" aria-label="Color 3 de la paleta"></label>
           <label class="swatch"><i></i><input type="color" data-color="p3" aria-label="Color 4 de la paleta"></label>
         </div>
-        <div class="row" style="grid-template-columns:64px 1fr">
-          <label class="check"><input type="checkbox" data-check="fill"> Relleno</label>
-          <label class="swatch"><i></i><b data-hex></b><input type="color" data-color="fillColor" aria-label="Color del relleno"></label>
+        <div class="row" id="fill-row" style="grid-template-columns:64px 1fr">
+          <span>Puntos</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="fillColor" aria-label="Color de los puntos"></label>
         </div>
-        <div class="row" style="grid-template-columns:64px 1fr">
-          <label class="check"><input type="checkbox" data-check="stroke"> Trazo</label>
-          <label class="swatch"><i></i><b data-hex></b><input type="color" data-color="strokeColor" aria-label="Color del trazo"></label>
-        </div>
-        <div id="sl-strokeW"></div>
-        <div style="display:flex;gap:6px">
-          <button class="btn" id="swap" style="flex:1" title="Intercambia los colores del relleno y del trazo">Relleno ⇄ trazo</button>
-          <button class="btn" id="negate" style="flex:1" title="Invierte relleno, trazo y fondo">Invertir colores</button>
-        </div>
+        <button class="btn" id="negate" title="Invierte los puntos, la paleta y el fondo">Invertir colores</button>
         <div class="row" style="grid-template-columns:64px 1fr">
           <span>Fondo</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="paper" aria-label="Fondo"></label>
         </div>
@@ -253,11 +248,11 @@ const RES = 2;              // exports render at 2x
 const GRID = 480;           // luminance grid of the image, long side
 const DEFAULTS = {
   source: 'shape', seed: 1,
-  bulbs: 4, waist: .45, fold: .45, droop: .35, twist: .25, yaw: 0, shade: .6, light: 135,
+  bulbs: 4, waist: .45, fold: .45, droop: .35, twist: .25, yaw: 0, tilt: 18, shade: 0, light: 135,
   invert: false, contrast: 1.2, threshold: .15,
-  count: 18000, size: 4.5, overlap: .5, hide: false, grid: false, pitch: 6, am: false, dmin: 1.5, dmax: 8,
+  count: 18000, size: 4.5, hide: false, grid: false, pitch: 6, am: false, dmin: 1.5, dmax: 8,
   palette: 'off', p0: '#ffef99', p1: '#ccefec', p2: '#ffb2cf', p3: '#d9b7f6',
-  fill: true, fillColor: '#f4f1ea', stroke: true, strokeColor: '#0c0c0c', strokeW: .8,
+  fillColor: '#f4f1ea',
   paper: '#0c0c0c',
 };
 const S = structuredClone(DEFAULTS);
@@ -318,9 +313,9 @@ function box(ar) {
   return { x: (AW - w) / 2, y: (AH - h) / 2, w, h };
 }
 
-// Darkness above the threshold becomes density (the negative's, when inverted). Superposición below 100%
-// rejects circles that would cut into their neighbours too much (at 0% they only touch); the gap asked
-// for grows as the tone lightens, so packing still reads as density.
+// Darkness above the threshold becomes density (the negative's, when inverted). A candidate that would
+// touch a neighbour is rejected; the gap asked for grows as the tone lightens, so packing still reads
+// as density.
 function imageDots(st) {
   const { gw, gh, lum } = src, rect = box(src.ar), n = gw * gh, cw = rect.w / gw, ch = rect.h / gh, t = st.threshold;
   const M = new Float32Array(n), cdf = new Float64Array(n);
@@ -330,7 +325,7 @@ function imageDots(st) {
     M[k] = t >= 1 ? -1 : (v - t) / (1 - t);
     cdf[k] = sum += M[k] > 0 ? M[k] ** 1.2 : 0;
   }
-  const rand = rng(st.seed), keep = 1 - st.overlap, cell = Math.max(1, st.am ? st.dmax : st.size), cells = new Map(), out = [], tone = [];
+  const rand = rng(st.seed), keep = 1, cell = Math.max(1, st.am ? st.dmax : st.size), cells = new Map(), out = [], tone = [];
   const diam = m => st.am ? lerp(st.dmin, st.dmax, clamp(m)) : st.size;
   const fits = (x, y, m) => {
     const min = diam(m) * keep / Math.sqrt(Math.max(m, .05)), reach = Math.ceil(min / cell);
@@ -363,7 +358,8 @@ function imageDots(st) {
 // rows over the surface, so in perspective they crowd where it folds or turns edge-on and thin out where
 // it faces the camera. Nothing is hidden: the far side shows through.
 const NT = 320, NA = 220; // mesh: rows along the stem × points around it
-const WIDTH = .5, PETALS = 1.3, CURVE = .35, TILT = 18, PERSP = .35, ORDER = .85;
+const WIDTH = .5, PETALS = 1.3, CURVE = .35, PERSP = .35, ORDER = .85;
+let orbiting = false; // while the shape is being turned, hidden surfaces use a coarser depth buffer
 function membraneMesh(st) {
   const rand = rng(st.seed * 31 + 7), n3 = perlin3(rand), k = st.bulbs, bulbs = [];
   // Each lobe is a wide, flattened, tilted dish that bulges to one side and sits off the axis, so the
@@ -414,7 +410,14 @@ function membraneMesh(st) {
 // Extra dots are laid first so the total stays near Cantidad. Ocultar lo de atrás keeps only the dots
 // nearest the camera: the mesh is rasterised into a depth buffer and a dot behind it is dropped, so the
 // shape reads as its visible skin. Each dot's tone (for amplitud modulada) is how much it faces the light.
+let lattice = null, latticeKey = '';
 function shapeDots(st) {
+  const lk = JSON.stringify([st.seed, st.bulbs, st.waist, st.fold, st.droop, st.twist, st.count, st.shade, st.hide]);
+  if (lk !== latticeKey) { lattice = shapeLattice(st); latticeKey = lk; }
+  return shapeView(st, lattice);
+}
+// The mesh and its rows of dots don't depend on the camera, so turning the shape only re-projects them.
+function shapeLattice(st) {
   const P = membraneMesh(st), rand = rng(st.seed * 131 + 5);
   const dist = (o1, o2) => Math.hypot(P[o1] - P[o2], P[o1 + 1] - P[o2 + 1], P[o1 + 2] - P[o2 + 2]);
   const L = new Float64Array(NT + 1), Sm = new Float64Array(NT + 1);
@@ -441,7 +444,11 @@ function shapeDots(st) {
       pts.push(lerp(ring[o], ring[o2], u) + (rand() - .5) * js, lerp(ring[o + 1], ring[o2 + 1], u) + (rand() - .5) * js, lerp(ring[o + 2], ring[o2 + 2], u) + (rand() - .5) * js);
     }
   }
-  const yw = st.yaw * Math.PI / 180, tl = TILT * Math.PI / 180, cy = Math.cos(yw), sy = Math.sin(yw), ct = Math.cos(tl), stl = Math.sin(tl);
+  return { P, pts, at3 };
+}
+function shapeView(st, { P, pts, at3 }) {
+  const rand = rng(st.seed * 131 + 9);
+  const yw = st.yaw * Math.PI / 180, tl = st.tilt * Math.PI / 180, cy = Math.cos(yw), sy = Math.sin(yw), ct = Math.cos(tl), stl = Math.sin(tl);
   const rot = (x, y, z) => { const xr = x * cy + z * sy, zr = -x * sy + z * cy; return [xr, y * ct - zr * stl, y * stl + zr * ct]; };
   // Light in view space: from the Luz angle around the frame, a bit towards the camera.
   const la = st.light * Math.PI / 180, lx = Math.cos(la), ly = Math.sin(la), lz = -.6, ll = Math.hypot(lx, ly, lz);
@@ -456,7 +463,7 @@ function shapeDots(st) {
       V[v * 3] = a; V[v * 3 + 1] = b; V[v * 3 + 2] = c;
       if (a < bx0) bx0 = a; if (a > bx1) bx1 = a; if (b < by0) by0 = b; if (b > by1) by1 = b;
     }
-    const sc = 900 / Math.max(bx1 - bx0, by1 - by0), zw = Math.ceil((bx1 - bx0) * sc) + 2, zh = Math.ceil((by1 - by0) * sc) + 2, zb = new Float32Array(zw * zh).fill(Infinity);
+    const sc = (orbiting ? 380 : 900) / Math.max(bx1 - bx0, by1 - by0), zw = Math.ceil((bx1 - bx0) * sc) + 2, zh = Math.ceil((by1 - by0) * sc) + 2, zb = new Float32Array(zw * zh).fill(Infinity);
     const tri = (a, b, c) => {
       const ax = (V[a] - bx0) * sc, ay = (V[a + 1] - by0) * sc, bx = (V[b] - bx0) * sc, by = (V[b + 1] - by0) * sc, cx = (V[c] - bx0) * sc, cy = (V[c + 1] - by0) * sc;
       const den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
@@ -504,8 +511,8 @@ function shapeDots(st) {
 let dots = null, tones = null, dotsKey = '', view = null;
 function currentDots() {
   const image = S.source === 'image' && src;
-  const key = JSON.stringify([image ? ['i', src.id, S.invert, S.contrast, S.threshold, S.size, S.overlap, S.am, S.dmin, S.dmax]
-    : ['s', S.bulbs, S.waist, S.fold, S.droop, S.twist, S.yaw, S.shade, S.light, S.hide], S.seed, S.count, S.grid, S.pitch]);
+  const key = JSON.stringify([image ? ['i', src.id, S.invert, S.contrast, S.threshold]
+    : ['s', S.bulbs, S.waist, S.fold, S.droop, S.twist, S.yaw, S.tilt, S.shade, S.light, S.hide, orbiting], S.seed, S.count, S.grid, S.pitch, S.size, S.am, S.dmin, S.dmax]);
   if (key !== dotsKey) {
     const g = image ? imageDots(S) : shapeDots(S), snapped = S.grid ? gridify(g.xy, g.tone, S.pitch) : g;
     dots = snapped.xy; tones = snapped.tone; dotsKey = key; rebuild();
@@ -558,8 +565,26 @@ const BRUSHES = {
 let ops = [], cur = null;
 function rebuild() {
   view = Array.from(dots);
-  for (const op of ops) { op.done = 0; op.rng = rng(op.seed); op.hit = new Set(); applyOp(op); }
+  separate(view);
+  for (const op of ops) { op.done = 0; op.rng = rng(op.seed); op.hit = new Set(); applyOp(op); separate(view); }
   clampPan();
+}
+// Dots never overlap: any dot that would touch one already kept is dropped. The generated dots are kept
+// from the last drawn backwards (the nearest, on the shape), then the ones the pincel added, in order.
+function separate(v) {
+  const R = radii(v), n = v.length / 2, home = dots.length / 2, cell = Math.max(1, maxR() * 2), grid = new Map();
+  const keep = q => {
+    const o = q * 2, x = v[o], y = v[o + 1];
+    if (x !== x) return;
+    const gx = Math.floor(x / cell), gy = Math.floor(y / cell);
+    for (let b = gy - 1; b <= gy + 1; b++) for (let a = gx - 1; a <= gx + 1; a++) {
+      const list = grid.get(b * 65536 + a); if (!list) continue;
+      for (const k of list) { const dx = x - v[k * 2], dy = y - v[k * 2 + 1], m = R[q] + R[k]; if (dx * dx + dy * dy < m * m) { v[o] = v[o + 1] = NaN; return; } }
+    }
+    const key = gy * 65536 + gx; (grid.get(key) || grid.set(key, []).get(key)).push(q);
+  };
+  for (let q = Math.min(home, n) - 1; q >= 0; q--) keep(q);
+  for (let q = home; q < n; q++) keep(q);
 }
 function applyOp(op) {
   const R = op.size * AH, step = Math.max(1, R * .18);
@@ -608,7 +633,7 @@ function stamp(op, px, py, dx, dy, R) {
 function clampPan() {
   const dots = view;
   if (!dots || !dots.length) { panX = panY = 0; return; }
-  const r = maxR() + (S.stroke ? S.strokeW / 2 : 0);
+  const r = maxR();
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (let i = 0; i < dots.length; i += 2) {
     const x = dots[i], y = dots[i + 1];
@@ -680,49 +705,37 @@ function colorsOf(it) {
 }
 
 // ---------- Drawing ----------
-// With fill and stroke, each circle is filled then outlined in order, so it covers the outlines below.
-// With the palette on, it colours the fill (or the stroke, when there's no fill).
+// Filled dots, one by one in order when the palette mixes colours (near dots drawn last), else one path.
 function draw(ctx, it) {
-  const R = radii(it), fill = S.fill, stroke = S.stroke && S.strokeW > 0, cols = colorsOf(it), pal = PAL();
-  ctx.fillStyle = S.fillColor; ctx.strokeStyle = S.strokeColor; ctx.lineWidth = S.strokeW;
-  if (!fill && !stroke) return;
-  if ((fill && stroke) || cols) {
-    // One by one, in order, so the colours mix and near dots cover far ones.
+  const R = radii(it), cols = colorsOf(it), pal = PAL();
+  ctx.fillStyle = S.fillColor;
+  if (cols) {
     for (let i = 0; i < it.length; i += 2) {
       if (it[i] !== it[i]) continue;
-      if (cols) fill ? ctx.fillStyle = pal[cols[i >> 1]] : ctx.strokeStyle = pal[cols[i >> 1]];
-      ctx.beginPath(); ctx.arc(it[i] + panX, it[i + 1] + panY, R[i >> 1], 0, Math.PI * 2);
-      if (fill) ctx.fill();
-      if (stroke) ctx.stroke();
+      ctx.fillStyle = pal[cols[i >> 1]];
+      ctx.beginPath(); ctx.arc(it[i] + panX, it[i + 1] + panY, R[i >> 1], 0, Math.PI * 2); ctx.fill();
     }
   } else {
     ctx.beginPath();
     for (let i = 0; i < it.length; i += 2) { if (it[i] !== it[i]) continue; const r = R[i >> 1]; ctx.moveTo(it[i] + panX + r, it[i + 1] + panY); ctx.arc(it[i] + panX, it[i + 1] + panY, r, 0, Math.PI * 2); }
-    fill ? ctx.fill() : ctx.stroke();
+    ctx.fill();
   }
 }
 // The SVG is one unified outline: the dots are rendered as a coverage mask at a few times the artboard
 // resolution, its 50% contour is traced (marching squares, sub-pixel edges) and simplified into a
-// single even-odd path, like Union + Outline stroke in Figma. With a fill, the path is the union of the
-// discs (filled, and outlined with the stroke if it's on); with only a stroke, it's the union of the rings.
+// single even-odd path, like Union + Outline stroke in Figma. With the palette, one path per colour.
 function toSvg(it) {
-  const n = v => Math.round(v * 100) / 100, out = [];
+  const out = [], cols = colorsOf(it), pal = PAL(), R = radii(it);
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW} ${AH}">`);
-  const stroke = S.stroke && S.strokeW > 0, ring = !S.fill && stroke, cols = colorsOf(it), pal = PAL();
-  // With the palette, one unified path per colour.
-  if (S.fill || ring) for (let g = 0; g < (cols ? 4 : 1); g++) {
-    const part = cols ? it.map((v, i) => cols[i >> 1] === g ? v : NaN) : it;
-    const d = unionPath(part, radii(it), ring ? S.strokeW / 2 : 0);
-    if (!d) continue;
-    out.push(S.fill
-      ? `<path fill="${cols ? pal[g] : S.fillColor}" fill-rule="evenodd"${stroke ? ` stroke="${S.strokeColor}" stroke-width="${S.strokeW}" stroke-linejoin="round"` : ''} d="${d}"/>`
-      : `<path fill="${cols ? pal[g] : S.strokeColor}" fill-rule="evenodd" d="${d}"/>`);
+  for (let g = 0; g < (cols ? 4 : 1); g++) {
+    const part = cols ? it.map((v, i) => cols[i >> 1] === g ? v : NaN) : it, d = unionPath(part, R);
+    if (d) out.push(`<path fill="${cols ? pal[g] : S.fillColor}" fill-rule="evenodd" d="${d}"/>`);
   }
   out.push('</svg>');
   return out.join('\n');
 }
 
-function unionPath(it, R, half) {
+function unionPath(it, R, half = 0) {
   let rmin = Infinity, rmax = 0;
   for (const v of R) { if (v < rmin) rmin = v; if (v > rmax) rmax = v; }
   const outer = rmax + half + 1, k = clamp(6 / Math.max(.5, rmin), 1.5, 5);
@@ -740,7 +753,7 @@ function unionPath(it, R, half) {
     if (it[i] !== it[i]) continue;
     const r = R[i >> 1], cx = (it[i] + panX - x0) * k, cy = (it[i + 1] + panY - y0) * k, Rk = (r + half) * k + 1;
     for (let y = Math.max(0, Math.floor(cy - Rk)); y <= Math.min(h - 1, Math.ceil(cy + Rk)); y++) for (let x = Math.max(0, Math.floor(cx - Rk)); x <= Math.min(w - 1, Math.ceil(cx + Rk)); x++) {
-      const dist = Math.hypot(x - cx, y - cy) / k, e = half && !S.fill ? half - Math.abs(dist - r) : r - dist;
+      const e = r - Math.hypot(x - cx, y - cy) / k;
       const v = Math.round(clamp(e * k + .5) * 255), o = y * w + x;
       if (v > m[o]) m[o] = v;
     }
@@ -847,7 +860,7 @@ function render() {
 }
 new ResizeObserver(schedule).observe(stage);
 
-// Hand: drag moves the content (it stays whole inside the frame). Lupa: click zooms in, Alt-click out,
+// Hand: drag moves the content (it stays whole inside the frame). Girar: drag turns the shape. Lupa: click zooms in, Alt-click out,
 // drag pans the view. Pincel, Goma, Dedo, Gota: drag to paint with them. Space held, or the middle button, pans the view with any
 // tool. Wheel zooms. Right click opens the active tool's settings.
 let drag = null, space = false;
@@ -866,25 +879,34 @@ stage.addEventListener('pointerdown', e => {
     const a = toArt(e), b = BRUSHES[tool];
     cur = { tool, size: b.size, str: b.str, scatter: b.scatter ?? 0, seed: Math.floor(Math.random() * 1e9), pts: [[a[0] - panX, a[1] - panY]], done: 0, hit: new Set() };
     cur.rng = rng(cur.seed); ops.push(cur);
-    if (tool !== 'smudge') { applyOp(cur); schedule(); }
+    if (tool !== 'smudge') { applyOp(cur); separate(view); schedule(); }
     return;
   }
-  const view = space || e.button === 1 || tool === 'zoom';
-  drag = { view, x: e.clientX, y: e.clientY, moved: false, a: toArt(e), px: panX, py: panY, vx, vy, alt: e.altKey };
-  stage.classList.add(view ? 'panning' : 'dragging');
+  if (tool === 'orbit' && !space && e.button === 0) {
+    if (S.source !== 'shape') { toast('Girar funciona con la forma.'); return; }
+    drag = { orbit: true, x: e.clientX, y: e.clientY, yaw: S.yaw, tilt: S.tilt };
+    orbiting = true; stage.classList.add('dragging');
+    return;
+  }
+  const panView = space || e.button === 1 || tool === 'zoom';
+  drag = { view: panView, x: e.clientX, y: e.clientY, moved: false, a: toArt(e), px: panX, py: panY, vx, vy, alt: e.altKey };
+  stage.classList.add(panView ? 'panning' : 'dragging');
 });
 stage.addEventListener('pointermove', e => {
   stage.classList.toggle('alt', e.altKey);
   showBrush(e);
-  if (cur) { const a = toArt(e); cur.pts.push([a[0] - panX, a[1] - panY]); applyOp(cur); schedule(); return; }
+  if (cur) { const a = toArt(e); cur.pts.push([a[0] - panX, a[1] - panY]); applyOp(cur); separate(view); schedule(); return; }
   if (!drag) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  // Girar: across turns the shape around its axis, up and down tilts it towards or away from you.
+  if (drag.orbit) { S.yaw = Math.round(((drag.yaw - dx * .4) % 360 + 360) % 360); S.tilt = clamp(Math.round(drag.tilt + dy * .3), -80, 80); sync(); return; }
   if (Math.hypot(dx, dy) > 3) drag.moved = true;
   if (drag.view) { if (zoom > 1) { vx = drag.vx + dx; vy = drag.vy + dy; } }
   else { const a = toArt(e); panX = drag.px + a[0] - drag.a[0]; panY = drag.py + a[1] - drag.a[1]; clampPan(); }
   schedule();
 });
 const endDrag = e => {
+  if (drag?.orbit) { drag = null; orbiting = false; stage.classList.remove('dragging'); sync(); return; }
   if (cur) { if (cur.pts.length < 2 && cur.tool === 'smudge') ops.pop(); cur = null; clampPan(); schedule(); return; }
   if (!drag) return;
   if (tool === 'zoom' && !space && !drag.moved && e.type === 'pointerup') {
@@ -950,8 +972,6 @@ const SLIDERS = {
   pitch: { label: 'Paso de la grilla', min: 2, max: 40, step: .5, fmt: v => v + ' px' },
   dmin: { label: 'Punto menor', min: .5, max: 40, step: .5, fmt: v => v + ' px' },
   dmax: { label: 'Punto mayor', min: .5, max: 40, step: .5, fmt: v => v + ' px' },
-  overlap: { label: 'Superposición', min: 0, max: 1, step: .01, fmt: pct },
-  strokeW: { label: 'Grosor del trazo', min: .1, max: 8, step: .1, fmt: v => v.toFixed(1) + ' px' },
 };
 // A slider with a values list moves through it (uneven steps), otherwise through min..max by step.
 const pos = (d, v) => d.values ? d.values.reduce((b, x, i) => Math.abs(x - v) < Math.abs(d.values[b] - v) ? i : b, 0) : v;
@@ -973,9 +993,8 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
 document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
-$('#swap').addEventListener('click', () => { [S.fillColor, S.strokeColor] = [S.strokeColor, S.fillColor]; sync(); });
 const negHex = h => '#' + (0xFFFFFF ^ parseInt(h.slice(1), 16)).toString(16).padStart(6, '0');
-$('#negate').addEventListener('click', () => { for (const k of ['fillColor', 'strokeColor', 'paper', 'p0', 'p1', 'p2', 'p3']) S[k] = negHex(S[k]); sync(); });
+$('#negate').addEventListener('click', () => { for (const k of ['fillColor', 'paper', 'p0', 'p1', 'p2', 'p3']) S[k] = negHex(S[k]); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('#reseed').addEventListener('click', reseed);
 // A new seed plus fresh values for every shape setting, within ranges that stay recognisable.
@@ -993,6 +1012,7 @@ addEventListener('keydown', e => {
   if (k === 'r') reseed();
   else if (k === 'h' || k === 'v') setTool('move');
   else if (k === 'z') setTool('zoom');
+  else if (k === 'o') setTool('orbit');
   else if (k === 'b') setTool('paint');
   else if (k === 'e') setTool('erase');
   else if (k === 'd') setTool('smudge');
@@ -1023,15 +1043,13 @@ function sync() {
   const shape = S.source === 'shape';
   $('#shape-section').hidden = !shape;
   $('#image-controls').hidden = shape;
-  $('#sl-overlap').hidden = shape || S.grid;
   $('#sl-pitch').hidden = !S.grid;
   $('#sl-dmin').hidden = $('#sl-dmax').hidden = !S.am;
   $('#sl-size').hidden = S.am;
-  $('#sl-strokeW').hidden = !S.stroke;
-  paintSwatch($('[data-color=fillColor]').closest('.swatch'), S.fillColor, S.fill && S.palette === 'off');
+  paintSwatch($('[data-color=fillColor]').closest('.swatch'), S.fillColor, true);
+  $('#fill-row').hidden = S.palette !== 'off';
   $('#pal-row').hidden = S.palette === 'off';
   for (const k of ['p0', 'p1', 'p2', 'p3']) { const sw = $(`[data-color=${k}]`).closest('.swatch'); sw.querySelector('i').style.background = S[k]; sw.querySelector('input').value = S[k]; }
-  paintSwatch($('[data-color=strokeColor]').closest('.swatch'), S.strokeColor, S.stroke);
   paintSwatch($('[data-color=paper]').closest('.swatch'), S.paper, true);
   if (view) clampPan();
   schedule();
