@@ -323,7 +323,7 @@ function box(ar) {
 }
 
 // Darkness above the threshold becomes density (the negative's, when inverted). A candidate that would
-// touch a neighbour is rejected; the gap asked for grows as the tone lightens, so packing still reads
+// touch a neighbour is rejected (not with amplitud modulada, where dots may overlap); the gap asked for grows as the tone lightens, so packing still reads
 // as density.
 function imageDots(st) {
   const { gw, gh, lum } = src, rect = box(src.ar), n = gw * gh, cw = rect.w / gw, ch = rect.h / gh, t = st.threshold;
@@ -334,7 +334,7 @@ function imageDots(st) {
     M[k] = t >= 1 ? -1 : (v - t) / (1 - t);
     cdf[k] = sum += M[k] > 0 ? M[k] ** 1.2 : 0;
   }
-  const rand = rng(st.seed), keep = 1, cell = Math.max(1, st.am ? st.dmax : st.size), cells = new Map(), out = [], tone = [];
+  const rand = rng(st.seed), keep = st.am ? 0 : 1, cell = Math.max(1, st.am ? st.dmax : st.size), cells = new Map(), out = [], tone = [];
   const diam = m => st.am ? lerp(st.dmin, st.dmax, clamp(m)) : st.size;
   const fits = (x, y, m) => {
     const min = diam(m) * keep / Math.sqrt(Math.max(m, .05)), reach = Math.ceil(min / cell);
@@ -611,7 +611,8 @@ function rebuild() {
   for (const op of ops) { op.done = 0; op.rng = rng(op.seed); op.hit = new Set(); applyOp(op); separate(view); }
   clampPan();
 }
-// Dots never overlap: any dot that would touch one already kept is dropped. The generated dots are kept
+// Dots never overlap (except with amplitud modulada, where they may; then only dots on the very same
+// spot, as on one grid cell, are merged): any dot that would touch one already kept is dropped. The generated dots are kept
 // from the last drawn backwards (the nearest, on the shape), then the ones the pincel added, in order.
 function separate(v) {
   const R = radii(v), n = v.length / 2, home = dots.length / 2, cell = Math.max(1, maxR() * 2), grid = new Map();
@@ -621,7 +622,7 @@ function separate(v) {
     const gx = Math.floor(x / cell), gy = Math.floor(y / cell);
     for (let b = gy - 1; b <= gy + 1; b++) for (let a = gx - 1; a <= gx + 1; a++) {
       const list = grid.get(b * 65536 + a); if (!list) continue;
-      for (const k of list) { const dx = x - v[k * 2], dy = y - v[k * 2 + 1], m = R[q] + R[k]; if (dx * dx + dy * dy < m * m) { v[o] = v[o + 1] = NaN; return; } }
+      for (const k of list) { const dx = x - v[k * 2], dy = y - v[k * 2 + 1], m = S.am ? 1e-3 : R[q] + R[k]; if (dx * dx + dy * dy < m * m) { v[o] = v[o + 1] = NaN; return; } }
     }
     const key = gy * 65536 + gx; (grid.get(key) || grid.set(key, []).get(key)).push(q);
   };
