@@ -406,8 +406,8 @@ frame.addEventListener('pointerup', endTurn); frame.addEventListener('pointercan
 frame.addEventListener('wheel', e => { e.preventDefault(); S.zoom = clamp(S.zoom * Math.exp(-e.deltaY * .0015), .4, 2.5); sync(true); clearTimeout(frame.t); frame.t = setTimeout(() => sync(), 200); }, { passive: false });
 
 // ---------- Animation ----------
-// A mano: every 1/fps seconds a share of the pixels (Variación) is drawn again from the same render, so the
-// picture boils like stop motion while keeping its tones. Flotar: each pixel drifts on a slow 3D noise field
+// A mano: every 1/fps seconds a share of the pixels (Variación) is drawn again from the same render and every
+// pixel shifts 1–3 px on each axis, so the picture boils like stop motion while keeping its tones. Flotar: each pixel drifts on a slow 3D noise field
 // (x, y, time), nothing is re-drawn. Hover: pixels near the pointer are pushed away and spring back home as
 // it leaves. Exports take the frame on screen.
 let anim = 0, lastBoil = 0, boilN = 0, hover = null;
@@ -438,6 +438,9 @@ function tick(now) {
       lastBoil = now; boilN++;
       const r = rng(S.seed * 131 + boilN), fresh = stipple(Math.round(pts.length * S.boil), r);
       for (const q of fresh) pts[Math.floor(r() * pts.length)] = q;
+      // And every pixel shifts 1 to 3 px on x and on y, either way, as if redrawn by hand.
+      const j = () => (1 + r() * 2) * (r() < .5 ? -1 : 1);
+      for (const p of pts) { p.dx = j(); p.dy = j(); }
       render();
     } else animate();
     return;

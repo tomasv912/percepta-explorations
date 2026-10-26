@@ -59,4 +59,37 @@
   nav.innerHTML = `<a class="tb-brand" href="${link('home/')}"${isHere('home/') ? ' aria-current="page"' : ''}>Percepta</a><div class="tb-tabs">${links}${crumb}</div>`;
   script.replaceWith(nav);
   window.PERCEPTA_EXPLORATIONS = EXPLORATIONS;
+
+  // Every section of a tool's side panel folds: its title opens and closes it, and the page remembers
+  // which ones were closed. Closing only hides the section's contents, so the tool's own markup and
+  // scripts don't change.
+  style.textContent += `
+.pc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; user-select: none; }
+.pc-head::after { content: ""; flex: none; width: 6px; height: 6px; margin-right: 3px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); opacity: .55; transition: transform .15s ease-out; }
+.pc-head:hover::after { opacity: 1; }
+.pc-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.pc-closed > .pc-head::after { transform: translateY(1px) rotate(-45deg); }
+.pc-closed > :not(.pc-head) { display: none !important; }
+`;
+  const fold = () => {
+    const key = 'percepta-folds:' + here;
+    let closed = [];
+    try { closed = JSON.parse(localStorage.getItem(key)) || []; } catch {}
+    const save = () => {
+      const names = [...document.querySelectorAll('.pc-closed > .pc-head')].map(h => h.textContent.trim());
+      try { localStorage.setItem(key, JSON.stringify(names)); } catch {}
+    };
+    for (const head of document.querySelectorAll('aside section > h2:first-child, aside .group > .lbl:first-child')) {
+      const box = head.parentElement, name = head.textContent.trim();
+      head.classList.add('pc-head');
+      head.tabIndex = 0;
+      head.setAttribute('role', 'button');
+      const set = shut => { box.classList.toggle('pc-closed', shut); head.setAttribute('aria-expanded', String(!shut)); };
+      set(closed.includes(name));
+      const toggle = () => { set(!box.classList.contains('pc-closed')); save(); };
+      head.addEventListener('click', toggle);
+      head.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+    }
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fold); else fold();
 })();

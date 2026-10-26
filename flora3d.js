@@ -66,8 +66,8 @@
 
   // ---------- Models, y-up ----------
   const MODELS = {
-    // The whole head on its stem, with its leaves.
-    hortensia: r => flipY(hydrangea(1, 44, r, { stem: true })),
+    // The whole head, florets all the way round (so it turns a full 360°), ending in its two leaves.
+    hortensia: r => flipY(hydrangea(1, 84, r, { cap: 1.85 })),
     // Close up: one floret in front, a ring of six behind it on a gentle dome, as in a macro photo.
     florecilla: r => {
       const out = [];
@@ -109,7 +109,7 @@
       tube(out, t => [Math.sin(t * 2.5) * .06, -t * 2.2, -t * .1], () => .05, 16, 8);
       return out;
     },
-    // A daisy facing us: a domed centre and a ring of narrow petals that dip at their tips.
+    // A daisy facing us: a domed centre and a ring of narrow petals that dip at their tips; no stem.
     margarita: r => {
       const out = [], n = 21;
       patch(out, (u, v) => { const th = v * Math.PI * 2, rad = .26 * u; return [Math.cos(th) * rad, Math.sin(th) * rad, .12 * Math.cos(u * Math.PI / 2)]; }, 8, 24);
@@ -117,7 +117,6 @@
         const a = k / n * Math.PI * 2 + (r() - .5) * .1, D = [Math.cos(a), Math.sin(a), 0], S = [-Math.sin(a), Math.cos(a), 0], L = .85 + r() * .15, tw = (r() - .5) * .4;
         blade(out, mul(D, .2), D, S, [0, 0, 1], L, u => .075 * Math.pow(Math.sin(Math.PI * Math.min(1, u * .9 + .1)), .5), (u, vv) => -.12 * u * u + tw * vv * .05 * u + .03 * Math.sin(u * 7 + k), 12, 4);
       }
-      tube(out, t => [0, -.1 - t * 2.2, -.15 - t * .2], () => .035, 14, 8);
       return out;
     },
     // An echeveria: a rosette of thick, spoon-shaped leaves, the inner ones more upright and smaller.
@@ -133,5 +132,21 @@
       return out;
     },
   };
-  window.Flora3D = { hydrangea, MODELS, patch, tube, blade, floret };
+  // A y-up model turned (yaw about the vertical, then pitch) into view space (y down, z towards us), centred
+  // and scaled to the given radius; normals turned alike.
+  function view(tris, yawDeg, pitchDeg, radius) {
+    let cx = 0, cy = 0, cz = 0, n = 0, r = 0;
+    for (let i = 0; i < tris.length; i += 18) for (let j = 0; j < 9; j += 3) { cx += tris[i + j]; cy += tris[i + j + 1]; cz += tris[i + j + 2]; n++; }
+    cx /= n; cy /= n; cz /= n;
+    for (let i = 0; i < tris.length; i += 18) for (let j = 0; j < 9; j += 3) r = Math.max(r, Math.hypot(tris[i + j] - cx, tris[i + j + 1] - cy, tris[i + j + 2] - cz));
+    const y = yawDeg * Math.PI / 180, p = pitchDeg * Math.PI / 180, c1 = Math.cos(y), s1 = Math.sin(y), c2 = Math.cos(p), s2 = Math.sin(p), k = radius / (r || 1), out = new Float32Array(tris.length);
+    const turn = (x, yy, z, o) => { const x1 = x * c1 + z * s1, z1 = -x * s1 + z * c1, y1 = yy * c2 - z1 * s2, z2 = yy * s2 + z1 * c2; out[o] = x1; out[o + 1] = -y1; out[o + 2] = z2; };
+    for (let i = 0; i < tris.length; i += 18) {
+      for (let j = 0; j < 9; j += 3) turn((tris[i + j] - cx) * k, (tris[i + j + 1] - cy) * k, (tris[i + j + 2] - cz) * k, i + j);
+      for (let j = 9; j < 18; j += 3) turn(tris[i + j], tris[i + j + 1], tris[i + j + 2], i + j);
+    }
+    return out;
+  }
+  const NAMES = [['hortensia', 'Hortensia'], ['florecilla', 'Florecilla'], ['tulipan', 'Tulipán'], ['cala', 'Cala'], ['margarita', 'Margarita'], ['suculenta', 'Suculenta']];
+  window.Flora3D = { hydrangea, MODELS, NAMES, view, patch, tube, blade, floret };
 })();

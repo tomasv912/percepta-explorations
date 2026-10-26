@@ -160,6 +160,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <div id="sl-rfWaist"></div>
         </div>
         <div id="bloom-controls">
+          <div class="row" style="grid-template-columns:56px 1fr"><span>Flor</span><select class="text" id="blModel" aria-label="Flor"></select></div>
+          <div id="sl-blYaw"></div>
+          <div id="sl-blPitch"></div>
           <div id="sl-blTravel"></div>
           <div id="sl-blFlowers"></div>
           <div id="sl-blSize"></div>
@@ -265,7 +268,7 @@ const DEFAULTS = {
   seed: 1, aspect: '3:2', source: 'waves',
   layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5,
   rfChannels: 3, rfFocus: .42, rfChaos: .7, rfSpread: .6, rfAmp: .5, rfFreq: 1, rfOrder: .7, rfWaist: 0,
-  blTravel: .5, blFlowers: 3, blSize: .5, blFlorets: 32, blShare: .5, orient: 'h',
+  blModel: 'hortensia', blYaw: 0, blPitch: 0, blTravel: .5, blFlowers: 3, blSize: .5, blFlorets: 32, blShare: .5, orient: 'h',
   contrast: 1.2, threshold: .1, invert: false, grid: false, gridCols: 140, rotX: 0, rotY: 0, rotZ: 0,
   style: 'mono', count: 45000, size: 3.5, mod: .6, variation: .35, grain: .12,
   colorMode: 'single', ink: '#272727', palette: ['#D9D0FA', '#A8A5EC', '#A0C2FF', '#98DEDF', '#7FE4B0'],
@@ -400,19 +403,31 @@ function generate(st) {
         }
         // In Vertical the whole picture turns a quarter (so it flows upwards); the flower is built turned the
         // other way about its centre, so it ends up upright with the stem coming from below.
-        const A0 = [best.x - best.R * .3, best.y + best.R * .88], A = upright(best.x, best.y, A0), B = [fEnd * AR, A[1] * .25];
-        heads.push({ x: best.x, y: best.y, R: best.R, A, B, turns: .75 + st.blTravel * 1.75, ph: r() * Math.PI * 2 });
+        // The chosen flower (Pixel Model's models), turned by Giro / Inclinación. The hydrangea takes Florecillas
+        // (they count the front half; the head is florets all round so it can turn).
+        const src = st.blModel !== 'hortensia' ? Flora3D.MODELS[st.blModel](r) : (() => {
+          const t = Flora3D.hydrangea(1, Math.round(st.blFlorets * 1.9), r, { cap: 1.85 });
+          for (let i = 1; i < t.length; i += 3) t[i] = -t[i];
+          return t;
+        })();
+        const mesh = Flora3D.view(src, st.blYaw, st.blPitch, best.R * 1.55);
+        // The ray runs into the lowest point of the model as it is turned (the middle of its lowest sliver).
+        let my = -Infinity, sx = 0, c = 0;
+        for (let k = 0; k < mesh.length; k += 18) for (let j = 1; j < 9; j += 3) my = Math.max(my, mesh[k + j]);
+        for (let k = 0; k < mesh.length; k += 18) for (let j = 1; j < 9; j += 3) if (mesh[k + j] > my - best.R * .06) { sx += mesh[k + j - 1]; c++; }
+        const A0 = [best.x + sx / c, best.y + my - best.R * .02], A = upright(best.x, best.y, A0), B = [fEnd * AR, A[1] * .25];
+        heads.push({ x: best.x, y: best.y, R: best.R, A, B, mesh, turns: .75 + st.blTravel * 1.75, ph: r() * Math.PI * 2 });
       }
     }
     // Each head is rendered as a 3D model (Flora3D.hydrangea) and stippled: Puntos en las flores of the points go to
     // the flowers, falling on shadows and on the edges where one sepal passes over another.
     if (bloom) heads.forEach((h, hi) => {
-      const R = h.R, mesh = new Float32Array(Flora3D.hydrangea(R, st.blFlorets, r)), box = { x0: -1.8 * R, y0: -1.35 * R, x1: 1.8 * R, y1: 2.15 * R };
+      const R = h.R, mesh = h.mesh, box = { x0: -1.7 * R, y0: -1.7 * R, x1: 1.7 * R, y1: 1.7 * R };
       const buf = Stipple3D.render(mesh, box, 640, [-.35, -.5, .8], { ambient: .3, shadowDim: .4 }), e = Stipple3D.edges(buf, R * .015);
       const pts = Stipple3D.sample(buf, e, Math.round(n * st.blShare / F), r, { gamma: 1.9, edge: .8, floor: .01, gain: 1.25 });
       for (let i = 0; i < pts.length && got < n; i += 3) {
         const [x, y] = upright(h.x, h.y, [h.x + pts[i], h.y + pts[i + 1]]);
-        add(x, y, .85, 0, (hi + (pts[i + 2] > .62 ? 1 : 0)) % P);
+        add(x, y, .85, 0); // every flower carries all the colours
       }
     });
     for (let tries = 0; got < n && tries < n * 4; tries++) {
@@ -442,7 +457,7 @@ function generate(st) {
             const off = Math.sin(Math.PI * q) * L * .08 + width * 2 * w * Math.cos(2 * Math.PI * h.turns * q + h.ph) + g() * (.002 + .004 * env + tight * .3);
             x = h.B[0] + dx * q - dy / L * off; y = h.B[1] + dy * q + dx / L * off;
           }
-          col = hi % P;
+          col = undefined; // the rays too: all colours mixed
         }
         add(x, y, 1, 0, r() < settle ? col : undefined);
       }
@@ -599,7 +614,12 @@ function groupsOf(st) {
 }
 function eachShape(st, fn) {
   const a = st.trailAngle * Math.PI / 180, dx = Math.cos(a), dy = Math.sin(a);
-  for (const [color, idx] of groupsOf(st)) {
+  // Each colour is drawn in SLICES interleaved slices, so where colours overlap (dense flowers) none of
+  // them ends up covering the rest.
+  const SLICES = 6, groups = [...groupsOf(st)];
+  for (let sl = 0; sl < SLICES; sl++) for (const [color, all] of groups) {
+    const idx = all.filter((_, j) => j % SLICES === sl);
+    if (!idx.length) continue;
     if (st.trail > 0) for (let b = TRAIL_BANDS; b >= 1; b--) {
       const polys = [];
       for (const i of idx) {
@@ -670,6 +690,8 @@ const SLIDERS = {
   rfAmp: { label: 'Amplitud de las ondas', min: 0, max: 1.5, step: .01, fmt: pct },
   rfFreq: { label: 'Frecuencia', min: .2, max: 3, step: .01, fmt: v => v.toFixed(2) },
   rfWaist: { label: 'Cintura (punto de encauce)', min: 0, max: 1, step: .01, fmt: pct },
+  blYaw: { label: 'Giro de las flores', min: -180, max: 180, step: 1, fmt: v => Math.round(v) + '°', emph: true },
+  blPitch: { label: 'Inclinación de las flores', min: -89, max: 89, step: 1, fmt: v => Math.round(v) + '°' },
   blTravel: { label: 'Recorrido antes del tallo', min: 0, max: 1, step: .01, fmt: pct, emph: true },
   blFlowers: { label: 'Flores', min: 1, max: 10, step: 1, fmt: String, emph: true },
   blSize: { label: 'Tamaño de las flores', min: 0, max: 1, step: .01, fmt: pct },
@@ -717,6 +739,8 @@ document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('inp
 const INKS = ['#D9D0FA', '#A8A5EC', '#A0C2FF', '#98DEDF', '#7FE4B0', '#272727', '#F6F6F6'];
 $('#inks').innerHTML = INKS.map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join('');
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
+$('#blModel').innerHTML = Flora3D.NAMES.map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
+$('#blModel').addEventListener('change', e => { S.blModel = e.target.value; sync(); });
 $('#bg').innerHTML = BACKGROUNDS.map(([h, n]) => `<option value="${h}">${n} · ${h}</option>`).join('');
 $('#bg').addEventListener('change', e => { S.bg = e.target.value; sync(); });
 $('#shuffle').addEventListener('click', () => { S.palette = DEFAULTS.palette.slice(); sync(); });
@@ -758,13 +782,14 @@ function sync() {
   $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = mono;
   $('#ink-row').hidden = $('#inks').hidden = S.colorMode !== 'single';
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase())); $('#palette-box').hidden = S.colorMode !== 'random';
+  $('#blModel').value = S.blModel; $('#sl-blFlorets').hidden = S.blModel !== 'hortensia';
   $('#bg').value = S.bg; $('#bg-chip').style.background = S.bg;
   $('#sl-trailAngle').hidden = $('#sl-trailJitter').hidden = !S.trail;
   $('#sl-gridCols').hidden = !S.grid; $('#sl-count').hidden = image && S.grid;
   $('.rt-bar [data-tool="rotate"]').hidden = !image; if (!image && tools.tool === 'rotate') tools.setTool('scatter');
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
-  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.blTravel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.contrast, S.threshold, S.invert,
+  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.contrast, S.threshold, S.invert,
     S.style, S.count, S.size, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) { gen0 = generate(S); genKey = key; placeKey = pkey; rebuild(true); }
