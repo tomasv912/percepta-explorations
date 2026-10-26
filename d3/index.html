@@ -543,8 +543,9 @@ function currentDots() {
 // Desvanecer bordes: each chosen edge (top, bottom) is a gradient between two nodes on the canvas,
 // B (black: the shape stays solid) and A (white: full dispersion). Past B towards A, dots let go more
 // and more; one that lets go is dropped (thinning) or carried in the B→A direction by up to Dispersión
-// (as a share of the gradient's length), and the further it travels the smaller it gets. With Grilla
-// on they land on the grid too.
+// (as a share of the gradient's length). Size follows where a dot ends up, linearly along the gradient:
+// full at B, smallest at the furthest a dot can reach, so they shrink evenly towards the edge. With
+// Grilla on they land on the grid too.
 function fadeGradients() {
   const g = [];
   if (S.fadeT && S.fadeTA) g.push([S.fadeTA, S.fadeTB]);
@@ -570,9 +571,9 @@ function fadeEdges({ xy, tone }) {
       const go = w * (.2 + .8 * rand()); // share of the longest trip, 0..1
       x += g.ux * S.fadeD * g.L * 1.5 * go + (rand() - .5) * g.L * .1 * w * Math.abs(g.uy);
       y += g.uy * S.fadeD * g.L * 1.5 * go + (rand() - .5) * g.L * .1 * w * Math.abs(g.ux);
-      k = Math.max(.12, 1 - 1.3 * go);
       if (x < r || x > AW - r || y < r || y > AH - r) continue;
     }
+    if (g) k = 1 - .88 * clamp(((x - g.B[0]) * g.ux + (y - g.B[1]) * g.uy) / (g.L * (1 + S.fadeD * 1.5)));
     out.push(x, y); t.push(tone[q]); sc.push(k);
   }
   return { xy: Float32Array.from(out), tone: Float32Array.from(t), scale: Float32Array.from(sc) };
@@ -997,7 +998,17 @@ stage.addEventListener('pointermove', e => {
   stage.classList.toggle('alt', e.altKey);
   showBrush(e);
   if (!drag && !cur) { const hit = fadeNodeHit(e); stage.style.cursor = hit ? 'grab' : ''; if (hit) brush.hidden = true; }
-  if (cur) { const a = toArt(e); cur.pts.push([a[0] - panX, a[1] - panY]); applyOp(cur); separate(view); schedule(); return; }
+  if (cur) {
+    const a = toArt(e);
+    let p = [a[0] - panX, a[1] - panY];
+    // Shift: the stroke runs straight from where it started, at a multiple of 45°.
+    if (e.shiftKey) {
+      const o = cur.pts[0], dx = p[0] - o[0], dy = p[1] - o[1], an = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+      const L = dx * Math.cos(an) + dy * Math.sin(an);
+      p = [o[0] + Math.cos(an) * L, o[1] + Math.sin(an) * L];
+    }
+    cur.pts.push(p); applyOp(cur); separate(view); schedule(); return;
+  }
   if (!drag) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   if (drag.node) {
