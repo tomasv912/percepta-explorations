@@ -110,17 +110,26 @@
     }
     return out;
   }
-  // Smooth normals for a triangle soup: vertices at the same position share the average of their faces'.
-  function withNormals(pos) {
-    const n = pos.length / 9, out = new Float32Array(n * 18), acc = new Map(), key = (x, y, z) => `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`, fn = [];
+  // Normals for a triangle soup: at each corner, the average of the faces meeting there that turn less than
+  // `crease` degrees from this face, so curved surfaces shade smoothly and hard edges stay hard.
+  function withNormals(pos, crease = 50) {
+    const n = pos.length / 9, out = new Float32Array(n * 18), at = new Map(), fn = [], key = (x, y, z) => `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`, cos = Math.cos(crease * Math.PI / 180);
     for (let t = 0; t < n; t++) {
       const o = t * 9, ux = pos[o + 3] - pos[o], uy = pos[o + 4] - pos[o + 1], uz = pos[o + 5] - pos[o + 2], vx = pos[o + 6] - pos[o], vy = pos[o + 7] - pos[o + 1], vz = pos[o + 8] - pos[o + 2];
       const f = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx]; fn.push(f);
-      for (let j = 0; j < 3; j++) { const kk = key(pos[o + j * 3], pos[o + j * 3 + 1], pos[o + j * 3 + 2]), a = acc.get(kk) || [0, 0, 0]; a[0] += f[0]; a[1] += f[1]; a[2] += f[2]; acc.set(kk, a); }
+      for (let j = 0; j < 3; j++) { const kk = key(pos[o + j * 3], pos[o + j * 3 + 1], pos[o + j * 3 + 2]); (at.get(kk) || at.set(kk, []).get(kk)).push(t); }
     }
-    for (let t = 0; t < n; t++) for (let j = 0; j < 3; j++) {
-      const o = t * 9 + j * 3, a = norm3(acc.get(key(pos[o], pos[o + 1], pos[o + 2])));
-      out.set([pos[o], pos[o + 1], pos[o + 2]], t * 18 + j * 3); out.set(a, t * 18 + 9 + j * 3);
+    for (let t = 0; t < n; t++) {
+      const me = norm3(fn[t]);
+      for (let j = 0; j < 3; j++) {
+        const o = t * 9 + j * 3, sum = [0, 0, 0];
+        for (const u of at.get(key(pos[o], pos[o + 1], pos[o + 2]))) {
+          const f = fn[u], l = Math.hypot(f[0], f[1], f[2]) || 1;
+          if ((f[0] * me[0] + f[1] * me[1] + f[2] * me[2]) / l < cos) continue;
+          sum[0] += f[0]; sum[1] += f[1]; sum[2] += f[2];
+        }
+        out.set([pos[o], pos[o + 1], pos[o + 2]], t * 18 + j * 3); out.set(norm3(sum), t * 18 + 9 + j * 3);
+      }
     }
     return out;
   }

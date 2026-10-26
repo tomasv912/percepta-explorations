@@ -9,6 +9,7 @@
     { name: 'Pixel Rise', path: 'pixel-rise/' },
     { name: 'Pixel Blocks', path: 'pixel-blocks/' },
     { name: 'Cluster', path: 'cluster/' },
+    { name: 'Pixel Model', path: 'pixel-model/' },
     {
       name: 'Descartes', path: 'descartes/', children: [
         { name: 'Cube Dispersion', path: 'cube-dispersion/' },
