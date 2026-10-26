@@ -67,6 +67,7 @@ aside { display: flex; flex-direction: column; min-height: 0; background: var(--
 .controls { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 24px; }
 section { display: flex; flex-direction: column; gap: 10px; }
 h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.hint { margin: 0; color: var(--text-3); font-size: 12px; line-height: 1.45; }
 
 .seg { display: flex; background: var(--fill); border-radius: 8px; padding: 2px; gap: 2px; }
 .seg button { flex: 1; border: 0; background: transparent; color: var(--text-2); font: 500 12px var(--font); height: 26px; border-radius: 6px; cursor: pointer; }
@@ -217,7 +218,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <label class="check"><input type="checkbox" data-check="fadeT"> Arriba</label>
           <label class="check"><input type="checkbox" data-check="fadeB"> Abajo</label>
         </div>
-        <div id="sl-fadeW"></div>
+        <p class="hint" id="fade-hint">Arrastrá los nodos sobre el lienzo: el blanco marca dónde la dispersión es máxima y el negro dónde la forma queda sólida.</p>
         <div id="sl-fadeD"></div>
       </section>
 
@@ -259,7 +260,8 @@ const DEFAULTS = {
   source: 'shape', seed: 1,
   bulbs: 4, waist: .45, fold: .45, droop: .35, twist: .25, yaw: 0, tilt: 18, shade: 0, light: 135,
   invert: false, contrast: 1.2, threshold: .15,
-  count: 18000, size: 4.5, hide: true, grid: false, pitch: 6, am: false, dmin: 1.5, dmax: 8, fadeT: false, fadeB: false, fadeW: .35, fadeD: .5,
+  count: 18000, size: 4.5, hide: true, grid: false, pitch: 6, am: false, dmin: 1.5, dmax: 8, fadeT: false, fadeB: false, fadeD: .5,
+  fadeTA: null, fadeTB: null, fadeBA: null, fadeBB: null, // gradient nodes (content units): A dispersed, B solid
   palette: 'off', p0: '#ffef99', p1: '#ccefec', p2: '#ffb2cf', p3: '#d9b7f6',
   fillColor: '#f4f1ea',
   paper: '#0c0c0c',
@@ -518,36 +520,53 @@ function shapeView(st, { P, pts, at3 }) {
 // Dot centres in artboard units (before the hand's offset), cached until a setting that moves them changes;
 // view is the same dots after the brush strokes.
 let dots = null, tones = null, scales = null, dotsKey = '', view = null;
+let base = null, baseKey = '';
 function currentDots() {
   const image = S.source === 'image' && src;
-  const key = JSON.stringify([image ? ['i', src.id, S.invert, S.contrast, S.threshold]
-    : ['s', S.bulbs, S.waist, S.fold, S.droop, S.twist, S.yaw, S.tilt, S.shade, S.light, S.hide, orbiting], S.seed, S.count, S.grid, S.pitch, S.size, S.am, S.dmin, S.dmax, S.fadeT, S.fadeB, S.fadeW, S.fadeD]);
+  const bk = JSON.stringify([image ? ['i', src.id, S.invert, S.contrast, S.threshold]
+    : ['s', S.bulbs, S.waist, S.fold, S.droop, S.twist, S.yaw, S.tilt, S.shade, S.light, S.hide, orbiting], S.seed, S.count, S.size, S.am, S.dmin, S.dmax]);
+  if (bk !== baseKey) { base = image ? imageDots(S) : shapeDots(S); baseKey = bk; }
+  const key = JSON.stringify([bk, S.grid, S.pitch, fadeGradients(), S.fadeD]);
   if (key !== dotsKey) {
-    let g = image ? imageDots(S) : shapeDots(S);
-    if (S.fadeT || S.fadeB) g = fadeEdges(g);
-    if (!g.scale) g.scale = new Float32Array(g.tone.length).fill(1);
+    let g = base;
+    if (fadeGradients().length) g = fadeEdges(g);
+    if (!g.scale) g = { ...g, scale: new Float32Array(g.tone.length).fill(1) };
     const snapped = S.grid ? gridify(g, S.pitch) : g;
     dots = snapped.xy; tones = snapped.tone; scales = snapped.scale; dotsKey = key; rebuild();
   }
   return view;
 }
-// Desvanecer bordes: within Ancho of the chosen edge(s) of the content (top, bottom), dots let go more
-// the nearer the edge they are; one that lets go is dropped (thinning) or carried outwards by up to
-// Dispersión, so the edge dissolves into scattered dots; the further one travels, the smaller it gets.
-// With Grilla on they land on the grid too.
+// Desvanecer bordes: each chosen edge (top, bottom) is a gradient between two nodes on the canvas,
+// B (black: the shape stays solid) and A (white: full dispersion). Past B towards A, dots let go more
+// and more; one that lets go is dropped (thinning) or carried in the B→A direction by up to Dispersión
+// (as a share of the gradient's length), and the further it travels the smaller it gets. With Grilla
+// on they land on the grid too.
+function fadeGradients() {
+  const g = [];
+  if (S.fadeT && S.fadeTA) g.push([S.fadeTA, S.fadeTB]);
+  if (S.fadeB && S.fadeBA) g.push([S.fadeBA, S.fadeBB]);
+  return g;
+}
+// Default nodes for an edge: B a third of the way in from it, A on it, centred on the content.
+function initFade(edge) {
+  const v = base.xy;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let i = 0; i < v.length; i += 2) { x0 = Math.min(x0, v[i]); x1 = Math.max(x1, v[i]); y0 = Math.min(y0, v[i + 1]); y1 = Math.max(y1, v[i + 1]); }
+  const cx = (x0 + x1) / 2, h = (y1 - y0) * .35;
+  if (edge === 'T') { S.fadeTA = [cx, y0]; S.fadeTB = [cx, y0 + h]; } else { S.fadeBA = [cx, y1]; S.fadeBB = [cx, y1 - h]; }
+}
 function fadeEdges({ xy, tone }) {
-  let y0 = Infinity, y1 = -Infinity;
-  for (let i = 1; i < xy.length; i += 2) { if (xy[i] < y0) y0 = xy[i]; if (xy[i] > y1) y1 = xy[i]; }
-  const H = Math.max(1, y1 - y0), rand = rng(S.seed * 17 + 3), r = maxR(), out = [], t = [], sc = [];
+  const grads = fadeGradients().map(([A, B]) => { const dx = A[0] - B[0], dy = A[1] - B[1], L = Math.hypot(dx, dy) || 1; return { B, ux: dx / L, uy: dy / L, L }; });
+  const rand = rng(S.seed * 17 + 3), r = maxR(), out = [], t = [], sc = [];
   for (let q = 0; q < tone.length; q++) {
-    let x = xy[q * 2], y = xy[q * 2 + 1], k = 1;
-    const u = (y - y0) / H, wt = S.fadeT ? clamp(1 - u / S.fadeW) : 0, wb = S.fadeB ? clamp(1 - (1 - u) / S.fadeW) : 0, w = Math.max(wt, wb);
+    let x = xy[q * 2], y = xy[q * 2 + 1], k = 1, w = 0, g = null;
+    for (const G of grads) { const f = clamp(((x - G.B[0]) * G.ux + (y - G.B[1]) * G.uy) / G.L); if (f > w) { w = f; g = G; } }
     if (w > 0 && rand() < w) {
       if (rand() < w * .5) continue;
       const go = w * (.2 + .8 * rand()); // share of the longest trip, 0..1
-      y += (wt > wb ? -1 : 1) * S.fadeD * H * .6 * go;
+      x += g.ux * S.fadeD * g.L * 1.5 * go + (rand() - .5) * g.L * .1 * w * Math.abs(g.uy);
+      y += g.uy * S.fadeD * g.L * 1.5 * go + (rand() - .5) * g.L * .1 * w * Math.abs(g.ux);
       k = Math.max(.12, 1 - 1.3 * go);
-      x += (rand() - .5) * H * .04 * w;
       if (x < r || x > AW - r || y < r || y > AH - r) continue;
     }
     out.push(x, y); t.push(tone[q]); sc.push(k);
@@ -890,6 +909,34 @@ function zoomAt(f, cx, cy) {
 function fitView() { zoom = 1; vx = vy = 0; schedule(); }
 
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
+// The fade gradients' nodes, on screen: a line from B (black, solid) to A (white, dispersed).
+const FADE_NODES = [['fadeT', 'fadeTA', 'fadeTB'], ['fadeB', 'fadeBA', 'fadeBB']];
+const nodeAt = (p, t) => [(p[0] + panX) * t.k + t.x, (p[1] + panY) * t.k + t.y];
+function drawFadeNodes(ctx, t, dpr) {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  for (const [on, a, b] of FADE_NODES) {
+    if (!S[on] || !S[a]) continue;
+    const A = nodeAt(S[a], t), B = nodeAt(S[b], t);
+    ctx.beginPath(); ctx.moveTo(B[0], B[1]); ctx.lineTo(A[0], A[1]);
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgb(0 0 0 / .35)'; ctx.stroke();
+    ctx.lineWidth = 1.25; ctx.strokeStyle = '#fff'; ctx.stroke();
+    for (const [P, fill] of [[B, '#1a1714'], [A, '#fff']]) {
+      ctx.beginPath(); ctx.arc(P[0], P[1], 8, 0, Math.PI * 2);
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgb(0 0 0 / .35)'; ctx.beginPath(); ctx.arc(P[0], P[1], 9.5, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+}
+function fadeNodeHit(e) {
+  const r = stage.getBoundingClientRect(), t = viewT(), x = e.clientX - r.left, y = e.clientY - r.top;
+  for (const [on, ...keys] of FADE_NODES) for (const k of keys) {
+    if (!S[on] || !S[k]) continue;
+    const P = nodeAt(S[k], t);
+    if (Math.hypot(P[0] - x, P[1] - y) < 12) return k;
+  }
+  return null;
+}
 function render() {
   const it = shownDots(), r = stage.getBoundingClientRect(), dpr = devicePixelRatio || 1;
   cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
@@ -901,6 +948,7 @@ function render() {
   ctx.save(); ctx.beginPath(); ctx.rect(0, 0, AW, AH); ctx.clip();
   draw(ctx, it);
   ctx.restore();
+  drawFadeNodes(ctx, t, dpr);
   $('#zoom-fit').textContent = Math.round(zoom * 100) + '%';
   let live = 0; for (let i = 0; i < it.length; i += 2) if (it[i] === it[i]) live++;
   $('#stats').textContent = `${live.toLocaleString('es')} puntos · ${AW * RES} × ${AH * RES} px`;
@@ -922,6 +970,8 @@ function showBrush(e) {
 stage.addEventListener('pointerdown', e => {
   if (e.target.closest('.tools, .pop') || (e.button !== 0 && e.button !== 1)) return;
   stage.setPointerCapture(e.pointerId);
+  const node = e.button === 0 && fadeNodeHit(e);
+  if (node) { drag = { node }; stage.classList.add('dragging'); return; }
   if (BRUSHES[tool] && !space && e.button === 0) {
     const a = toArt(e), b = BRUSHES[tool];
     cur = { tool, size: b.size, str: b.str, scatter: b.scatter ?? 0, seed: Math.floor(Math.random() * 1e9), pts: [[a[0] - panX, a[1] - panY]], done: 0, hit: new Set() };
@@ -942,9 +992,11 @@ stage.addEventListener('pointerdown', e => {
 stage.addEventListener('pointermove', e => {
   stage.classList.toggle('alt', e.altKey);
   showBrush(e);
+  if (!drag && !cur) { const hit = fadeNodeHit(e); stage.style.cursor = hit ? 'grab' : ''; if (hit) brush.hidden = true; }
   if (cur) { const a = toArt(e); cur.pts.push([a[0] - panX, a[1] - panY]); applyOp(cur); separate(view); schedule(); return; }
   if (!drag) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (drag.node) { const a = toArt(e); S[drag.node] = [a[0] - panX, a[1] - panY]; sync(); return; }
   // Girar: across turns the shape around its axis, up and down tilts it towards or away from you.
   if (drag.orbit) { S.yaw = Math.round(((drag.yaw - dx * .4) % 360 + 360) % 360); S.tilt = clamp(Math.round(drag.tilt + dy * .3), -80, 80); sync(); return; }
   if (Math.hypot(dx, dy) > 3) drag.moved = true;
@@ -953,6 +1005,7 @@ stage.addEventListener('pointermove', e => {
   schedule();
 });
 const endDrag = e => {
+  if (drag?.node) { drag = null; stage.classList.remove('dragging'); return; }
   if (drag?.orbit) { drag = null; orbiting = false; stage.classList.remove('dragging'); sync(); return; }
   if (cur) { if (cur.pts.length < 2 && cur.tool === 'smudge') ops.pop(); cur = null; clampPan(); schedule(); return; }
   if (!drag) return;
@@ -1019,7 +1072,6 @@ const SLIDERS = {
   pitch: { label: 'Paso de la grilla', min: 2, max: 40, step: .5, fmt: v => v + ' px' },
   dmin: { label: 'Punto menor', min: .5, max: 40, step: .5, fmt: v => v + ' px' },
   dmax: { label: 'Punto mayor', min: .5, max: 40, step: .5, fmt: v => v + ' px' },
-  fadeW: { label: 'Ancho', min: .05, max: 1, step: .01, fmt: pct },
   fadeD: { label: 'Dispersión', min: 0, max: 1, step: .01, fmt: pct },
 };
 // A slider with a values list moves through it (uneven steps), otherwise through min..max by step.
@@ -1045,6 +1097,8 @@ const GRID_ON = { count: 29000, pitch: 6, am: true, dmin: .5, dmax: 5 };
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => {
   S[inp.dataset.check] = inp.checked;
   if (inp.dataset.check === 'grid' && inp.checked) Object.assign(S, GRID_ON);
+  if (inp.dataset.check === 'fadeT' && inp.checked && !S.fadeTA) { currentDots(); initFade('T'); }
+  if (inp.dataset.check === 'fadeB' && inp.checked && !S.fadeBA) { currentDots(); initFade('B'); }
   sync();
 }));
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
@@ -1100,7 +1154,7 @@ function sync() {
   $('#image-controls').hidden = shape;
   $('#sl-pitch').hidden = !S.grid;
   $('#sl-dmin').hidden = $('#sl-dmax').hidden = !S.am;
-  $('#sl-fadeW').hidden = $('#sl-fadeD').hidden = !S.fadeT && !S.fadeB;
+  $('#sl-fadeD').hidden = $('#fade-hint').hidden = !S.fadeT && !S.fadeB;
   $('#sl-size').hidden = S.am;
   paintSwatch($('[data-color=fillColor]').closest('.swatch'), S.fillColor, true);
   $('#fill-row').hidden = S.palette !== 'off';
