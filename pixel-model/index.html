@@ -149,6 +149,20 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       </section>
 
       <section>
+        <h2>Animación</h2>
+        <div class="seg" data-key="anim" aria-label="Animación">
+          <button data-v="none">Quieta</button><button data-v="boil">A mano</button><button data-v="float">Flotar</button><button data-v="hover">Hover</button>
+        </div>
+        <div id="sl-fps"></div>
+        <div id="sl-boil"></div>
+        <div id="sl-floatAmp"></div>
+        <div id="sl-floatSpeed"></div>
+        <div id="sl-floatScale"></div>
+        <div id="sl-hoverRadius"></div>
+        <div id="sl-hoverForce"></div>
+      </section>
+
+      <section>
         <h2>Color</h2>
         <div class="seg" data-key="colorMode" aria-label="Color">
           <button data-v="ink">Un color</button><button data-v="tone">Por tono</button><button data-v="random">Al azar</button>
@@ -183,6 +197,7 @@ const AW = 1600, AH = 1200, RES = 2;
 const DEFAULTS = {
   yaw: -20, pitch: 12, zoom: 1, lightAz: 220, lightEl: 40, ambient: .25, shadow: .65,
   count: 40000, size: 3, contrast: 1.6, edge: .8, jitter: 1, seed: 1,
+  anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   colorMode: 'ink', ink: '#272727', bg: '#F6F6F6', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -255,8 +270,14 @@ function build(fast) {
   // actually covers, so a slender model is not crammed darker than a broad one.
   let area = 0; for (let i = 0; i < buf.mask.length; i++) area += buf.mask[i];
   const want = Math.round(S.count * Math.min(2, area / buf.mask.length * 3));
-  const raw = Stipple3D.sample(buf, e, fast ? Math.min(want, 15000) : want, r, { gamma: S.contrast, edge: S.edge, floor: .01, gain: 1.2 });
-  // Into artboard units, square pixels never rotated, each a little off its sample (Superposición).
+  scene = { buf, e, box };
+  return stipple(fast ? Math.min(want, 15000) : want, r);
+}
+// n pixels from the last render: into artboard units, square, never rotated, each a little off its sample
+// (Superposición).
+let scene = null;
+function stipple(n, r) {
+  const { buf, e, box } = scene, raw = Stipple3D.sample(buf, e, n, r, { gamma: S.contrast, edge: S.edge, floor: .01, gain: 1.2 });
   const k = AW / (box.x1 - box.x0), out = [];
   for (let i = 0; i < raw.length; i += 3) {
     const x = (raw[i] - box.x0) * k + (r() - .5) * S.size * S.jitter, y = (raw[i + 1] - box.y0) * k + (r() - .5) * S.size * S.jitter;
@@ -269,18 +290,19 @@ function colorOf(p) {
     : S.colorMode === 'random' ? COLORS[Math.floor(p.pick * COLORS.length)] : S.ink;
   return onBg(c, S.bg);
 }
+// Pixels are drawn where they are now: home plus the animation's offset (p.dx, p.dy).
 function draw(ctx, list, ox = 0, oy = 0) {
   const groups = new Map(), s = S.size;
   for (const p of list) { const c = colorOf(p); let l = groups.get(c); if (!l) groups.set(c, l = []); l.push(p); }
   for (const [c, l] of groups) {
     ctx.fillStyle = c; ctx.beginPath();
-    for (const p of l) ctx.rect(Math.round((p.x - s / 2 - ox) * RES) / RES, Math.round((p.y - s / 2 - oy) * RES) / RES, s, s);
+    for (const p of l) ctx.rect(Math.round((p.x + (p.dx || 0) - s / 2 - ox) * RES) / RES, Math.round((p.y + (p.dy || 0) - s / 2 - oy) * RES) / RES, s, s);
     ctx.fill();
   }
 }
 function bounds(list) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, s = S.size / 2;
-  for (const p of list) { x0 = Math.min(x0, p.x - s); y0 = Math.min(y0, p.y - s); x1 = Math.max(x1, p.x + s); y1 = Math.max(y1, p.y + s); }
+  for (const p of list) { const x = p.x + (p.dx || 0), y = p.y + (p.dy || 0); x0 = Math.min(x0, x - s); y0 = Math.min(y0, y - s); x1 = Math.max(x1, x + s); y1 = Math.max(y1, y + s); }
   return x0 > x1 ? null : { x0: Math.floor(Math.max(0, x0)), y0: Math.floor(Math.max(0, y0)), x1: Math.ceil(Math.min(AW, x1)), y1: Math.ceil(Math.min(AH, y1)) };
 }
 
@@ -301,6 +323,13 @@ const SLIDERS = {
   size: { label: 'Tamaño del píxel', min: 1, max: 24, step: .5, fmt: v => v + ' px', emph: true },
   contrast: { label: 'Contraste', min: .5, max: 4, step: .05, fmt: v => v.toFixed(2) },
   edge: { label: 'Bordes y superposiciones', min: 0, max: 2, step: .01, fmt: pct },
+  fps: { label: 'Cuadros por segundo', min: 1, max: 24, step: 1, fmt: String, emph: true },
+  boil: { label: 'Variación entre cuadros', min: .02, max: 1, step: .01, fmt: pct },
+  floatAmp: { label: 'Amplitud', min: 0, max: 40, step: .5, fmt: v => v + ' px', emph: true },
+  floatSpeed: { label: 'Velocidad', min: .02, max: 2, step: .01, fmt: v => v.toFixed(2) },
+  floatScale: { label: 'Escala del ruido', min: .2, max: 4, step: .05, fmt: v => '×' + v.toFixed(2) },
+  hoverRadius: { label: 'Radio', min: 30, max: 500, step: 5, fmt: v => v + ' px', emph: true },
+  hoverForce: { label: 'Fuerza', min: .1, max: 3, step: .01, fmt: pct },
   jitter: { label: 'Superposición', min: 0, max: 3, step: .01, fmt: pct },
 };
 for (const [key, d] of Object.entries(SLIDERS)) {
@@ -326,7 +355,7 @@ $('#reseed').addEventListener('click', reseed);
 addEventListener('keydown', e => { if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.target.closest('input, textarea, select') && e.key.toLowerCase() === 'r') reseed(); });
 
 // Only colours and the background are cheap; anything else re-renders (quickly while dragging).
-let key = '';
+let key = '', prevAnim = 'none';
 function sync(fast) {
   for (const k of Object.keys(SLIDERS)) {
     const input = $('#in-' + k), d = SLIDERS[k];
@@ -338,12 +367,15 @@ function sync(fast) {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink';
+  const A = { fps: 'boil', boil: 'boil', floatAmp: 'float', floatSpeed: 'float', floatScale: 'float', hoverRadius: 'hover', hoverForce: 'hover' };
+  for (const [k2, a] of Object.entries(A)) $('#sl-' + k2).hidden = S.anim !== a;
   document.querySelectorAll('[data-p]').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === preset && !modelName.includes('.')));
   if (preset && !modelName.includes('.') && presetSeed !== S.seed && !fast) loadPreset();
   $('#bg').value = S.bg; $('#bg-chip').style.background = S.bg;
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   const k = JSON.stringify([modelName, presetSeed, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, S.count, S.size, S.contrast, S.edge, S.jitter, S.seed]);
   if (k !== key || (!fast && fastNext)) { fastNext = !!fast; pts = build(fast); key = k; }
+  if (S.anim !== prevAnim) { prevAnim = S.anim; for (const p of pts) p.dx = p.dy = p.vx = p.vy = 0; lastT = 0; }
   schedule();
 }
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
@@ -351,9 +383,12 @@ function render() {
   const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 48) / AW, (r.height - 84) / AH));
   const w = Math.round(AW * k), h = Math.round(AH * k), dpr = devicePixelRatio || 1;
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
-  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
-  const ctx = cv.getContext('2d'); ctx.setTransform(cv.width / AW, 0, 0, cv.height / AH, 0, 0);
+  const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
+  if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+  const ctx = cv.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, pw, ph);
+  ctx.setTransform(cv.width / AW, 0, 0, cv.height / AH, 0, 0);
   draw(ctx, pts);
+  if (S.anim === 'boil' || S.anim === 'float') animate();
   $('#stats').textContent = `${pts.length.toLocaleString('es')} píxeles · ${modelName} · arrastrá para girar`;
 }
 new ResizeObserver(() => pts && schedule()).observe(stage);
@@ -369,6 +404,72 @@ frame.addEventListener('pointermove', e => {
 const endTurn = () => { if (turn) { turn = null; sync(); } };
 frame.addEventListener('pointerup', endTurn); frame.addEventListener('pointercancel', endTurn);
 frame.addEventListener('wheel', e => { e.preventDefault(); S.zoom = clamp(S.zoom * Math.exp(-e.deltaY * .0015), .4, 2.5); sync(true); clearTimeout(frame.t); frame.t = setTimeout(() => sync(), 200); }, { passive: false });
+
+// ---------- Animation ----------
+// A mano: every 1/fps seconds a share of the pixels (Variación) is drawn again from the same render, so the
+// picture boils like stop motion while keeping its tones. Flotar: each pixel drifts on a slow 3D noise field
+// (x, y, time), nothing is re-drawn. Hover: pixels near the pointer are pushed away and spring back home as
+// it leaves. Exports take the frame on screen.
+let anim = 0, lastBoil = 0, boilN = 0, hover = null;
+const noise = (() => {
+  const p = new Uint8Array(512), r = rng(97);
+  for (let i = 0; i < 256; i++) p[i] = i;
+  for (let i = 255; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
+  for (let i = 0; i < 256; i++) p[i + 256] = p[i];
+  const fade = t => t * t * t * (t * (t * 6 - 15) + 10), lerp = (a, b, t) => a + (b - a) * t;
+  const g = (h, x, y, z) => { const u = h < 8 ? x : y, v = h < 4 ? y : h === 12 || h === 14 ? x : z; return (h & 1 ? -u : u) + (h & 2 ? -v : v); };
+  return (x, y, z) => {
+    const X = Math.floor(x), Y = Math.floor(y), Z = Math.floor(z);
+    x -= X; y -= Y; z -= Z;
+    const xi = X & 255, yi = Y & 255, zi = Z & 255, u = fade(x), v = fade(y), w = fade(z);
+    const A = p[xi] + yi, AA = p[A] + zi, AB = p[A + 1] + zi, B = p[xi + 1] + yi, BA = p[B] + zi, BB = p[B + 1] + zi;
+    return lerp(lerp(lerp(g(p[AA] & 15, x, y, z), g(p[BA] & 15, x - 1, y, z), u), lerp(g(p[AB] & 15, x, y - 1, z), g(p[BB] & 15, x - 1, y - 1, z), u), v),
+      lerp(lerp(g(p[AA + 1] & 15, x, y, z - 1), g(p[BA + 1] & 15, x - 1, y, z - 1), u), lerp(g(p[AB + 1] & 15, x, y - 1, z - 1), g(p[BB + 1] & 15, x - 1, y - 1, z - 1), u), v), w);
+  };
+})();
+function animate() { if (S.anim !== 'none' && !anim) anim = requestAnimationFrame(tick); }
+let lastT = 0;
+function tick(now) {
+  anim = 0;
+  if (S.anim === 'none' || !pts) return;
+  const dt = Math.min(.05, lastT ? (now - lastT) / 1000 : 1 / 60); lastT = now;
+  if (S.anim === 'boil') {
+    if (now - lastBoil >= 1000 / S.fps) {
+      lastBoil = now; boilN++;
+      const r = rng(S.seed * 131 + boilN), fresh = stipple(Math.round(pts.length * S.boil), r);
+      for (const q of fresh) pts[Math.floor(r() * pts.length)] = q;
+      render();
+    } else animate();
+    return;
+  }
+  if (S.anim === 'float') {
+    const t = now / 1000 * S.floatSpeed, f = .004 * S.floatScale, A = S.floatAmp;
+    for (const p of pts) { p.dx = noise(p.x * f, p.y * f, t) * A * 2; p.dy = noise(p.x * f + 31.7, p.y * f + 17.3, t) * A * 2; }
+  } else {
+    // Spring home, pushed out of the pointer's radius.
+    const R = S.hoverRadius, k = 160, damp = Math.pow(.004, dt);
+    let moving = false;
+    for (const p of pts) {
+      let vx = p.vx || 0, vy = p.vy || 0, dx = p.dx || 0, dy = p.dy || 0;
+      if (hover) {
+        const ex = p.x + dx - hover[0], ey = p.y + dy - hover[1], d = Math.hypot(ex, ey);
+        if (d < R) { const f = (1 - d / R) * 9000 * S.hoverForce * (.6 + .8 * p.pick); vx += (d ? ex / d : 1) * f * dt; vy += (d ? ey / d : 0) * f * dt; }
+      }
+      vx = (vx - dx * k * dt) * damp; vy = (vy - dy * k * dt) * damp;
+      dx += vx * dt; dy += vy * dt;
+      if (!hover && Math.abs(dx) + Math.abs(dy) < .15 && Math.abs(vx) + Math.abs(vy) < 2) vx = vy = dx = dy = 0; // home: snap and rest
+      else moving = true;
+      p.vx = vx; p.vy = vy; p.dx = dx; p.dy = dy;
+    }
+    render();
+    if (moving || hover) animate(); // settled: sleep until the pointer comes back
+    return;
+  }
+  render();
+}
+const toBoard = e => { const r = frame.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * AW, (e.clientY - r.top) / r.height * AH]; };
+frame.addEventListener('pointermove', e => { if (S.anim === 'hover' && !turn) { hover = toBoard(e); animate(); } });
+frame.addEventListener('pointerleave', () => { hover = null; animate(); });
 
 // ---------- Input ----------
 async function openFile(file) {
@@ -411,7 +512,7 @@ $('#svg').addEventListener('click', () => {
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
   if (S.bgExport) out.push(`<rect width="${w}" height="${h}" fill="${S.bg}"/>`);
   const groups = new Map();
-  for (const p of pts) { const c = colorOf(p); groups.set(c, (groups.get(c) || '') + `M${n(p.x - S.size / 2 - b.x0)} ${n(p.y - S.size / 2 - b.y0)}h${s}v${s}h${-s}z`); }
+  for (const p of pts) { const c = colorOf(p); groups.set(c, (groups.get(c) || '') + `M${n(p.x + (p.dx || 0) - S.size / 2 - b.x0)} ${n(p.y + (p.dy || 0) - S.size / 2 - b.y0)}h${s}v${s}h${-s}z`); }
   for (const [c, d] of groups) out.push(`<path fill="${c}" d="${d}"/>`);
   out.push('</svg>');
   download(`pixel-model-${S.seed}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));
