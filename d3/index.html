@@ -198,7 +198,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-yaw"></div>
         <div id="sl-shade"></div>
         <div id="sl-light"></div>
-        <label class="check"><input type="checkbox" data-check="hide"> Ocultar lo de atrás</label>
       </section>
 
       <section>
@@ -250,7 +249,7 @@ const DEFAULTS = {
   source: 'shape', seed: 1,
   bulbs: 4, waist: .45, fold: .45, droop: .35, twist: .25, yaw: 0, tilt: 18, shade: 0, light: 135,
   invert: false, contrast: 1.2, threshold: .15,
-  count: 18000, size: 4.5, hide: false, grid: false, pitch: 6, am: false, dmin: 1.5, dmax: 8,
+  count: 18000, size: 4.5, hide: true, grid: false, pitch: 6, am: false, dmin: 1.5, dmax: 8,
   palette: 'off', p0: '#ffef99', p1: '#ccefec', p2: '#ffb2cf', p3: '#d9b7f6',
   fillColor: '#f4f1ea',
   paper: '#0c0c0c',
@@ -407,8 +406,8 @@ function membraneMesh(st) {
 // Even rows of dots over the mesh, then the camera; returned far to near so near dots cover far ones.
 // Light: each dot keeps a chance that falls with how little its side of the surface faces the light
 // (two-sided, since the veil shows both), so lit faces stay dense and the rest thins into shadow.
-// Extra dots are laid first so the total stays near Cantidad. Ocultar lo de atrás keeps only the dots
-// nearest the camera: the mesh is rasterised into a depth buffer and a dot behind it is dropped, so the
+// Extra dots are laid first so the total stays near Cantidad. Only the dots
+// nearest the camera are kept: the mesh is rasterised into a depth buffer and a dot behind it is dropped, so the
 // shape reads as its visible skin. Each dot's tone (for amplitud modulada) is how much it faces the light.
 let lattice = null, latticeKey = '';
 function shapeDots(st) {
@@ -991,7 +990,13 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
   S[seg.dataset.key] = b.dataset.v; sync();
 }));
 document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
-document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
+// Turning Grilla on always starts from the same settings.
+const GRID_ON = { count: 29000, pitch: 6, am: true, dmin: .5, dmax: 5 };
+document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => {
+  S[inp.dataset.check] = inp.checked;
+  if (inp.dataset.check === 'grid' && inp.checked) Object.assign(S, GRID_ON);
+  sync();
+}));
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const negHex = h => '#' + (0xFFFFFF ^ parseInt(h.slice(1), 16)).toString(16).padStart(6, '0');
 $('#negate').addEventListener('click', () => { for (const k of ['fillColor', 'paper', 'p0', 'p1', 'p2', 'p3']) S[k] = negHex(S[k]); sync(); });
