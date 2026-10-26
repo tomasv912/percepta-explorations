@@ -7,7 +7,6 @@
     { name: 'Pixel Trail', path: 'pixel-trail/' },
     { name: 'Photo Preset', path: 'photo-preset/' },
     { name: 'Pixel Rise', path: 'pixel-rise/' },
-    { name: 'Pixel Blocks', path: 'pixel-blocks/' },
     { name: 'Cluster', path: 'cluster/' },
     { name: 'Pixel Model', path: 'pixel-model/' },
     {
