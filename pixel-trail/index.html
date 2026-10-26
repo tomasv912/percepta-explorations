@@ -205,7 +205,13 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <button data-v="ink">Tinta</button><button data-v="palette">Paleta alternada</button><button data-v="image">Imágenes</button>
         </div>
         <div id="img-box">
-          <div class="btns"><button class="btn" id="img-up">Sumar fotos (.zip)</button><button class="btn icon" id="img-mix" title="Mezclar las imágenes de nuevo" aria-label="Mezclar las imágenes de nuevo"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg></button></div>
+          <div class="btns"><button class="btn" id="img-up">Subir fotos o .zip</button><button class="btn" id="img-clear" style="flex:none">Borrar</button></div>
+          <p class="hint" id="img-hint">Todavía no hay fotos: subí imágenes sueltas o un .zip.</p>
+          <div class="row" id="img-seed-row">
+            <span>Semilla</span>
+            <input class="text" id="img-seed" inputmode="numeric" aria-label="Semilla de las imágenes">
+            <button class="btn icon" id="img-mix" title="Otra semilla: cada cubo toma otra foto" aria-label="Otra semilla de imágenes"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg></button>
+          </div>
           <input type="file" id="img-file" accept="image/*,.zip,application/zip" multiple hidden>
           <div class="thumbs" id="thumbs"></div>
         </div>
@@ -327,12 +333,11 @@ function lifeScale(c, now) {
 
 // ---------- Images ----------
 // Color "Imágenes": every cube is a photo, square-cropped, picked at random from the set for each cube (by its
-// drop number, so it keeps its photo). The set is fotos/ (loaded at start); more can be added, loose or in a
-// .zip read in the browser.
+// drop number and the image seed, so it keeps its photo until the seed changes). There are none until some are
+// uploaded, loose or in a .zip read in the browser; every upload starts from a new seed.
 const IMG = 256;
 let images = [], imgSeed = 0;
 const imageOf = n => Math.floor(hashUnit(n * 7919 + imgSeed * 104729) * images.length);
-const FOTOS = Array.from({ length: 12 }, (_, i) => `fotos/${String(i + 1).padStart(2, '0')}.jpg`);
 // Just enough of a zip reader for photo folders: central directory, stored or deflated entries.
 async function unzip(buf) {
   const v = new DataView(buf), out = [], dec = new TextDecoder();
@@ -350,12 +355,7 @@ async function unzip(buf) {
   }
   return out;
 }
-async function loadFotos() {
-  const got = await Promise.all(FOTOS.map(u => fetch(u).then(r => r.ok ? r.blob() : null).catch(() => null)));
-  const files = got.filter(Boolean).map((b, i) => new File([b], FOTOS[i], { type: b.type || 'image/jpeg' }));
-  if (files.length) await addImages(files, true);
-}
-async function addImages(files, quiet) {
+async function addImages(files) {
   const blobs = [];
   for (const f of files) {
     if (/\.zip$/i.test(f.name) || f.type.includes('zip')) { try { blobs.push(...await unzip(await f.arrayBuffer())); } catch { toast(`No se pudo abrir ${f.name}.`); } }
@@ -372,8 +372,8 @@ async function addImages(files, quiet) {
     } catch { /* not a readable image */ }
   }
   if (!added) return toast('No encontré imágenes.');
-  if (quiet) return sync();
-  S.colorMode = 'image'; sync();
+  imgSeed = Math.floor(Math.random() * 1e6);
+  S.colorMode = 'image'; sync(); wake();
   toast(`${added} ${added === 1 ? 'imagen cargada' : 'imágenes cargadas'} · ${images.length} en total`);
 }
 
@@ -503,7 +503,9 @@ document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('inp
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
 $('#img-up').addEventListener('click', () => $('#img-file').click());
 $('#img-file').addEventListener('change', e => { addImages([...e.target.files]); e.target.value = ''; });
-$('#img-mix').addEventListener('click', () => { imgSeed++; wake(); });
+$('#img-mix').addEventListener('click', () => { imgSeed = Math.floor(Math.random() * 1e6); sync(); wake(); });
+$('#img-seed').addEventListener('input', e => { imgSeed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); wake(); });
+$('#img-clear').addEventListener('click', () => { if (!images.length) return; images = []; sync(); wake(); toast('Fotos borradas'); });
 let dragDepth = 0;
 stage.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; $('#drop').hidden = false; });
 stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#drop').hidden = true; } });
@@ -538,6 +540,8 @@ function sync() {
   $('#sl-life').hidden = S.permanent;
   $('#sl-depthBlur').hidden = !S.depth;
   $('#img-box').hidden = S.colorMode !== 'image';
+  $('#img-hint').hidden = images.length > 0; $('#img-seed-row').hidden = !images.length; $('#img-clear').hidden = !images.length;
+  const is = $('#img-seed'); if (document.activeElement !== is && is.value !== String(imgSeed)) is.value = imgSeed;
   const th = $('#thumbs');
   if (th.childElementCount !== Math.min(16, images.length)) th.replaceChildren(...images.slice(0, 16).map(im => { const c = document.createElement('canvas'); c.width = c.height = 48; c.getContext('2d').drawImage(im.canvas, 0, 0, 48, 48); return c; }));
   $('#vp-all').hidden = $('#vpDepth-row').hidden = !S.vp;
@@ -884,7 +888,6 @@ $('#svg').addEventListener('click', () => download(`pixel-trail-${stamp()}.svg`,
 sync();
 setTool('draw');
 generate();
-loadFotos();
 </script>
 </body>
 </html>
