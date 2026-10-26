@@ -44,17 +44,21 @@
   }
 
   // A hydrangea head, centred on the origin, radius R, in view space (y down, z towards us): a lumpy dome of N
-  // florets on a sunflower spiral, and two leaves under it, folded along the midrib and drooping at the tip.
+  // florets on a sunflower spiral, and leaves under it (two unless opts.leaves says), folded along the midrib and
+  // drooping at the tip. opts: cap (how far round the florets go), leaves, leafLen, floretSize, lump.
   function hydrangea(R, N, r, opts = {}) {
-    const out = [], lump = [r() * 6.3, r() * 6.3], rot0 = r() * Math.PI * 2;
+    const out = [], lump = [r() * 6.3, r() * 6.3], rot0 = r() * Math.PI * 2, lk = opts.lump ?? 1, fs = opts.floretSize ?? 1;
     for (let k = 0; k < N; k++) {
       const z = 1 - (k + .5) / N * (opts.cap ?? .9), rr = Math.sqrt(1 - z * z), a = k * 2.39996 + rot0;
-      const n = [Math.cos(a) * rr, Math.sin(a) * rr, z], bump = 1 + .07 * Math.sin(3 * a + lump[0]) * rr + .05 * Math.sin(5 * a + lump[1]) * rr;
-      floret(out, mul(n, R * bump * .82), n, R * 1.55 / Math.sqrt(N) * (.85 + r() * .3), r);
+      const n = [Math.cos(a) * rr, Math.sin(a) * rr, z], bump = 1 + lk * (.07 * Math.sin(3 * a + lump[0]) * rr + .05 * Math.sin(5 * a + lump[1]) * rr);
+      floret(out, mul(n, R * bump * .82), n, fs * R * 1.55 / Math.sqrt(N) * (.85 + r() * .3), r);
     }
-    if (opts.leaves !== false) for (const sd of [-1, 1]) {
-      const base = [-R * .2, R * .8, -R * .3], ang = Math.PI / 2 + sd * (1.1 + r() * .3), D = unit([Math.cos(ang), Math.sin(ang) * .7, .35]), S = unit(cross(D, [0, 0, 1])), U = cross(S, D);
-      const L = R * (1.25 + r() * .2), Wd = L * .36;
+    // The leaves fan out downwards: one hangs, two spread to the sides, more spread wider.
+    const nl = opts.leaves === false ? 0 : opts.leaves ?? 2, spread = (nl <= 2 ? 1.1 : 1.1 + .25 * (nl - 2)) + r() * .3;
+    for (let i = 0; i < nl; i++) {
+      const base = [-R * .2, R * .8, -R * .3], ang = Math.PI / 2 + (nl === 1 ? (r() - .5) * .8 : (i / (nl - 1) * 2 - 1) * spread);
+      const D = unit([Math.cos(ang), Math.sin(ang) * .7, .35]), S = unit(cross(D, [0, 0, 1])), U = cross(S, D);
+      const L = R * (1.25 + r() * .2) * (opts.leafLen ?? 1), Wd = L * .36;
       blade(out, base, D, S, U, L,
         u => Wd * Math.pow(Math.sin(Math.PI * Math.pow(u, .75)), .9) * (1 - .15 * u) * (1 + .03 * Math.abs(Math.sin(u * 40))),
         (u, vv) => Wd * .28 * Math.abs(vv) - L * .18 * u * u + .02 * L * Math.sin(5 * vv + 6 * u), 16, 8);
@@ -64,72 +68,130 @@
   }
   const flipY = a => { for (let i = 0; i < a.length; i += 3) a[i + 1] = -a[i + 1]; return a; }; // view space ↔ y-up (positions and normals alike)
 
+  // A gentle, seeded warp of a whole model: a bend, a twist about the vertical, uneven proportions and a slow
+  // ripple, amt from 0 (none) up. Normals follow, from two tangents carried through the same warp.
+  function distort(out, r, amt) {
+    let R = 0;
+    for (let i = 0; i < out.length; i += 18) for (let j = 0; j < 9; j += 3) R = Math.max(R, Math.hypot(out[i + j], out[i + j + 1], out[i + j + 2]));
+    const bx = (r() - .5) * .5 * amt, bz = (r() - .5) * .5 * amt, tw = (r() - .5) * 1.4 * amt, sc = [0, 0, 0].map(() => 1 + (r() - .5) * .4 * amt);
+    const wa = .035 * amt * R, f = [0, 0, 0].map(() => (2 + r() * 3) / R), ph = [0, 0, 0].map(() => r() * 6.3);
+    const F = (x, y, z) => {
+      const u = y / R, a = tw * u, c = Math.cos(a), s2 = Math.sin(a);
+      const X = x * c - z * s2 + bx * u * u * R + wa * Math.sin(f[0] * y + ph[0]), Z = x * s2 + z * c + bz * u * u * R + wa * Math.sin(f[2] * y + ph[2]);
+      return [X * sc[0], (y + wa * Math.sin(f[1] * x + ph[1])) * sc[1], Z * sc[2]];
+    };
+    const e = R * 1e-3;
+    for (let i = 0; i < out.length; i += 18) for (let j = 0; j < 9; j += 3) {
+      const p = [out[i + j], out[i + j + 1], out[i + j + 2]], n = [out[i + 9 + j], out[i + 10 + j], out[i + 11 + j]], [t1, t2] = basis(unit(n));
+      const q = F(...p), m = unit(cross(sub(F(...add3(p, mul(t1, e))), q), sub(F(...add3(p, mul(t2, e))), q)));
+      out[i + j] = q[0]; out[i + j + 1] = q[1]; out[i + j + 2] = q[2]; out[i + 9 + j] = m[0]; out[i + 10 + j] = m[1]; out[i + 11 + j] = m[2];
+    }
+    return out;
+  }
+  const pick = (r, a, b) => a + r() * (b - a), warp = r => r() * r() * 1.3; // mostly a little, now and then a lot
+
+  // A stem from the origin down, gently curved; returns its curve so leaves can sit on it.
+  function stem(out, r, len, rad) {
+    const cx = (r() - .5) * .3, cz = (r() - .5) * .2, k = pick(r, 1.5, 3), c = t => [Math.sin(t * k) * cx, -t * len, Math.sin(t * k * .7) * cz];
+    tube(out, c, () => rad, 16, 8);
+    return c;
+  }
+  // A long leaf rising from p, leaning out towards azimuth az, its tip falling away by droop.
+  function longLeaf(out, p, az, L, Wd, droop, lean = .35) {
+    const S = [-Math.sin(az), 0, Math.cos(az)], D = unit([Math.cos(az) * lean, .9, Math.sin(az) * lean]), U = cross(S, D);
+    blade(out, p, D, S, U, L, u => Wd * Math.sin(Math.PI * Math.pow(u, .7)), (u, vv) => Wd * .25 * Math.abs(vv) - droop * u * u, 18, 8);
+  }
+
   // ---------- Models, y-up ----------
+  // Every model is a family: the seed sets how many flowers, petals and leaves, their sizes, how open the flower
+  // is (bud, open, past its best) and a warp, so each seed is another plant of the same kind.
   const MODELS = {
-    // The whole head, florets all the way round (so it turns a full 360°), ending in its two leaves.
-    hortensia: r => flipY(hydrangea(1, 84, r, { cap: 1.85 })),
-    // Close up: one floret in front, a ring of six behind it on a gentle dome, as in a macro photo.
+    // The whole head, florets all the way round (so it turns a full 360°), ending in its leaves (none to four).
+    hortensia: r => distort(flipY(hydrangea(1, Math.round(pick(r, 40, 140)), r, {
+      cap: pick(r, 1.6, 1.9), leaves: [0, 1, 2, 2, 2, 3, 4][Math.floor(r() * 7)], leafLen: pick(r, .75, 1.5), floretSize: pick(r, .8, 1.3), lump: pick(r, 0, 2.5),
+    })), r, warp(r)),
+    // Close up: one floret in front, a ring of others behind it on a dome, sometimes a second ring.
     florecilla: r => {
-      const out = [];
-      floret(out, [0, 0, .25], [0, 0, 1], 1, r);
-      for (let k = 0; k < 6; k++) {
-        const a = k / 6 * Math.PI * 2 + r() * .3, n = unit([Math.cos(a) * .55, Math.sin(a) * .55, 1]);
-        floret(out, add3(mul([Math.cos(a), Math.sin(a), 0], 1.45), [0, 0, -.25]), n, .9 + r() * .2, r);
+      const out = [], n = 3 + Math.floor(r() * 7), dome = pick(r, .3, .8), ring = pick(r, 1.2, 1.6);
+      floret(out, [0, 0, .25], [0, 0, 1], pick(r, .8, 1.25), r);
+      for (let k = 0; k < n; k++) {
+        const a = k / n * Math.PI * 2 + r() * .3, nn = unit([Math.cos(a) * dome, Math.sin(a) * dome, 1]);
+        floret(out, add3(mul([Math.cos(a), Math.sin(a), 0], ring * pick(r, .9, 1.15)), [0, 0, -.2 - dome * .2]), nn, pick(r, .7, 1.1), r);
       }
-      return flipY(out);
+      if (r() < .45) {
+        const m = n + 3 + Math.floor(r() * 4);
+        for (let k = 0; k < m; k++) {
+          const a = (k + .5) / m * Math.PI * 2 + r() * .2, nn = unit([Math.cos(a) * dome * 1.6, Math.sin(a) * dome * 1.6, 1]);
+          floret(out, add3(mul([Math.cos(a), Math.sin(a), 0], ring * 1.85), [0, 0, -.55 - dome * .4]), nn, pick(r, .65, .95), r);
+        }
+      }
+      return distort(flipY(out), r, warp(r));
     },
-    // Six cupped petals in two rings around the stem, two long leaves.
+    // Six cupped petals in two rings on a stem, with leaves. Openness runs from a tight bud through a cup and a
+    // flower spread wide to one past its best, petals falling outwards.
     tulipan: r => {
-      const out = [];
+      const out = [], open = Math.pow(r(), 1.3) * 1.2, H = pick(r, .95, 1.3), W = pick(r, .17, .24) * (1 + .45 * open), cup = pick(r, .4, .9);
       for (let k = 0; k < 6; k++) {
-        const inner = k % 2, th0 = k / 6 * Math.PI * 2 + (r() - .5) * .15, span = .62, R0 = inner ? .3 : .36, H = 1.15 + r() * .1;
+        const inner = k % 2, th0 = k / 6 * Math.PI * 2 + (r() - .5) * .2, o = open * (inner ? .8 : 1) + (r() - .5) * .12;
+        const t0 = .4 + .65 * o, t1 = -1.25 + 1.9 * o + (r() - .5) * .2, L = H * (inner ? .95 : 1) * pick(r, .92, 1.05), R0 = inner ? .07 : .1;
+        const radial = [Math.cos(th0), 0, Math.sin(th0)], side = [-Math.sin(th0), 0, Math.cos(th0)];
+        // The midrib turns steadily (tilt from the vertical t0 + t1·u), so its shape has a closed form.
+        const mid = u => Math.abs(t1) < 1e-3 ? [Math.sin(t0) * u, Math.cos(t0) * u] : [(Math.cos(t0) - Math.cos(t0 + t1 * u)) / t1, (Math.sin(t0 + t1 * u) - Math.sin(t0)) / t1];
         patch(out, (u, v) => {
-          const w = (v * 2 - 1) * span * (1 - Math.pow(u, 3) * .85), th = th0 + w, rad = R0 * Math.pow(Math.sin(Math.PI * Math.min(1, u * .82 + .05)), .6) + .06 * Math.pow(u, 4) + .02;
-          return [Math.cos(th) * rad, u * H, Math.sin(th) * rad];
+          const vv = v * 2 - 1, [a, b] = mid(u), t = t0 + t1 * u, half = W * Math.pow(Math.sin(Math.PI * Math.min(1, u * .85 + .1)), .7) * (1 - .25 * u * u);
+          const inw = cup * half * vv * vv; // the edges curl in, towards the middle of the flower
+          return add3(mul(radial, R0 + a * L - Math.cos(t) * inw), [0, .05 + b * L + Math.sin(t) * inw, 0], mul(side, vv * half));
         }, 14, 10);
       }
-      tube(out, t => [Math.sin(t * 2) * .08, -t * 2.4, 0], () => .045, 16, 8);
-      for (const sd of [-1, 1]) {
-        const base = [0, -1.6, 0], D = unit([sd * .35, .9, .15]), S = unit(cross(D, [0, 0, 1])), U = cross(S, D);
-        blade(out, base, D, S, U, 1.6, u => .2 * Math.sin(Math.PI * Math.pow(u, .7)), (u, vv) => .05 * Math.abs(vv) + sd * 0 - .35 * u * u, 18, 8);
-      }
-      return out;
+      const c = stem(out, r, pick(r, 1.6, 2.7), pick(r, .038, .055)), nl = 1 + Math.floor(r() * 3), az0 = r() * 6.3;
+      for (let i = 0; i < nl; i++) longLeaf(out, c(pick(r, .55, .85)), az0 + i * Math.PI * 2 / nl + (r() - .5) * .8, pick(r, 1, 1.9), pick(r, .14, .26), pick(r, .1, .6));
+      return distort(out, r, warp(r));
     },
-    // A rolled spathe that opens towards the front and peaks at the back, a spadix in it, a stem.
+    // A rolled spathe that opens towards the front and peaks at the back, a spadix in it, a stem and maybe leaves.
+    // Openness runs from a furled bud to a wide, flared trumpet.
     cala: r => {
-      const out = [];
+      const out = [], open = r(), H = pick(r, 1.05, 1.5), peak = pick(r, .3, .75), flare = pick(r, .08, .35), wide = pick(r, .3, .5);
       // The sheet wraps round from the back (th = -90°); the gap, widening upwards, faces us; the rim flares out
       // and the back rises to a point.
       patch(out, (u, v) => {
-        const span = Math.PI * 2 * (1.02 - .62 * Math.pow(u, 1.2)), th = -Math.PI / 2 + (v - .5) * span;
-        const rad = .06 + .42 * Math.pow(u, 1.8) + .22 * Math.pow(u, 7), back = (1 - Math.sin(th)) / 2;
-        return [Math.cos(th) * rad, u * 1.25 + .55 * Math.pow(u, 3) * back * back - .2 * Math.pow(u, 3) * (1 - back), Math.sin(th) * rad];
+        const span = Math.PI * 2 * (1.02 - (.15 + .7 * open) * Math.pow(u, 1.2)), th = -Math.PI / 2 + (v - .5) * span;
+        const rad = .06 + wide * (.3 + .95 * open) * Math.pow(u, 1.8) + flare * (.1 + 1.3 * open) * Math.pow(u, 7), back = (1 - Math.sin(th)) / 2;
+        return [Math.cos(th) * rad, u * H + peak * Math.pow(u, 3) * back * back - .2 * Math.pow(u, 3) * (1 - back), Math.sin(th) * rad];
       }, 24, 28);
-      tube(out, t => [0, .05 + t * .75, -.02], t => .055 * (1 - .3 * t), 10, 8);
-      tube(out, t => [Math.sin(t * 2.5) * .06, -t * 2.2, -t * .1], () => .05, 16, 8);
-      return out;
-    },
-    // A daisy facing us: a domed centre and a ring of narrow petals that dip at their tips; no stem.
-    margarita: r => {
-      const out = [], n = 21;
-      patch(out, (u, v) => { const th = v * Math.PI * 2, rad = .26 * u; return [Math.cos(th) * rad, Math.sin(th) * rad, .12 * Math.cos(u * Math.PI / 2)]; }, 8, 24);
-      for (let k = 0; k < n; k++) {
-        const a = k / n * Math.PI * 2 + (r() - .5) * .1, D = [Math.cos(a), Math.sin(a), 0], S = [-Math.sin(a), Math.cos(a), 0], L = .85 + r() * .15, tw = (r() - .5) * .4;
-        blade(out, mul(D, .2), D, S, [0, 0, 1], L, u => .075 * Math.pow(Math.sin(Math.PI * Math.min(1, u * .9 + .1)), .5), (u, vv) => -.12 * u * u + tw * vv * .05 * u + .03 * Math.sin(u * 7 + k), 12, 4);
+      tube(out, t => [0, .05 + t * pick(r, .55, .9) * (.6 + .4 * H), -.02], t => .055 * (1 - .3 * t), 10, 8);
+      const c = stem(out, r, pick(r, 1.5, 2.6), pick(r, .042, .058));
+      // Long, broad leaves rising from the foot of the stem.
+      const nl = [0, 0, 1, 1, 2, 3][Math.floor(r() * 6)], foot = c(1);
+      for (let i = 0; i < nl; i++) {
+        longLeaf(out, foot, r() * 6.3, pick(r, 1.4, 2.3), pick(r, .2, .34), pick(r, .15, .45), pick(r, .25, .55));
       }
-      return out;
+      return distort(out, r, warp(r));
+    },
+    // A daisy facing us: a domed centre and a ring (sometimes two) of narrow petals; cupped up when fresh, flat or
+    // falling back when it opens wide, a few missing when it's past its best. No stem.
+    margarita: r => {
+      const out = [], n = 13 + Math.floor(r() * 22), cr = pick(r, .18, .32), dome = pick(r, .07, .2), Lp = pick(r, .6, 1.1), Wp = pick(r, .05, .1), droop = pick(r, -.35, .3);
+      const lose = r() < .3 ? pick(r, .1, .35) : 0, rows = r() < .35 ? 2 : 1;
+      patch(out, (u, v) => { const th = v * Math.PI * 2, rad = cr * 1.15 * u; return [Math.cos(th) * rad, Math.sin(th) * rad, dome * Math.cos(u * Math.PI / 2)]; }, 8, 24);
+      for (let row = 0; row < rows; row++) for (let k = 0; k < n; k++) {
+        if (r() < lose) continue;
+        const a = (k + row * .5) / n * Math.PI * 2 + (r() - .5) * .12, D = [Math.cos(a), Math.sin(a), 0], S = [-Math.sin(a), Math.cos(a), 0];
+        const L = Lp * pick(r, .85, 1.1) * (row ? .85 : 1), tw = (r() - .5) * .4, dr = droop + (r() - .5) * .15 - row * .08;
+        blade(out, add3(mul(D, cr * .8), [0, 0, row * .02]), D, S, [0, 0, 1], L, u => Wp * Math.pow(Math.sin(Math.PI * Math.min(1, u * .9 + .1)), .5), (u, vv) => -dr * u * u + tw * vv * .05 * u + .03 * Math.sin(u * 7 + k), 12, 4);
+      }
+      return distort(out, r, warp(r));
     },
     // An echeveria: a rosette of thick, spoon-shaped leaves, the inner ones more upright and smaller.
     suculenta: r => {
-      const out = [], n = 34;
+      const out = [], n = 14 + Math.floor(r() * 46), lift = pick(r, .7, 1.5), flat = pick(r, .6, 1.25), Wk = pick(r, .2, .45), thick = pick(r, .04, .14), grow = pick(r, .5, 1.1);
       for (let k = n - 1; k >= 0; k--) {
-        const t = k / n, a = k * 2.39996, L = .35 + .75 * t, up = 1.2 - 1.05 * t, D = unit([Math.cos(a) * Math.cos(up), Math.sin(up), Math.sin(a) * Math.cos(up)]);
+        const t = k / n, a = k * 2.39996, L = .35 + grow * t, up = lift - (lift - .15) * t * flat, D = unit([Math.cos(a) * Math.cos(up), Math.sin(up), Math.sin(a) * Math.cos(up)]);
         const S = unit(cross(D, [0, 1, 0])), U = unit(cross(S, D)), base = [0, .15 * (1 - t), 0];
-        const half = u => L * .32 * Math.pow(Math.sin(Math.PI * Math.min(1, u * .95 + .05)), .7) * (1 - .25 * u) + .002;
+        const half = u => L * Wk * Math.pow(Math.sin(Math.PI * Math.min(1, u * .95 + .05)), .7) * (1 - .25 * u) + .002;
         blade(out, base, D, S, U, L, half, (u, vv) => L * .12 * vv * vv + L * .08 * u * u, 10, 6);
-        blade(out, base, D, S, U, L, half, (u, vv) => L * .12 * vv * vv + L * .08 * u * u - L * .08 * Math.sin(Math.PI * u) * (1 - vv * vv), 10, 6);
+        blade(out, base, D, S, U, L, half, (u, vv) => L * .12 * vv * vv + L * .08 * u * u - L * thick * Math.sin(Math.PI * u) * (1 - vv * vv), 10, 6);
       }
-      return out;
+      return distort(out, r, warp(r));
     },
   };
   // A y-up model turned (yaw about the vertical, then pitch) into view space (y down, z towards us), centred
@@ -148,5 +210,5 @@
     return out;
   }
   const NAMES = [['hortensia', 'Hortensia'], ['florecilla', 'Florecilla'], ['tulipan', 'Tulipán'], ['cala', 'Cala'], ['margarita', 'Margarita'], ['suculenta', 'Suculenta']];
-  window.Flora3D = { hydrangea, MODELS, NAMES, view, patch, tube, blade, floret };
+  window.Flora3D = { hydrangea, MODELS, NAMES, view, distort, patch, tube, blade, floret };
 })();

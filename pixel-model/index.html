@@ -39,13 +39,23 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
 [hidden] { display: none !important; }
 
 .app { display: grid; flex: 1; min-height: 0; grid-template-columns: 1fr 280px; }
-main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding: 24px 24px 52px; }
+main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding: 52px 24px 76px; }
 .frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); }
 .frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .frame { cursor: grab; touch-action: none; }
 .frame:active { cursor: grabbing; }
 .busy { position: absolute; top: 12px; right: 14px; font: 11px var(--mono); color: var(--text-3); }
-.hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
+.hud { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
+.tt { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 4px 16px rgb(0 0 0 / .06); white-space: nowrap; z-index: 1; }
+.tt-play { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--fill); color: var(--text); font: 500 12px var(--font); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); }
+.tt-play:hover { background: var(--line); }
+.tt-play .i-stop, .tt-play[aria-pressed="true"] .i-play { display: none; }
+.tt-play[aria-pressed="true"] .i-stop { display: block; }
+.tt-play:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tt .slider { width: 132px; gap: 0 8px; }
+.tt .slider label { font-size: 11px; }
+.tt .slider output { font-size: 11px; }
+.tt .seg button { flex: none; padding: 0 8px; font-variant-numeric: tabular-nums; }
 .drop { position: absolute; inset: 12px; display: grid; place-items: center; border-radius: 12px; border: 1.5px dashed var(--text-2); background: color-mix(in srgb, var(--stage) 85%, transparent); color: var(--text); font-weight: 500; pointer-events: none; z-index: 2; }
 
 aside { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-left: 1px solid var(--line); }
@@ -99,6 +109,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
   .app { flex: none; grid-template-columns: 1fr; grid-template-rows: minmax(300px, 55vh) auto; }
   aside { border-left: 0; border-top: 1px solid var(--line); }
   .controls { overflow: visible; }
+  .tt { max-width: calc(100% - 16px); overflow-x: auto; }
 }
 </style>
 </head>
@@ -112,6 +123,21 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Un modelo 3D dibujado con píxeles"></canvas></div>
     <div class="drop" id="drop" hidden>Soltá el modelo (.obj, .glb, .gltf)</div>
     <div class="hud" id="stats">—</div>
+    <div class="tt" role="toolbar" aria-label="Turntable">
+      <button class="tt-play" id="ttPlay" aria-pressed="false" title="Vista previa: una vuelta en loop">
+        <svg class="i-play" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>
+        <svg class="i-stop" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7" rx="1" fill="currentColor"/></svg>
+        Turntable
+      </button>
+      <div id="sl-ttDur"></div>
+      <div class="seg" data-key="ttFps" aria-label="Cuadros por segundo">
+        <button data-v="12">12</button><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button>
+      </div>
+      <div class="seg" data-key="ttDir" aria-label="Sentido">
+        <button data-v="1" title="A la derecha" aria-label="A la derecha">→</button><button data-v="-1" title="A la izquierda" aria-label="A la izquierda">←</button>
+      </div>
+      <button class="btn primary" id="video" title="MP4 en loop, recortado al modelo, con el fondo (MP4 no tiene transparencia)">Exportar video</button>
+    </div>
   </main>
 
   <aside>
@@ -165,19 +191,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       </section>
 
       <section>
-        <h2>Turntable</h2>
-        <div id="sl-ttDur"></div>
-        <div class="seg" data-key="ttFps" aria-label="Cuadros por segundo del video">
-          <button data-v="12">12 fps</button><button data-v="24">24 fps</button><button data-v="30">30 fps</button>
-        </div>
-        <div class="seg" data-key="ttDir" aria-label="Sentido">
-          <button data-v="1">A la derecha</button><button data-v="-1">A la izquierda</button>
-        </div>
-        <button class="btn" id="ttPlay" aria-pressed="false">Vista previa</button>
-        <p class="note">Una vuelta entera desde el giro actual, en loop. El video lleva el fondo (MP4 no tiene transparencia).</p>
-      </section>
-
-      <section>
         <h2>Color</h2>
         <div class="seg" data-key="colorMode" aria-label="Color">
           <button data-v="ink">Un color</button><button data-v="tone">Por tono</button><button data-v="random">Al azar</button>
@@ -193,7 +206,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
     <footer>
       <button class="btn primary big" id="png">Exportar PNG</button>
       <button class="btn big" id="svg">Exportar SVG</button>
-      <button class="btn big" id="video">Exportar video</button>
     </footer>
   </aside>
 </div>
@@ -227,10 +239,10 @@ function rng(seed) {
 // ---------- Model ----------
 // Built-in flowers and plants (flora3d.js; the seed gives a variant), a trefoil knot, or an uploaded file.
 // Positions are centred and scaled to fit a unit sphere.
-const PRESETS = [['hortensia', 'Hortensia'], ['florecilla', 'Florecilla'], ['tulipan', 'Tulipán'], ['cala', 'Cala'], ['margarita', 'Margarita'], ['suculenta', 'Suculenta'], ['nudo', 'Nudo']];
+const PRESETS = [['hortensia', 'Hortensia'], ['florecilla', 'Florecilla'], ['tulipan', 'Tulipán'], ['cala', 'Cala'], ['margarita', 'Margarita'], ['suculenta', 'Suculenta']];
 let model = null, modelName = '', preset = 'hortensia', presetSeed = -1;
 function loadPreset() {
-  const tris = preset === 'nudo' ? Stipple3D.withNormals(torusKnot()) : new Float32Array(Flora3D.MODELS[preset](rng(S.seed * 7 + 3)));
+  const tris = new Float32Array(Flora3D.MODELS[preset](rng(S.seed * 7 + 3)));
   setModelTris(tris, PRESETS.find(p => p[0] === preset)[1]); presetSeed = S.seed;
 }
 // Triangles with normals (18 per triangle): centred and scaled like setModel, normals kept.
@@ -251,23 +263,6 @@ function setModel(pos, name) {
   for (let i = 0; i < pos.length; i += 3) { out[i] = (pos[i] - cx) / r; out[i + 1] = (pos[i + 1] - cy) / r; out[i + 2] = (pos[i + 2] - cz) / r; }
   model = Stipple3D.withNormals(out); modelName = name;
 }
-function torusKnot() {
-  const out = [], P = 2, Q = 3, nu = 260, nv = 22, R = 1, rt = .32;
-  const at = (u, v) => {
-    const t = u * Math.PI * 2, c = [Math.cos(P * t) * (R + .45 * Math.cos(Q * t)), Math.sin(P * t) * (R + .45 * Math.cos(Q * t)), .45 * Math.sin(Q * t)];
-    const t2 = t + .001, c2 = [Math.cos(P * t2) * (R + .45 * Math.cos(Q * t2)), Math.sin(P * t2) * (R + .45 * Math.cos(Q * t2)), .45 * Math.sin(Q * t2)];
-    let T = [c2[0] - c[0], c2[1] - c[1], c2[2] - c[2]]; const l = Math.hypot(...T); T = T.map(x => x / l);
-    let N = [T[1], -T[0], 0]; const ln = Math.hypot(...N) || 1; N = N.map(x => x / ln);
-    const B = [T[1] * N[2] - T[2] * N[1], T[2] * N[0] - T[0] * N[2], T[0] * N[1] - T[1] * N[0]], a = v * Math.PI * 2;
-    return [0, 1, 2].map(i => c[i] + rt * (Math.cos(a) * N[i] + Math.sin(a) * B[i]));
-  };
-  for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) {
-    const a = at(i / nu, j / nv), b = at((i + 1) / nu, j / nv), c = at((i + 1) / nu, (j + 1) / nv), d = at(i / nu, (j + 1) / nv);
-    out.push(...a, ...b, ...c, ...a, ...c, ...d);
-  }
-  return new Float32Array(out);
-}
-
 // ---------- Render ----------
 // The model turned (yaw about the vertical, then pitch) into view space: x right, y down, z towards us.
 function viewTris() {
@@ -347,7 +342,7 @@ const SLIDERS = {
   floatScale: { label: 'Escala del ruido', min: .2, max: 4, step: .05, fmt: v => '×' + v.toFixed(2) },
   hoverRadius: { label: 'Radio', min: 30, max: 500, step: 5, fmt: v => v + ' px', emph: true },
   hoverForce: { label: 'Fuerza', min: .1, max: 3, step: .01, fmt: pct },
-  ttDur: { label: 'Duración de la vuelta', min: 1, max: 30, step: .5, fmt: v => v + ' s', emph: true },
+  ttDur: { label: 'Duración', min: 1, max: 30, step: .5, fmt: v => v + ' s', emph: true },
   jitter: { label: 'Superposición', min: 0, max: 3, step: .01, fmt: pct },
 };
 for (const [key, d] of Object.entries(SLIDERS)) {
@@ -398,7 +393,7 @@ function sync(fast) {
 }
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
 function render() {
-  const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 48) / AW, (r.height - 84) / AH));
+  const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 48) / AW, (r.height - 128) / AH));
   const w = Math.round(AW * k), h = Math.round(AH * k), dpr = devicePixelRatio || 1;
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
   const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
@@ -545,12 +540,12 @@ $('#svg').addEventListener('click', () => {
 // renders every frame in full and encodes an MP4 (WebCodecs), cropped to what the model sweeps.
 let spin = null, filming = false;
 const wrapDeg = v => ((v + 540) % 360 + 360) % 360 - 180;
-function stopSpin() { cancelAnimationFrame(spin.raf); S.yaw = spin.yaw0; spin = null; $('#ttPlay').setAttribute('aria-pressed', 'false'); $('#ttPlay').textContent = 'Vista previa'; sync(); }
+function stopSpin() { cancelAnimationFrame(spin.raf); S.yaw = spin.yaw0; spin = null; $('#ttPlay').setAttribute('aria-pressed', 'false');  sync(); }
 $('#ttPlay').addEventListener('click', () => {
   if (spin) return stopSpin();
   if (filming) return;
   spin = { yaw0: S.yaw, t0: performance.now() };
-  $('#ttPlay').setAttribute('aria-pressed', 'true'); $('#ttPlay').textContent = 'Detener';
+  $('#ttPlay').setAttribute('aria-pressed', 'true'); 
   const step = now => {
     S.yaw = wrapDeg(spin.yaw0 + +S.ttDir * 360 * (((now - spin.t0) / 1000 / S.ttDur) % 1));
     sync(true); spin.raf = requestAnimationFrame(step);
