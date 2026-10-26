@@ -214,8 +214,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section>
         <h2>Desvanecer bordes</h2>
         <div style="display:flex;gap:16px">
-          <label class="check"><input type="checkbox" data-check="fadeL"> Izquierdo</label>
-          <label class="check"><input type="checkbox" data-check="fadeR"> Derecho</label>
+          <label class="check"><input type="checkbox" data-check="fadeT"> Arriba</label>
+          <label class="check"><input type="checkbox" data-check="fadeB"> Abajo</label>
         </div>
         <div id="sl-fadeW"></div>
         <div id="sl-fadeD"></div>
@@ -259,7 +259,7 @@ const DEFAULTS = {
   source: 'shape', seed: 1,
   bulbs: 4, waist: .45, fold: .45, droop: .35, twist: .25, yaw: 0, tilt: 18, shade: 0, light: 135,
   invert: false, contrast: 1.2, threshold: .15,
-  count: 18000, size: 4.5, hide: true, grid: false, pitch: 6, am: false, dmin: 1.5, dmax: 8, fadeL: false, fadeR: false, fadeW: .35, fadeD: .5,
+  count: 18000, size: 4.5, hide: true, grid: false, pitch: 6, am: false, dmin: 1.5, dmax: 8, fadeT: false, fadeB: false, fadeW: .35, fadeD: .5,
   palette: 'off', p0: '#ffef99', p1: '#ccefec', p2: '#ffb2cf', p3: '#d9b7f6',
   fillColor: '#f4f1ea',
   paper: '#0c0c0c',
@@ -521,29 +521,29 @@ let dots = null, tones = null, dotsKey = '', view = null;
 function currentDots() {
   const image = S.source === 'image' && src;
   const key = JSON.stringify([image ? ['i', src.id, S.invert, S.contrast, S.threshold]
-    : ['s', S.bulbs, S.waist, S.fold, S.droop, S.twist, S.yaw, S.tilt, S.shade, S.light, S.hide, orbiting], S.seed, S.count, S.grid, S.pitch, S.size, S.am, S.dmin, S.dmax, S.fadeL, S.fadeR, S.fadeW, S.fadeD]);
+    : ['s', S.bulbs, S.waist, S.fold, S.droop, S.twist, S.yaw, S.tilt, S.shade, S.light, S.hide, orbiting], S.seed, S.count, S.grid, S.pitch, S.size, S.am, S.dmin, S.dmax, S.fadeT, S.fadeB, S.fadeW, S.fadeD]);
   if (key !== dotsKey) {
     let g = image ? imageDots(S) : shapeDots(S);
-    if (S.fadeL || S.fadeR) g = fadeEdges(g);
+    if (S.fadeT || S.fadeB) g = fadeEdges(g);
     const snapped = S.grid ? gridify(g.xy, g.tone, S.pitch) : g;
     dots = snapped.xy; tones = snapped.tone; dotsKey = key; rebuild();
   }
   return view;
 }
-// Desvanecer bordes: within Ancho of the chosen side(s) of the content, dots let go more the nearer the
-// edge they are; one that lets go is dropped (thinning) or carried outwards by up to Dispersión, so the
-// edge dissolves into scattered dots. With Grilla on they land on the grid like the rest.
+// Desvanecer bordes: within Ancho of the chosen edge(s) of the content (top, bottom), dots let go more
+// the nearer the edge they are; one that lets go is dropped (thinning) or carried outwards by up to
+// Dispersión, so the edge dissolves into scattered dots. With Grilla on they land on the grid too.
 function fadeEdges({ xy, tone }) {
-  let x0 = Infinity, x1 = -Infinity;
-  for (let i = 0; i < xy.length; i += 2) { if (xy[i] < x0) x0 = xy[i]; if (xy[i] > x1) x1 = xy[i]; }
-  const W = Math.max(1, x1 - x0), rand = rng(S.seed * 17 + 3), r = maxR(), out = [], t = [];
+  let y0 = Infinity, y1 = -Infinity;
+  for (let i = 1; i < xy.length; i += 2) { if (xy[i] < y0) y0 = xy[i]; if (xy[i] > y1) y1 = xy[i]; }
+  const H = Math.max(1, y1 - y0), rand = rng(S.seed * 17 + 3), r = maxR(), out = [], t = [];
   for (let q = 0; q < tone.length; q++) {
     let x = xy[q * 2], y = xy[q * 2 + 1];
-    const u = (x - x0) / W, wl = S.fadeL ? clamp(1 - u / S.fadeW) : 0, wr = S.fadeR ? clamp(1 - (1 - u) / S.fadeW) : 0, w = Math.max(wl, wr);
+    const u = (y - y0) / H, wt = S.fadeT ? clamp(1 - u / S.fadeW) : 0, wb = S.fadeB ? clamp(1 - (1 - u) / S.fadeW) : 0, w = Math.max(wt, wb);
     if (w > 0 && rand() < w) {
       if (rand() < w * .5) continue;
-      x += (wl > wr ? -1 : 1) * S.fadeD * W * .6 * w * (.2 + .8 * rand());
-      y += (rand() - .5) * W * .04 * w;
+      y += (wt > wb ? -1 : 1) * S.fadeD * H * .6 * w * (.2 + .8 * rand());
+      x += (rand() - .5) * H * .04 * w;
       if (x < r || x > AW - r || y < r || y > AH - r) continue;
     }
     out.push(x, y); t.push(tone[q]);
@@ -1096,7 +1096,7 @@ function sync() {
   $('#image-controls').hidden = shape;
   $('#sl-pitch').hidden = !S.grid;
   $('#sl-dmin').hidden = $('#sl-dmax').hidden = !S.am;
-  $('#sl-fadeW').hidden = $('#sl-fadeD').hidden = !S.fadeL && !S.fadeR;
+  $('#sl-fadeW').hidden = $('#sl-fadeD').hidden = !S.fadeT && !S.fadeB;
   $('#sl-size').hidden = S.am;
   paintSwatch($('[data-color=fillColor]').closest('.swatch'), S.fillColor, true);
   $('#fill-row').hidden = S.palette !== 'off';
