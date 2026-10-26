@@ -309,15 +309,19 @@ function loadImage(img) {
   }
   const c = document.createElement('canvas'); c.width = gw; c.height = gh;
   const ctx = c.getContext('2d', { willReadFrequently: true });
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, gw, gh);
   ctx.imageSmoothingQuality = 'high'; ctx.drawImage(cur, 0, 0, gw, gh);
-  const d = ctx.getImageData(0, 0, gw, gh).data, n = gw * gh, lum = new Float32Array(n), rgb = new Float32Array(n * 3);
+  // Colour and opacity apart: a transparent background is no ink, inverted or not.
+  const d = ctx.getImageData(0, 0, gw, gh).data, n = gw * gh, lum = new Float32Array(n), alpha = new Float32Array(n), rgb = new Float32Array(n * 3);
   for (let k = 0; k < n; k++) {
     lum[k] = (.2126 * d[k * 4] + .7152 * d[k * 4 + 1] + .0722 * d[k * 4 + 2]) / 255;
+    alpha[k] = d[k * 4 + 3] / 255;
     rgb[k * 3] = d[k * 4]; rgb[k * 3 + 1] = d[k * 4 + 1]; rgb[k * 3 + 2] = d[k * 4 + 2];
   }
-  src = { gw, gh, lum, rgb, ar: iw / ih, id: (src?.id || 0) + 1 };
+  src = { gw, gh, lum, alpha, rgb, ar: iw / ih, id: (src?.id || 0) + 1 };
 }
+// Ink of an image cell, 0..1: its darkness (lightness, inverted) through Contraste, times its opacity,
+// so Invertir only turns over the pixels that are there.
+const inkAt = k => clamp(((S.invert ? src.lum[k] : 1 - src.lum[k]) - .5) * S.contrast + .5) * src.alpha[k];
 // The source fills 90% of the artboard, centred, keeping its proportions.
 function box(ar) {
   const w0 = AW * .9, h0 = AH * .9, [w, h] = w0 / h0 > ar ? [h0 * ar, h0] : [w0, w0 / ar];
@@ -332,7 +336,7 @@ function imageDots(st) {
   const M = new Float32Array(n), cdf = new Float64Array(n);
   let sum = 0;
   for (let k = 0; k < n; k++) {
-    const v = clamp(((st.invert ? lum[k] : 1 - lum[k]) - .5) * st.contrast + .5);
+    const v = inkAt(k);
     M[k] = t >= 1 ? -1 : (v - t) / (1 - t);
     cdf[k] = sum += M[k] > 0 ? M[k] ** 1.2 : 0;
   }
@@ -608,7 +612,7 @@ function radii(it) {
     if (q < home) t = tones[q];
     else if (S.source === 'image' && src && it[q * 2] === it[q * 2]) {
       const b = box(src.ar), i = clamp(Math.floor((it[q * 2] - b.x) / b.w * src.gw), 0, src.gw - 1), j = clamp(Math.floor((it[q * 2 + 1] - b.y) / b.h * src.gh), 0, src.gh - 1), k = j * src.gw + i;
-      const v = clamp(((S.invert ? src.lum[k] : 1 - src.lum[k]) - .5) * S.contrast + .5);
+      const v = inkAt(k);
       t = clamp((v - S.threshold) / (1 - S.threshold));
     }
     r[q] = lerp(S.dmin, S.dmax, t) / 2 * (q < home ? scales[q] : 1);
@@ -728,7 +732,7 @@ function imageClusters() {
   if (key === clusterKey) return clusterMap;
   const { gw, gh, lum, rgb } = src, n = gw * gh, col = k => S.invert ? [255 - rgb[k * 3], 255 - rgb[k * 3 + 1], 255 - rgb[k * 3 + 2]] : [rgb[k * 3], rgb[k * 3 + 1], rgb[k * 3 + 2]];
   const inked = [];
-  for (let k = 0; k < n; k++) if (clamp(((S.invert ? lum[k] : 1 - lum[k]) - .5) * S.contrast + .5) > S.threshold) inked.push(k);
+  for (let k = 0; k < n; k++) if (inkAt(k) > S.threshold) inked.push(k);
   const sample = inked.length > 6000 ? Array.from({ length: 6000 }, (_, i) => inked[Math.floor(i * inked.length / 6000)]) : inked;
   // Start from four tones, then refine.
   const byLum = sample.slice().sort((a, b) => lum[a] - lum[b]);
