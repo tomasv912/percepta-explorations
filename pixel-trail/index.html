@@ -212,14 +212,18 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <button data-v="ink">Tinta</button><button data-v="palette">Paleta alternada</button><button data-v="image">Imágenes</button>
         </div>
         <div id="img-box">
-          <div class="btns"><button class="btn" id="img-up">Subir fotos o .zip</button><button class="btn" id="img-clear" style="flex:none">Borrar</button></div>
-          <p class="hint" id="img-hint">Todavía no hay fotos: subí imágenes sueltas o un .zip, o pegalas con Ctrl+V.</p>
+          <div class="btns"><button class="btn" id="img-up">Subir fotos, SVGs o .zip</button><button class="btn" id="img-clear" style="flex:none">Borrar</button></div>
+          <p class="hint" id="img-hint">Todavía no hay imágenes: subí fotos o SVGs sueltos o en un .zip, o pegalos con Ctrl+V.</p>
           <div class="row" id="img-seed-row">
             <span>Semilla</span>
             <input class="text" id="img-seed" inputmode="numeric" aria-label="Semilla de las imágenes">
             <button class="btn icon" id="img-mix" title="Otra semilla: cada cubo toma otra foto" aria-label="Otra semilla de imágenes"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg></button>
           </div>
-          <input type="file" id="img-file" accept="image/*,.zip,application/zip" multiple hidden>
+          <div class="btns" id="svg-row">
+            <div class="seg" style="flex:1" aria-label="Color de los SVG"><button data-svgc="palette">Colorear</button><button data-svgc="original">Original</button></div>
+            <button class="btn" id="svg-recolor" style="flex:none" title="Otra combinación de colores para los SVG">Recolorear</button>
+          </div>
+          <input type="file" id="img-file" accept="image/*,.svg,image/svg+xml,.zip,application/zip" multiple hidden>
           <div class="thumbs" id="thumbs"></div>
         </div>
         <div class="palette" id="palette-row" aria-label="Paleta, en orden"></div>
@@ -253,7 +257,7 @@ const DEFAULTS = {
   life: 2.5, permanent: true,
   colorMode: 'palette', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89'],
   depth: false, depthBlur: 14, vp: true, vpDepth: false, vpCount: 16, vpGap: 0,
-  ink: '#272727', grain: .05, paper: '#F6F6F6', bgExport: false,
+  ink: '#272727', grain: .05, paper: '#F6F6F6', svgColor: 'palette', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -347,8 +351,11 @@ function lifeScale(c, now) {
 // Color "Imágenes": every cube is a photo, square-cropped, picked at random from the set for each cube (by its
 // drop number and the image seed, so it keeps its photo until the seed changes). There are none until some are
 // uploaded, loose or in a .zip read in the browser; every upload starts from a new seed.
-const IMG = 256;
-let images = [], imgSeed = 0;
+// SVGs come in coloured with the palette (Colorear): each SVG gives SVG_VARIANTS cubes' worth of versions, every
+// one with its colours swapped for palette colours (darkest stays darkest, as far as the palette goes), and
+// Recolorear deals the colours again. Original keeps the file's own colours.
+const IMG = 256, SVG_VARIANTS = 4;
+let images = [], photos = [], svgs = [], imgSeed = 0, svgSeed = 1, imgVersion = 0;
 const imageOf = n => Math.floor(hashUnit(n * 7919 + imgSeed * 104729) * images.length);
 // Just enough of a zip reader for photo folders: central directory, stored or deflated entries.
 async function unzip(buf) {
@@ -361,32 +368,91 @@ async function unzip(buf) {
     const method = v.getUint16(p + 10, true), size = v.getUint32(p + 20, true), nl = v.getUint16(p + 28, true), lo = v.getUint32(p + 42, true);
     const name = dec.decode(new Uint8Array(buf, p + 46, nl));
     p += 46 + nl + v.getUint16(p + 30, true) + v.getUint16(p + 32, true);
-    if (!/\.(jpe?g|png|webp|gif|avif)$/i.test(name) || /(^|\/)(__MACOSX|\.)/.test(name) || (method !== 0 && method !== 8)) continue;
+    if (!/\.(jpe?g|png|webp|gif|avif|svg)$/i.test(name) || /(^|\/)(__MACOSX|\.)/.test(name) || (method !== 0 && method !== 8)) continue;
     const blob = new Blob([new Uint8Array(buf, lo + 30 + v.getUint16(lo + 26, true) + v.getUint16(lo + 28, true), size)]);
-    out.push(method === 8 ? await new Response(blob.stream().pipeThrough(new DecompressionStream('deflate-raw'))).blob() : blob);
+    const data = method === 8 ? await new Response(blob.stream().pipeThrough(new DecompressionStream('deflate-raw'))).blob() : blob;
+    out.push(new File([data], name.split('/').pop(), { type: /\.svg$/i.test(name) ? 'image/svg+xml' : '' }));
   }
   return out;
 }
+// ---- SVG colours: every distinct colour a file uses (fills, strokes, gradient stops), as #rrggbb.
+const SVG_PROPS = ['fill', 'stroke', 'stop-color'];
+const normColor = (() => { const x = document.createElement('canvas').getContext('2d'); return v => {
+  if (!v || /^(none|transparent|inherit|currentcolor)$/i.test(v.trim()) || /url\(/i.test(v)) return null;
+  x.fillStyle = '#000001'; x.fillStyle = v.trim(); const c = x.fillStyle; return c === '#000001' && !/^#0+1$/i.test(v.trim()) ? null : c.startsWith('#') ? c : null;
+}; })();
+function svgColors(doc) {
+  const root = doc.documentElement, seen = new Set();
+  if (!root.getAttribute('fill') && !/fill\s*:/.test(root.getAttribute('style') || '')) root.setAttribute('fill', '#000000'); // the default fill, made explicit
+  for (const el of [root, ...root.querySelectorAll('*')]) for (const k of SVG_PROPS) {
+    const a = normColor(el.getAttribute(k)); if (a) seen.add(a);
+    const st = el.style?.getPropertyValue(k); const b = normColor(st); if (b) seen.add(b);
+  }
+  return [...seen];
+}
+const lum = h => { const n = parseInt(h.slice(1), 16); return .2126 * (n >> 16 & 255) + .7152 * (n >> 8 & 255) + .0722 * (n & 255); };
+// One recoloured copy: source colours from dark to light take palette colours from a shuffled, dark-to-light order.
+function recolor(text, map) {
+  const doc = new DOMParser().parseFromString(text, 'image/svg+xml'), root = doc.documentElement;
+  svgColors(doc);
+  for (const el of [root, ...root.querySelectorAll('*')]) for (const k of SVG_PROPS) {
+    const a = normColor(el.getAttribute(k)); if (a && map[a]) el.setAttribute(k, map[a]);
+    const b = normColor(el.style?.getPropertyValue(k)); if (b && map[b]) el.style.setProperty(k, map[b]);
+  }
+  for (const st of root.querySelectorAll('style')) st.textContent = st.textContent.replace(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)/gi, m => map[normColor(m)] || m);
+  return new XMLSerializer().serializeToString(doc);
+}
+async function rasterSvg(text) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'image/svg+xml' })), im = new Image();
+  im.src = url;
+  try { await im.decode(); } finally { URL.revokeObjectURL(url); }
+  const w = im.naturalWidth || IMG, h = im.naturalHeight || IMG, k = IMG / Math.max(w, h);
+  const c = document.createElement('canvas'); c.width = c.height = IMG;
+  c.getContext('2d').drawImage(im, (IMG - w * k) / 2, (IMG - h * k) / 2, w * k, h * k); // contained, transparent around
+  return c;
+}
+async function buildSvgImages() {
+  const out = [];
+  for (const [si, sv] of svgs.entries()) {
+    if (S.svgColor === 'original') { out.push({ canvas: await rasterSvg(sv.text), url: null, png: true }); continue; }
+    const pal = S.palette.map(h => onBg(h, S.paper)), src = [...sv.colors].sort((a, b) => lum(a) - lum(b));
+    for (let v = 0; v < SVG_VARIANTS; v++) {
+      let ri = 0; const base = svgSeed * 7919 + si * 131 + v * 17, r = () => hashUnit(base * 31 + ri++), order = [...pal].sort(() => r() - .5);
+      const picked = src.map((_, i) => order[i % order.length]).sort((a, b) => lum(a) - lum(b)); // keep light and dark apart
+      const map = Object.fromEntries(src.map((c, i) => [c, picked[i]]));
+      try { out.push({ canvas: await rasterSvg(recolor(sv.text, map)), url: null, png: true }); } catch { /* unreadable */ }
+    }
+  }
+  return out;
+}
+let svgKey = '';
+async function refreshImages() { svgKey = JSON.stringify([S.palette, S.paper, S.svgColor, svgSeed]); images = [...photos, ...await buildSvgImages()]; imgVersion++; sync(); wake(); }
 async function addImages(files) {
   const blobs = [];
   for (const f of files) {
     if (/\.zip$/i.test(f.name) || f.type.includes('zip')) { try { blobs.push(...await unzip(await f.arrayBuffer())); } catch { toast(`No se pudo abrir ${f.name}.`); } }
-    else if (f.type.startsWith('image/')) blobs.push(f);
+    else if (f.type.startsWith('image/') || /\.svg$/i.test(f.name)) blobs.push(f);
   }
   let added = 0;
   for (const b of blobs) {
     try {
+      if (b.type === 'image/svg+xml' || /\.svg$/i.test(b.name || '')) {
+        const text = await b.text(), doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+        if (doc.querySelector('parsererror')) continue;
+        svgs.push({ text, colors: svgColors(doc) }); added++; continue;
+      }
       const bm = await createImageBitmap(b), m = Math.min(bm.width, bm.height);
       const c = document.createElement('canvas'); c.width = c.height = IMG;
       const x = c.getContext('2d'); x.imageSmoothingQuality = 'high';
       x.drawImage(bm, (bm.width - m) / 2, (bm.height - m) / 2, m, m, 0, 0, IMG, IMG);
-      bm.close?.(); images.push({ canvas: c, url: null }); added++;
+      bm.close?.(); photos.push({ canvas: c, url: null }); added++;
     } catch { /* not a readable image */ }
   }
   if (!added) return toast('No encontré imágenes.');
+  await refreshImages();
   imgSeed = Math.floor(Math.random() * 1e6);
   S.colorMode = 'image'; sync(); wake();
-  toast(`${added} ${added === 1 ? 'imagen cargada' : 'imágenes cargadas'} · ${images.length} en total`);
+  toast(`${added} ${added === 1 ? 'imagen cargada' : 'imágenes cargadas'} · ${photos.length + svgs.length} en total`);
 }
 
 // ---------- Rendering ----------
@@ -466,7 +532,7 @@ function toSvg(now, st, lut) {
     out.push('</g>');
   });
   for (const k of used) {
-    const im = images[k]; im.url ??= im.canvas.toDataURL('image/jpeg', .88);
+    const im = images[k]; im.url ??= im.png ? im.canvas.toDataURL('image/png') : im.canvas.toDataURL('image/jpeg', .88);
     defs.push(`<pattern id="pattern${k}" patternContentUnits="objectBoundingBox" width="1" height="1"><use xlink:href="#image${k}" transform="scale(${1 / IMG})"/></pattern>` +
       `<image id="image${k}" width="${IMG}" height="${IMG}" preserveAspectRatio="none" xlink:href="${im.url}"/>`);
   }
@@ -522,7 +588,9 @@ $('#img-up').addEventListener('click', () => $('#img-file').click());
 $('#img-file').addEventListener('change', e => { addImages([...e.target.files]); e.target.value = ''; });
 $('#img-mix').addEventListener('click', () => { imgSeed = Math.floor(Math.random() * 1e6); sync(); wake(); });
 $('#img-seed').addEventListener('input', e => { imgSeed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); wake(); });
-$('#img-clear').addEventListener('click', () => { if (!images.length) return; images = []; sync(); wake(); toast('Fotos borradas'); });
+$('#img-clear').addEventListener('click', () => { if (!images.length) return; images = []; photos = []; svgs = []; imgVersion++; sync(); wake(); toast('Imágenes borradas'); });
+$('#svg-recolor').addEventListener('click', () => { svgSeed = Math.floor(Math.random() * 1e6); refreshImages(); });
+document.querySelectorAll('[data-svgc]').forEach(b => b.addEventListener('click', () => { S.svgColor = b.dataset.svgc; refreshImages(); }));
 let dragDepth = 0;
 stage.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; $('#drop').hidden = false; });
 stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#drop').hidden = true; } });
@@ -564,10 +632,12 @@ function sync() {
   $('#sl-life').hidden = S.permanent;
   $('#sl-depthBlur').hidden = !S.depth;
   $('#img-box').hidden = S.colorMode !== 'image';
+  if (svgs.length && svgKey !== JSON.stringify([S.palette, S.paper, S.svgColor, svgSeed])) refreshImages(); // palette or background changed
+  $('#svg-row').hidden = !svgs.length; document.querySelectorAll('[data-svgc]').forEach(b => b.setAttribute('aria-pressed', b.dataset.svgc === S.svgColor));
   $('#img-hint').hidden = images.length > 0; $('#img-seed-row').hidden = !images.length; $('#img-clear').hidden = !images.length;
   const is = $('#img-seed'); if (document.activeElement !== is && is.value !== String(imgSeed)) is.value = imgSeed;
   const th = $('#thumbs');
-  if (th.childElementCount !== Math.min(16, images.length)) th.replaceChildren(...images.slice(0, 16).map(im => { const c = document.createElement('canvas'); c.width = c.height = 48; c.getContext('2d').drawImage(im.canvas, 0, 0, 48, 48); return c; }));
+  if (th.dataset.v !== String(imgVersion)) th.dataset.v = imgVersion, th.replaceChildren(...images.slice(0, 16).map(im => { const c = document.createElement('canvas'); c.width = c.height = 48; c.getContext('2d').drawImage(im.canvas, 0, 0, 48, 48); return c; }));
   $('#vp-all').hidden = $('#vpDepth-row').hidden = !S.vp;
   placeVp();
   $('#sl-variation').hidden = $('#sl-speedSize').hidden = $('#sl-grain').hidden = S.style === 'mono';
