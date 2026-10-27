@@ -609,6 +609,12 @@ stage.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; $('#
 stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#drop').hidden = true; } });
 stage.addEventListener('dragover', e => e.preventDefault());
 stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; openFile(e.dataTransfer.files[0]); });
+// Ctrl+V: a copied .obj, .glb or .gltf file.
+addEventListener('paste', e => {
+  if (e.target.closest?.('textarea, input:not([type=range]):not([type=checkbox])')) return; // typing, not a slider
+  const f = [...(e.clipboardData?.files || [])].find(f => /\.(obj|glb|gltf)$/i.test(f.name));
+  if (f) { e.preventDefault(); openFile(f); } else if (e.clipboardData?.files?.length) toast('Pegá un modelo .obj, .glb o .gltf.');
+});
 
 // ---------- Export ----------
 // Cropped to the pixels; background only when asked.

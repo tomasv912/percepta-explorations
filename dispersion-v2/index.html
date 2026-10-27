@@ -718,7 +718,7 @@ stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 
 stage.addEventListener('dragover', e => e.preventDefault());
 stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; openFile(e.dataTransfer.files[0]); });
 addEventListener('paste', async e => {
-  if (e.target.closest('input, textarea')) return;
+  if (e.target.closest?.('textarea, input:not([type=range]):not([type=checkbox])')) return; // typing, not a slider
   const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
   if (item) return openFile(item.getAsFile());
   const text = e.clipboardData?.getData('text/plain')?.trim();

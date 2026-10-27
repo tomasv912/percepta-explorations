@@ -543,7 +543,7 @@ stage.addEventListener('dragover', e => { e.preventDefault(); stage.classList.ad
 stage.addEventListener('dragleave', () => stage.classList.remove('drop'));
 stage.addEventListener('drop', e => { e.preventDefault(); stage.classList.remove('drop'); openFile(e.dataTransfer.files[0]); });
 addEventListener('paste', e => {
-  if (e.target.closest('input, textarea')) return;
+  if (e.target.closest?.('textarea, input:not([type=range]):not([type=checkbox])')) return; // typing, not a slider
   const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
   if (item) return openFile(item.getAsFile());
   const text = e.clipboardData?.getData('text/plain')?.trim();

@@ -158,7 +158,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <i class="tip" id="tip" hidden title="Arrastrá para redireccionar el trazo"></i>
       <div class="vp" id="vp" hidden title="Punto de fuga: arrastralo con el cursor, doble clic para centrarlo"><svg viewBox="0 0 26 26" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="13" cy="13" r="6"/><path d="M13 1v7M13 18v7M1 13h7M18 13h7"/></svg></div>
     </div>
-    <div class="drop" id="drop" hidden>Soltá el .zip o las imágenes</div>
+    <div class="drop" id="drop" hidden>Soltá el .zip o las imágenes (o pegalas con Ctrl+V)</div>
     <div class="hud"><span id="stats">Hacé clic y arrastrá sobre la mesa</span><span class="dim"><kbd>B</kbd> pincel · <kbd>V</kbd> cursor (arrastrá el último cubo para redireccionar) · <kbd>⌘Z</kbd> deshacer · <kbd>Shift</kbd> línea</span></div>
   </main>
 
@@ -213,7 +213,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         </div>
         <div id="img-box">
           <div class="btns"><button class="btn" id="img-up">Subir fotos o .zip</button><button class="btn" id="img-clear" style="flex:none">Borrar</button></div>
-          <p class="hint" id="img-hint">Todavía no hay fotos: subí imágenes sueltas o un .zip.</p>
+          <p class="hint" id="img-hint">Todavía no hay fotos: subí imágenes sueltas o un .zip, o pegalas con Ctrl+V.</p>
           <div class="row" id="img-seed-row">
             <span>Semilla</span>
             <input class="text" id="img-seed" inputmode="numeric" aria-label="Semilla de las imágenes">
@@ -528,6 +528,13 @@ stage.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; $('#
 stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#drop').hidden = true; } });
 stage.addEventListener('dragover', e => e.preventDefault());
 stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; addImages([...e.dataTransfer.files]); });
+// Ctrl+V: pasted images (a screenshot, an image copied from a page) or copied files, a .zip included.
+addEventListener('paste', e => {
+  if (e.target.closest?.('textarea, input:not([type=range]):not([type=checkbox])')) return; // typing, not a slider
+  const files = [...(e.clipboardData?.files || [])], items = [...(e.clipboardData?.items || [])].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
+  const all = files.length ? files : items;
+  if (all.length) { e.preventDefault(); addImages(all); }
+});
 const clear = () => { if (cubes.length) snapshot(); cubes = []; rowScale.clear(); gen = []; select(null); wake(); };
 $('#clear').addEventListener('click', clear);
 addEventListener('keydown', e => {
