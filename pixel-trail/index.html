@@ -178,6 +178,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <label class="check" id="vpDepth-row"><input type="checkbox" data-check="vpDepth"> Perspectiva (el tamaño crece hacia el frente)</label>
         <div id="sl-vpCount"></div>
         <div id="sl-vpGap"></div>
+        <div class="seg" data-key="genDir" aria-label="Dirección de los trails generados">
+          <button data-v="radial" title="Todos hacia el punto de fuga">Al punto</button><button data-v="parallel" title="Todos en la dirección del primero">Paralelos</button>
+        </div>
         <div class="btns"><button class="btn" id="vp-all">Llevar al punto</button><button class="btn" id="vp-gen">Generar</button></div>
       </section>
 
@@ -266,7 +269,7 @@ const DEFAULTS = {
   style: 'mono', size: 16, variation: .3, speedSize: 0,
   life: 2.5, permanent: true,
   colorMode: 'palette', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89'],
-  depth: false, depthBlur: 14, vp: true, vpDepth: false, vpCount: 16, vpGap: 0,
+  depth: false, depthBlur: 14, vp: true, vpDepth: false, vpCount: 16, vpGap: 0, genDir: 'radial',
   ink: '#272727', grain: .05, paper: '#F6F6F6', svgColor: 'palette', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -790,10 +793,11 @@ function layLine(to, t) {
   cubes.splice(cubes.length - line.count);
   dropped = line.n0; line.to = to;
   const [x0, y0] = line.from;
-  if (S.vp) { // aimed at the vanishing point: only the length follows the pointer
+  if (S.vp) { // aimed at the vanishing point: only the length follows the pointer (Shift snaps the others)
     const wx = vpPos[0] - x0, wy = vpPos[1] - y0, D2 = wx * wx + wy * wy || 1, t = clamp(((to[0] - x0) * wx + (to[1] - y0) * wy) / D2, 0, .95);
     to = [x0 + wx * t, y0 + wy * t];
   }
+  else if (line.snap) to = snap15(line.from, to);
   const len = Math.hypot(to[0] - x0, to[1] - y0);
   const steps = line.steps ?? Math.max(0, Math.round(len / Math.max(1, S.size * S.lineGap)));
   for (let i = 0; i <= steps; i++) {
@@ -804,6 +808,11 @@ function layLine(to, t) {
   }
   line.count = steps + 1;
   wake();
+}
+// Shift turns in 15° steps: the point p, seen from o, moved onto the nearest 15° direction (same distance).
+function snap15(o, p) {
+  const dx = p[0] - o[0], dy = p[1] - o[1], d = Math.hypot(dx, dy), a = Math.round(Math.atan2(dy, dx) / (Math.PI / 12)) * (Math.PI / 12);
+  return [o[0] + Math.cos(a) * d, o[1] + Math.sin(a) * d];
 }
 // Stable shade per position in the line, so it doesn't flicker while dragging.
 const hashUnit = i => { let t = Math.imul(i ^ 0x9E3779B9, 0x85EBCA6B); t ^= t >>> 15; t = Math.imul(t, 0x2C1B3C6D); t ^= t >>> 12; return (t >>> 0) / 4294967296; };
@@ -816,7 +825,7 @@ frame.addEventListener('pointerdown', e => {
   if (tool === 'select') return selectDown(e);
   snapshot(); pressed = true; speed = 0; strokes++;
   const p = toArt(e);
-  if (e.shiftKey) { line = { from: p, n0: dropped, count: 0, scroll: 0 }; layLine(p, e.timeStamp); return; }
+  if (e.shiftKey) { line = { from: p, n0: dropped, count: 0, scroll: 0, snap: true }; layLine(p, e.timeStamp); return; }
   drop(p[0], p[1], e.timeStamp);
   last = { p, t: e.timeStamp }; carry = 0;
 });
@@ -929,14 +938,21 @@ function selectDown(e) {
     const ax = handle.includes('w') ? b.x1 : b.x0, ay = handle.includes('n') ? b.y1 : b.y0;
     const hx = handle.includes('w') ? b.x0 : b.x1, hy = handle.includes('n') ? b.y0 : b.y1;
     drag = { mode: 'scale', idx, orig, anchor: [ax, ay], corner: [hx, hy], scale0: new Map([...sel].map(g => [g, scaleOf(g)])) };
-  } else drag = { mode: 'move', idx, orig, from: p };
+  } else {
+    // Alt: the selection is copied in place and the copy is what moves.
+    if (e.altKey) {
+      snapshot(); select(duplicateRows(sel, 0));
+      const idx2 = cubes.reduce((a, c, i) => (sel.has(c.g) && a.push(i), a), []);
+      drag = { mode: 'move', idx: idx2, orig: idx2.map(i => [cubes[i].x, cubes[i].y]), from: p, saved: true };
+    } else drag = { mode: 'move', idx, orig, from: p };
+  }
 }
 function selectMove(e) {
   const p = toArt(e), d = drag;
   if (d.mode === 'vp') { vpPos = [clamp(p[0], 0, AW), clamp(p[1], 0, AH)]; placeVp(); return; }
   if (d.mode === 'box') { showMarquee(d.from, p); const s2 = new Set(d.add); rowsIn(d.from, p).forEach(g => s2.add(g)); select(s2); return; }
   if (!d.saved) { snapshot(); d.saved = true; }
-  if (d.mode === 'tip') d.count = relay(d.o, d.i0, d.count, p);
+  if (d.mode === 'tip') d.count = relay(d.o, d.i0, d.count, e.shiftKey ? snap15([d.o[0].x, d.o[0].y], p) : p);
   else if (d.mode === 'move') {
     const dx = p[0] - d.from[0], dy = p[1] - d.from[1];
     d.idx.forEach((i, j) => { cubes[i].x = d.orig[j][0] + dx; cubes[i].y = d.orig[j][1] + dy; });
@@ -956,6 +972,35 @@ function copyRows() {
   pasteN = 0; updateSel(); toast(`${sel.size} ${sel.size === 1 ? 'fila copiada' : 'filas copiadas'}`);
   return true;
 }
+// New rows copying the given ones, `off` further down-right; returns their ids.
+function duplicateRows(rows, off) {
+  const ids = new Map(), now = performance.now(), src = cubes.filter(c => rows.has(c.g));
+  for (const c of src) {
+    if (!ids.has(c.g)) { ids.set(c.g, ++strokes); rowScale.set(strokes, scaleOf(c.g)); }
+    cubes.push({ ...c, x: c.x + off, y: c.y + off, g: ids.get(c.g), t: now });
+  }
+  return new Set(ids.values());
+}
+// The wheel over a selection adds (up) or takes off (down) one cube at the tip of each selected row, a step
+// further along its last step. One undo per wheel gesture.
+let wheelAcc = 0, wheelT = 0;
+frame.addEventListener('wheel', e => {
+  if (tool !== 'select' || !sel.size || line) return;
+  e.preventDefault();
+  wheelAcc += e.deltaY;
+  if (Math.abs(wheelAcc) < 40) return;
+  const dir = -Math.sign(wheelAcc); wheelAcc = 0;
+  if (e.timeStamp - wheelT > 500) snapshot();
+  wheelT = e.timeStamp;
+  for (const g of sel) {
+    const idx = cubes.reduce((a, c, i) => (c.g === g && a.push(i), a), []);
+    if (idx.length < 2) continue;
+    const a = cubes[idx[idx.length - 2]], z = cubes[idx[idx.length - 1]];
+    if (dir > 0) cubes.splice(idx[idx.length - 1] + 1, 0, { ...z, x: z.x + (z.x - a.x), y: z.y + (z.y - a.y), n: dropped++, k: Math.floor(Math.random() * SHADES) });
+    else if (idx.length > 2) cubes.splice(idx[idx.length - 1], 1);
+  }
+  updateSel(); wake();
+}, { passive: false });
 function pasteRows() {
   if (!clip) return false;
   if (tool !== 'select') setTool('select');
@@ -1072,11 +1117,22 @@ function genSpec(i) {
     gp: S.size * k * (1 + R() * .8), n: Math.floor(R() * 5) };
 }
 // Straight from its outer start toward the point; `vpGap` pushes the whole trail away from the centre.
+// Paralelos: every trail takes the first one's direction, set side by side across it (each at its own offset,
+// reach and length), so they run together like rain.
 function layGen(sp, add) {
   let i0 = cubes.findIndex(c => c.g === sp.g), count = 0;
   if (i0 >= 0) { while (cubes[i0 + count]?.g === sp.g) count++; }
   else if (!add) return;
   else { i0 = cubes.findIndex(c => (genScale.get(c.g) ?? -1) > sp.k); if (i0 < 0) i0 = cubes.length; }
+  if (S.genDir === 'parallel') {
+    const A = gen[0]?.a ?? sp.a, ux = Math.cos(A), uy = Math.sin(A), R = Math.min(AW, AH) * .5, side = (sp.side ??= Math.random() * 2 - 1);
+    const len = sp.f * R * 1.6, back = (sp.d - .5) * R, cx = vpPos[0] - uy * side * R * 1.4 + ux * back, cy = vpPos[1] + ux * side * R * 1.4 + uy * back;
+    const m = Math.max(1, Math.round(len / sp.gp)), t = performance.now(), row = [];
+    for (let i = 0; i <= m; i++) { const u = i / m - .5; row.push({ s: S.size, k: MONO_SHADE, n: sp.n + i, g: sp.g, t, gp: sp.gp, x: cx + ux * len * u, y: cy + uy * len * u }); }
+    cubes.splice(i0, count, ...row);
+    rowScale.set(sp.g, sp.k); genScale.set(sp.g, sp.k);
+    return;
+  }
   const [cx, cy] = vpPos, ox = Math.cos(sp.a) * AW / 2 * sp.d, oy = Math.sin(sp.a) * AH / 2 * sp.d, push = 1 + S.vpGap / Math.hypot(ox, oy);
   const t = performance.now(), c0 = { s: S.size, k: MONO_SHADE, n: sp.n, g: sp.g, t, gp: sp.gp };
   const o = [{ ...c0, x: cx + ox * push, y: cy + oy * push }, { ...c0, x: cx + ox * (push - sp.f), y: cy + oy * (push - sp.f) }];
@@ -1086,6 +1142,8 @@ function layGen(sp, add) {
   relay(o.map(c => ({ ...c })), i0, 2, [o[1].x, o[1].y]);
   S.vp = vp;
 }
+// Switching the direction re-lays the generated trails in place.
+document.querySelector('[data-key="genDir"]').addEventListener('click', () => setTimeout(() => { if (gen.length) { snapshot(); gen.forEach(sp => layGen(sp)); updateSel(); wake(); } }));
 function syncGen() {
   while (gen.length < S.vpCount) { const sp = genSpec(gen.length); gen.push(sp); layGen(sp, true); }
   while (gen.length > S.vpCount) { const g = gen.pop().g; cubes = cubes.filter(c => c.g !== g); rowScale.delete(g); }
