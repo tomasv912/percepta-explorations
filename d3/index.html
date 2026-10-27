@@ -174,6 +174,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           Subir imagen
         </button>
         <input type="file" id="file" accept="image/*" hidden>
+        <p class="hint">También podés pegarla con <b>Ctrl+V</b> (<b>⌘V</b> en Mac) o arrastrarla al lienzo.</p>
         <div id="image-controls" style="display:contents">
           <label class="check"><input type="checkbox" data-check="invert"> Invertir imagen</label>
           <div id="sl-contrast"></div>
@@ -297,7 +298,7 @@ function perlin3(rand) {
 // Read once into a luminance grid.
 let src = null;
 function loadImage(img) {
-  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const iw = img.naturalWidth || img.width || 1000, ih = img.naturalHeight || img.height || 1000; // SVGs without a size
   const gw = Math.max(2, Math.round(iw >= ih ? GRID : GRID * iw / ih)), gh = Math.max(2, Math.round(iw >= ih ? GRID * ih / iw : GRID));
   // Halve in steps so big photos downsample without aliasing.
   let cur = img, cw = iw, ch = ih;
@@ -1191,7 +1192,7 @@ function sync() {
 
 // ---------- Input ----------
 function openFile(file) {
-  if (!file || !file.type.startsWith('image/')) return toast('Eso no parece una imagen.');
+  if (!file || (file.type && !file.type.startsWith('image/'))) return toast('Eso no parece una imagen.');
   const img = new Image(), url = URL.createObjectURL(file);
   img.onload = () => { URL.revokeObjectURL(url); loadImage(img); S.source = 'image'; panX = panY = 0; dotsKey = ''; sync(); toast('Imagen cargada.'); };
   img.onerror = () => { URL.revokeObjectURL(url); toast('No se pudo leer la imagen.'); };
@@ -1204,9 +1205,26 @@ stage.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; $('#
 stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#drop').hidden = true; } });
 stage.addEventListener('dragover', e => e.preventDefault());
 stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; openFile(e.dataTransfer.files[0]); });
+// Ctrl+V / ⌘V: an image file or bitmap on the clipboard, an <img> with an inline (data:) source in
+// copied HTML, or SVG code copied as text.
 addEventListener('paste', e => {
-  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
-  if (item) openFile(item.getAsFile());
+  if (e.target.closest?.('input[type=text], input:not([type]), textarea, .text')) return;
+  const cd = e.clipboardData; if (!cd) return;
+  const file = [...cd.files].find(f => f.type.startsWith('image/'))
+    || [...cd.items].filter(i => i.kind === 'file' && i.type.startsWith('image/')).map(i => i.getAsFile()).find(Boolean);
+  if (file) { e.preventDefault(); return openFile(file); }
+  const html = cd.getData('text/html'), m = html && html.match(/<img[^>]+src=["'](data:image\/[^"']+)["']/i);
+  if (m) {
+    e.preventDefault();
+    try {
+      const [head, body] = m[1].split(','), type = head.slice(5).split(';')[0], b64 = /;base64/i.test(head);
+      const bytes = b64 ? Uint8Array.from(atob(body), c => c.charCodeAt(0)) : new TextEncoder().encode(decodeURIComponent(body));
+      return openFile(new Blob([bytes], { type }));
+    } catch { return toast('No se pudo leer la imagen pegada.'); }
+  }
+  const text = cd.getData('text/plain').trim();
+  if (/^<(\?xml|svg)[\s\S]*<\/svg>$/i.test(text)) { e.preventDefault(); return openFile(new Blob([text], { type: 'image/svg+xml' })); }
+  toast('No hay una imagen en el portapapeles.');
 });
 
 // ---------- Export ----------
