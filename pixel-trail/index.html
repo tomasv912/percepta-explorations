@@ -140,6 +140,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .tip { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #fff; border: 2px solid #0d99ff; z-index: 2; cursor: grab; }
 .vp { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; z-index: 2; pointer-events: none; color: #0d99ff; }
 .frame.select .vp { pointer-events: auto; cursor: move; }
+.marquee { position: absolute; border: 1px solid #0d99ff; background: rgb(13 153 255 / .08); pointer-events: none; z-index: 2; }
+.tools button:disabled { opacity: .35; cursor: default; }
 .sel b { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 6px); background: #0d99ff; color: #fff; font: 500 10px var(--mono); padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
 </style>
 </head>
@@ -151,15 +153,19 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <button id="tool-draw" title="Pincel (B)" aria-label="Pincel"><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.5 3.5l-8.6 8.6"/><path d="M12.4 9.6l1.9 1.9"/><path d="M9.6 12.3a2.8 2.8 0 0 0-3.9 0c-1.2 1.2-.7 3.3-2.2 4.7 2.6 1 5.6.6 6.9-.8a2.8 2.8 0 0 0-.8-3.9z"/></svg></button>
       <button id="tool-select" title="Cursor (V): seleccionar, mover y escalar filas" aria-label="Cursor"><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M5 3.5l12 7-5.2 1.3L9.6 17z"/></svg></button>
       <span class="tsep"></span>
+      <button id="copy" title="Copiar filas (⌘C / Ctrl+C)" aria-label="Copiar filas" disabled><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="7.5" y="7.5" width="10" height="10" rx="1.5"/><path d="M14.5 4.5h-8a2 2 0 0 0-2 2v8"/></svg></button>
+      <button id="paste" title="Pegar filas (⌘V / Ctrl+V)" aria-label="Pegar filas" disabled><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><rect x="5" y="5" width="12" height="13.5" rx="1.5"/><path d="M8.5 5V3.5h5V5"/><path d="M8.5 11h5M8.5 14h3"/></svg></button>
+      <span class="tsep"></span>
       <button id="undo" title="Deshacer (⌘Z / Ctrl+Z)" aria-label="Deshacer"><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 8H4V4"/><path d="M4.4 8A7 7 0 1 1 5 14.5"/></svg></button>
     </div>
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Rastro de cubos que deja el puntero"></canvas>
       <div class="sel" id="sel" hidden><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i><b id="sel-size"></b></div>
+      <div class="marquee" id="marquee" hidden></div>
       <i class="tip" id="tip" hidden title="Arrastrá para redireccionar el trazo"></i>
       <div class="vp" id="vp" hidden title="Punto de fuga: arrastralo con el cursor, doble clic para centrarlo"><svg viewBox="0 0 26 26" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="13" cy="13" r="6"/><path d="M13 1v7M13 18v7M1 13h7M18 13h7"/></svg></div>
     </div>
     <div class="drop" id="drop" hidden>Soltá el .zip o las imágenes (o pegalas con Ctrl+V)</div>
-    <div class="hud"><span id="stats">Hacé clic y arrastrá sobre la mesa</span><span class="dim"><kbd>B</kbd> pincel · <kbd>V</kbd> cursor (arrastrá el último cubo para redireccionar) · <kbd>⌘Z</kbd> deshacer · <kbd>Shift</kbd> línea</span></div>
+    <div class="hud"><span id="stats">Hacé clic y arrastrá sobre la mesa</span><span class="dim"><kbd>B</kbd> pincel · <kbd>V</kbd> cursor (arrastrá en vacío para elegir varias, el último cubo para redireccionar) · <kbd>⌘C</kbd> <kbd>⌘V</kbd> copiar y pegar · <kbd>⌘Z</kbd> deshacer · <kbd>Shift</kbd> línea</span></div>
   </main>
 
   <aside>
@@ -602,6 +608,7 @@ addEventListener('paste', e => {
   const files = [...(e.clipboardData?.files || [])], items = [...(e.clipboardData?.items || [])].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
   const all = files.length ? files : items;
   if (all.length) { e.preventDefault(); addImages(all); }
+  else if (clip && (e.clipboardData?.getData('text/plain') || '') === CLIP_MARK) { e.preventDefault(); pasteRows(); }
 });
 const clear = () => { if (cubes.length) snapshot(); cubes = []; rowScale.clear(); gen = []; select(null); wake(); };
 $('#clear').addEventListener('click', clear);
@@ -727,7 +734,7 @@ frame.addEventListener('pointermove', e => {
   const evs = e.getCoalescedEvents?.() || [];
   for (const ev of evs.length ? evs : [e]) addPoint(toArt(ev), ev.timeStamp);
 });
-const release = () => { pressed = false; last = line = null; speed = 0; drag = null; };
+const release = () => { if (drag?.mode === 'box') showMarquee(null); pressed = false; last = line = null; speed = 0; drag = null; };
 addEventListener('wheel', e => {
   if (!line) return;
   e.preventDefault();
@@ -742,9 +749,11 @@ frame.addEventListener('pointerup', release);
 frame.addEventListener('pointercancel', release);
 
 // ---------- Cursor tool ----------
-// Like Figma: click a row to select it, drag inside its box to move it, drag a corner handle to scale it
-// from the opposite corner (proportionally, sizes included), Delete removes it.
-let tool = 'draw', selected = null, drag = null;
+// Like Figma: click a row to select it (Shift adds or takes it out), drag on empty table for a box that selects
+// every row it touches, drag inside the selection to move it, drag a corner handle to scale it from the opposite
+// corner (proportionally, sizes included), Delete removes it. ⌘C / ⌘V (or the buttons) copy and paste the
+// selected rows; each paste lands a little further along, and is selected.
+let tool = 'draw', sel = new Set(), drag = null, clip = null, pasteN = 0;
 function setTool(t) {
   tool = t;
   if (t === 'select' && !S.permanent) { S.permanent = true; sync(); toast('Permanente activado para poder editar las filas.'); }
@@ -759,59 +768,79 @@ addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !e.target.closest('input:not([type=checkbox]):not([type=range]), textarea')) { e.preventDefault(); undo(); }
 });
 $('#tool-select').addEventListener('click', () => setTool('select'));
-function rowBox(g) {
+function boxOf(rows) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const c of cubes) if (c.g === g) {
+  for (const c of cubes) if (rows.has(c.g)) {
     const h = look(c, S)[0] / 2;
     x0 = Math.min(x0, c.x - h); y0 = Math.min(y0, c.y - h); x1 = Math.max(x1, c.x + h); y1 = Math.max(y1, c.y + h);
   }
   return x1 < x0 ? null : { x0, y0, x1, y1 };
 }
-function select(g) { selected = g; updateSel(); }
+// select(null) clears; select(g) picks one row; select(set) picks those.
+function select(g) { sel = g == null ? new Set() : g instanceof Set ? g : new Set([g]); updateSel(); }
+const only = () => sel.size === 1 ? [...sel][0] : null;
 function updateSel() {
-  const el = $('#sel'), b = selected == null ? null : rowBox(selected);
-  if (!b) { el.hidden = $('#tip').hidden = true; if (selected != null) selected = null; return; }
+  const el = $('#sel'), b = sel.size ? boxOf(sel) : null;
+  $('#copy').disabled = !sel.size; $('#paste').disabled = !clip;
+  if (!b) { el.hidden = $('#tip').hidden = true; sel = new Set(); return; }
   const k = frame.getBoundingClientRect().width / AW;
   el.hidden = false;
   Object.assign(el.style, { left: b.x0 * k + 'px', top: b.y0 * k + 'px', width: (b.x1 - b.x0) * k + 'px', height: (b.y1 - b.y0) * k + 'px' });
-  const lastC = cubes.findLast(c => c.g === selected), many = cubes.some(c => c.g === selected && c !== lastC);
+  const one = only(), lastC = one == null ? null : cubes.findLast(c => c.g === one), many = lastC && cubes.some(c => c.g === one && c !== lastC);
   $('#tip').hidden = !many || tool !== 'select';
   if (many) Object.assign($('#tip').style, { left: lastC.x * k + 'px', top: lastC.y * k + 'px' });
-  $('#sel-size').textContent = `${Math.round(b.x1 - b.x0)} × ${Math.round(b.y1 - b.y0)}`;
+  $('#sel-size').textContent = `${sel.size > 1 ? sel.size + ' filas · ' : ''}${Math.round(b.x1 - b.x0)} × ${Math.round(b.y1 - b.y0)}`;
 }
 function rowAt([x, y]) {
   for (let i = cubes.length - 1; i >= 0; i--) {
-    const c = cubes[i], h = look(c, S)[0] / 2 + 4;
+    const c = cubes[i], h = look(c, S)[0] / 2 + 8;
     if (Math.abs(c.x - x) <= h && Math.abs(c.y - y) <= h) return c.g;
   }
   return null;
 }
+function showMarquee(a, p) {
+  const el = $('#marquee'), k = frame.getBoundingClientRect().width / AW;
+  if (!a) { el.hidden = true; return; }
+  el.hidden = false;
+  Object.assign(el.style, { left: Math.min(a[0], p[0]) * k + 'px', top: Math.min(a[1], p[1]) * k + 'px', width: Math.abs(p[0] - a[0]) * k + 'px', height: Math.abs(p[1] - a[1]) * k + 'px' });
+}
+// Rows with a cube inside the box.
+function rowsIn(a, p) {
+  const x0 = Math.min(a[0], p[0]), x1 = Math.max(a[0], p[0]), y0 = Math.min(a[1], p[1]), y1 = Math.max(a[1], p[1]), out = new Set();
+  for (const c of cubes) { const h = look(c, S)[0] / 2; if (c.x + h >= x0 && c.x - h <= x1 && c.y + h >= y0 && c.y - h <= y1) out.add(c.g); }
+  return out;
+}
 function selectDown(e) {
   const p = toArt(e), handle = e.target.closest('.sel i')?.dataset.h;
   if (e.target.closest('.vp')) { drag = { mode: 'vp' }; return; }
-  const tipG = e.target.closest('.tip') ? selected : tipAt(p);
+  const tipG = e.target.closest('.tip') ? only() : e.shiftKey ? null : tipAt(p);
   if (tipG != null) {
     select(tipG);
     const idx = cubes.reduce((a, c, i) => (c.g === tipG && a.push(i), a), []);
     drag = { mode: 'tip', i0: idx[0], count: idx.length, o: idx.map(i => ({ ...cubes[i] })) };
     return;
   }
-  let b = selected == null ? null : rowBox(selected);
-  if (!handle && !(b && p[0] >= b.x0 && p[0] <= b.x1 && p[1] >= b.y0 && p[1] <= b.y1)) {
-    select(rowAt(p)); b = selected == null ? null : rowBox(selected);
+  let b = sel.size ? boxOf(sel) : null;
+  const inside = b && p[0] >= b.x0 && p[0] <= b.x1 && p[1] >= b.y0 && p[1] <= b.y1;
+  if (!handle && (!inside || e.shiftKey)) {
+    const g = rowAt(p);
+    if (g == null) { drag = { mode: 'box', from: p, add: e.shiftKey ? new Set(sel) : new Set() }; if (!e.shiftKey) select(null); return; }
+    if (e.shiftKey) { const s2 = new Set(sel); s2.has(g) ? s2.delete(g) : s2.add(g); select(s2); return; }
+    select(g); b = boxOf(sel);
     if (!b) return;
   }
-  const idx = cubes.reduce((a, c, i) => (c.g === selected && a.push(i), a), []);
+  const idx = cubes.reduce((a, c, i) => (sel.has(c.g) && a.push(i), a), []);
   const orig = idx.map(i => [cubes[i].x, cubes[i].y]);
   if (handle) {
     const ax = handle.includes('w') ? b.x1 : b.x0, ay = handle.includes('n') ? b.y1 : b.y0;
     const hx = handle.includes('w') ? b.x0 : b.x1, hy = handle.includes('n') ? b.y0 : b.y1;
-    drag = { mode: 'scale', idx, orig, anchor: [ax, ay], corner: [hx, hy], scale0: scaleOf(selected) };
+    drag = { mode: 'scale', idx, orig, anchor: [ax, ay], corner: [hx, hy], scale0: new Map([...sel].map(g => [g, scaleOf(g)])) };
   } else drag = { mode: 'move', idx, orig, from: p };
 }
 function selectMove(e) {
   const p = toArt(e), d = drag;
   if (d.mode === 'vp') { vpPos = [clamp(p[0], 0, AW), clamp(p[1], 0, AH)]; placeVp(); return; }
+  if (d.mode === 'box') { showMarquee(d.from, p); const s2 = new Set(d.add); rowsIn(d.from, p).forEach(g => s2.add(g)); select(s2); return; }
   if (!d.saved) { snapshot(); d.saved = true; }
   if (d.mode === 'tip') d.count = relay(d.o, d.i0, d.count, p);
   else if (d.mode === 'move') {
@@ -822,17 +851,44 @@ function selectMove(e) {
     const [ax, ay] = d.anchor, vx = d.corner[0] - ax, vy = d.corner[1] - ay;
     const k = Math.max(.05, ((p[0] - ax) * vx + (p[1] - ay) * vy) / (vx * vx + vy * vy || 1));
     d.idx.forEach((i, j) => { cubes[i].x = ax + (d.orig[j][0] - ax) * k; cubes[i].y = ay + (d.orig[j][1] - ay) * k; });
-    rowScale.set(selected, d.scale0 * k);
+    d.scale0.forEach((s0, g) => rowScale.set(g, s0 * k));
   }
   updateSel(); wake();
 }
+// Copy keeps the rows as they are now; every paste adds them again as new rows, 24 further down-right each time.
+function copyRows() {
+  if (!sel.size) return false;
+  clip = { cubes: cubes.filter(c => sel.has(c.g)).map(c => ({ ...c })), scale: new Map([...sel].map(g => [g, scaleOf(g)])) };
+  pasteN = 0; updateSel(); toast(`${sel.size} ${sel.size === 1 ? 'fila copiada' : 'filas copiadas'}`);
+  return true;
+}
+function pasteRows() {
+  if (!clip) return false;
+  if (tool !== 'select') setTool('select');
+  snapshot(); pasteN++;
+  const ids = new Map(), off = 24 * pasteN, now = performance.now();
+  for (const c of clip.cubes) {
+    if (!ids.has(c.g)) { ids.set(c.g, ++strokes); rowScale.set(strokes, clip.scale.get(c.g) ?? 1); }
+    cubes.push({ ...c, x: c.x + off, y: c.y + off, g: ids.get(c.g), t: now });
+  }
+  select(new Set(ids.values())); wake();
+  return true;
+}
+$('#copy').addEventListener('click', copyRows);
+$('#paste').addEventListener('click', pasteRows);
+// The system shortcuts: copy writes a marker, so a later paste knows the rows are wanted (images still paste).
+const CLIP_MARK = 'pixel-trail:filas';
+addEventListener('copy', e => {
+  if (e.target.closest?.('textarea, input:not([type=range]):not([type=checkbox])') || tool !== 'select' || !copyRows()) return;
+  e.preventDefault(); e.clipboardData.setData('text/plain', CLIP_MARK);
+});
 addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea')) return;
   const k = e.key.toLowerCase();
   if (k === 'v') setTool('select');
   else if (k === 'b') setTool('draw');
-  else if ((k === 'delete' || k === 'backspace') && selected != null) {
-    e.preventDefault(); snapshot(); cubes = cubes.filter(c => c.g !== selected); rowScale.delete(selected); select(null); wake();
+  else if ((k === 'delete' || k === 'backspace') && sel.size) {
+    e.preventDefault(); snapshot(); cubes = cubes.filter(c => !sel.has(c.g)); sel.forEach(g => rowScale.delete(g)); select(null); wake();
   } else if (k === 'escape') select(null);
 });
 new ResizeObserver(() => { updateSel(); placeVp(); }).observe(frame);
