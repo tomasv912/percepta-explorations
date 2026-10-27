@@ -176,11 +176,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <h2>Punto de fuga</h2>
         <label class="check"><input type="checkbox" data-check="vp"> Punto de fuga</label>
         <label class="check" id="vpDepth-row"><input type="checkbox" data-check="vpDepth"> Perspectiva (el tamaño crece hacia el frente)</label>
+        <label class="check"><input type="checkbox" data-check="parallel"> Paralelo (todos en la dirección del primero, sin perspectiva)</label>
         <div id="sl-vpCount"></div>
         <div id="sl-vpGap"></div>
-        <div class="seg" data-key="genDir" aria-label="Dirección de los trails generados">
-          <button data-v="radial" title="Todos hacia el punto de fuga">Al punto</button><button data-v="parallel" title="Todos en la dirección del primero">Paralelos</button>
-        </div>
         <div class="btns"><button class="btn" id="vp-all">Llevar al punto</button><button class="btn" id="vp-gen">Generar</button></div>
       </section>
 
@@ -269,7 +267,7 @@ const DEFAULTS = {
   style: 'mono', size: 16, variation: .3, speedSize: 0,
   life: 2.5, permanent: true,
   colorMode: 'palette', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89'],
-  depth: false, depthBlur: 14, vp: true, vpDepth: false, vpCount: 16, vpGap: 0, genDir: 'radial',
+  depth: false, depthBlur: 14, vp: true, vpDepth: false, vpCount: 16, vpGap: 0, parallel: false,
   ink: '#272727', grain: .05, paper: '#F6F6F6', svgColor: 'palette', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -797,7 +795,9 @@ function layLine(to, t) {
     const wx = vpPos[0] - x0, wy = vpPos[1] - y0, D2 = wx * wx + wy * wy || 1, t = clamp(((to[0] - x0) * wx + (to[1] - y0) * wy) / D2, 0, .95);
     to = [x0 + wx * t, y0 + wy * t];
   }
-  else if (line.snap) to = snap15(line.from, to);
+  else if (S.parallel) { // along the shared direction: only the length follows the pointer
+    const d = Math.max(0, (to[0] - x0) * Math.cos(parA) + (to[1] - y0) * Math.sin(parA)); to = [x0 + Math.cos(parA) * d, y0 + Math.sin(parA) * d];
+  } else if (line.snap) to = snap15(line.from, to);
   const len = Math.hypot(to[0] - x0, to[1] - y0);
   const steps = line.steps ?? Math.max(0, Math.round(len / Math.max(1, S.size * S.lineGap)));
   for (let i = 0; i <= steps; i++) {
@@ -837,7 +837,7 @@ frame.addEventListener('pointermove', e => {
   const evs = e.getCoalescedEvents?.() || [];
   for (const ev of evs.length ? evs : [e]) addPoint(toArt(ev), ev.timeStamp);
 });
-const release = () => { if (drag?.mode === 'box') showMarquee(null); pressed = false; last = line = null; speed = 0; drag = null; };
+const release = () => { if (drag?.mode === 'box') showMarquee(null); if (pressed && S.parallel && !line) parAll(); pressed = false; last = line = null; speed = 0; drag = null; };
 addEventListener('wheel', e => {
   if (!line) return;
   e.preventDefault();
@@ -952,7 +952,10 @@ function selectMove(e) {
   if (d.mode === 'vp') { vpPos = [clamp(p[0], 0, AW), clamp(p[1], 0, AH)]; placeVp(); return; }
   if (d.mode === 'box') { showMarquee(d.from, p); const s2 = new Set(d.add); rowsIn(d.from, p).forEach(g => s2.add(g)); select(s2); return; }
   if (!d.saved) { snapshot(); d.saved = true; }
-  if (d.mode === 'tip') d.count = relay(d.o, d.i0, d.count, e.shiftKey ? snap15([d.o[0].x, d.o[0].y], p) : p);
+  if (d.mode === 'tip') {
+    d.count = relay(d.o, d.i0, d.count, e.shiftKey ? snap15([d.o[0].x, d.o[0].y], p) : p);
+    if (S.parallel) { const a = cubes[d.i0], z = cubes[d.i0 + d.count - 1]; parA = Math.atan2(z.y - a.y, z.x - a.x); parAll(a.g); }
+  }
   else if (d.mode === 'move') {
     const dx = p[0] - d.from[0], dy = p[1] - d.from[1];
     d.idx.forEach((i, j) => { cubes[i].x = d.orig[j][0] + dx; cubes[i].y = d.orig[j][1] + dy; });
@@ -981,9 +984,24 @@ function duplicateRows(rows, off) {
   }
   return new Set(ids.values());
 }
-// The wheel over a selection adds (up) or takes off (down) one cube at the tip of each selected row, a step
-// further along its last step. One undo per wheel gesture.
+// The wheel over a selection puts one more cube (up) or one fewer (down) in each selected row, over the same
+// path: the row keeps its length and shape and its cubes respace evenly along it. One undo per wheel gesture.
 let wheelAcc = 0, wheelT = 0;
+function respace(g, m) {
+  const idx = cubes.reduce((a, c, i) => (c.g === g && a.push(i), a), []);
+  if (idx.length < 2) return;
+  const o = idx.map(i => cubes[i]), L = [0];
+  for (let j = 1; j < o.length; j++) L.push(L[j - 1] + Math.hypot(o[j].x - o[j - 1].x, o[j].y - o[j - 1].y));
+  const total = L[L.length - 1], out = [];
+  for (let i = 0; i < m; i++) {
+    const want = total * i / (m - 1); let j = 0;
+    while (j < o.length - 2 && L[j + 1] < want) j++;
+    const f = L[j + 1] > L[j] ? (want - L[j]) / (L[j + 1] - L[j]) : 0, a = o[j], b = o[j + 1], src = o[Math.round((o.length - 1) * i / (m - 1))];
+    out.push({ ...src, x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, n: o[0].n + i, k: i < o.length ? o[i].k : Math.floor(hashUnit(o[0].n + i) * SHADES) });
+  }
+  for (let i = idx.length - 1; i >= 0; i--) cubes.splice(idx[i], 1);
+  cubes.splice(idx[0], 0, ...out);
+}
 frame.addEventListener('wheel', e => {
   if (tool !== 'select' || !sel.size || line) return;
   e.preventDefault();
@@ -992,13 +1010,7 @@ frame.addEventListener('wheel', e => {
   const dir = -Math.sign(wheelAcc); wheelAcc = 0;
   if (e.timeStamp - wheelT > 500) snapshot();
   wheelT = e.timeStamp;
-  for (const g of sel) {
-    const idx = cubes.reduce((a, c, i) => (c.g === g && a.push(i), a), []);
-    if (idx.length < 2) continue;
-    const a = cubes[idx[idx.length - 2]], z = cubes[idx[idx.length - 1]];
-    if (dir > 0) cubes.splice(idx[idx.length - 1] + 1, 0, { ...z, x: z.x + (z.x - a.x), y: z.y + (z.y - a.y), n: dropped++, k: Math.floor(Math.random() * SHADES) });
-    else if (idx.length > 2) cubes.splice(idx[idx.length - 1], 1);
-  }
+  for (const g of sel) { const n = cubes.filter(c => c.g === g).length; if (n >= 2) respace(g, Math.max(2, Math.min(4000, n + dir))); }
   updateSel(); wake();
 }, { passive: false });
 function pasteRows() {
@@ -1103,7 +1115,26 @@ function relay(o, i0, count, p) {
 // Every row toward the vanishing point, each keeping its length (up to most of the way there). Turning the
 // point on does this right away, so the trails snap to it.
 $('#vp-all').addEventListener('click', vpAll);
-$('[data-check="vp"]').addEventListener('change', () => { if (S.vp && cubes.length) vpAll(); });
+$('[data-check="vp"]').addEventListener('change', () => { if (S.vp) { S.parallel = false; sync(); } if (S.vp && cubes.length) vpAll(); });
+// Paralelo: every row straightened along one direction (the first row's), each keeping its first cube, length and
+// cube count, all at full size. Drawn rows join it on release; redirecting any row's tip turns them all.
+let parA = 0;
+function rowList() { const rows = []; cubes.forEach((c, i) => { const r = rows[rows.length - 1]; if (r && r.g === c.g) r.count++; else rows.push({ g: c.g, i0: i, count: 1 }); }); return rows; }
+function parAll(skip) {
+  for (const r of rowList()) {
+    if (r.count < 2 || r.g === skip) continue;
+    const o = cubes.slice(r.i0, r.i0 + r.count), a = o[0], z = o[o.length - 1], len = Math.hypot(z.x - a.x, z.y - a.y), m = o.length - 1;
+    cubes.splice(r.i0, r.count, ...o.map((c, i) => ({ ...c, x: a.x + Math.cos(parA) * len * i / m, y: a.y + Math.sin(parA) * len * i / m, p: undefined })));
+  }
+  updateSel(); wake();
+}
+function parallelOn() {
+  const first = rowList().find(r => r.count > 1);
+  if (first) { const a = cubes[first.i0], z = cubes[first.i0 + first.count - 1]; parA = Math.atan2(z.y - a.y, z.x - a.x); }
+  if (gen.length) parA = gen[0].a;
+  snapshot(); parAll();
+}
+$('[data-check="parallel"]').addEventListener('change', () => { if (S.parallel) { S.vp = false; sync(); parallelOn(); } });
 $('[data-check="vpDepth"]').addEventListener('change', () => { if (S.vp && cubes.length) vpAll(); });
 // Generar: a random composition around a centred vanishing point. Each generated trail keeps its recipe
 // (angle, reach, length, size), so the count and distance sliders add, drop or move trails live. Angles step
@@ -1124,8 +1155,8 @@ function layGen(sp, add) {
   if (i0 >= 0) { while (cubes[i0 + count]?.g === sp.g) count++; }
   else if (!add) return;
   else { i0 = cubes.findIndex(c => (genScale.get(c.g) ?? -1) > sp.k); if (i0 < 0) i0 = cubes.length; }
-  if (S.genDir === 'parallel') {
-    const A = gen[0]?.a ?? sp.a, ux = Math.cos(A), uy = Math.sin(A), R = Math.min(AW, AH) * .5, side = (sp.side ??= Math.random() * 2 - 1);
+  if (S.parallel) {
+    const A = parA = gen[0]?.a ?? sp.a, ux = Math.cos(A), uy = Math.sin(A), R = Math.min(AW, AH) * .5, side = (sp.side ??= Math.random() * 2 - 1);
     const len = sp.f * R * 1.6, back = (sp.d - .5) * R, cx = vpPos[0] - uy * side * R * 1.4 + ux * back, cy = vpPos[1] + ux * side * R * 1.4 + uy * back;
     const m = Math.max(1, Math.round(len / sp.gp)), t = performance.now(), row = [];
     for (let i = 0; i <= m; i++) { const u = i / m - .5; row.push({ s: S.size, k: MONO_SHADE, n: sp.n + i, g: sp.g, t, gp: sp.gp, x: cx + ux * len * u, y: cy + uy * len * u }); }
@@ -1143,14 +1174,13 @@ function layGen(sp, add) {
   S.vp = vp;
 }
 // Switching the direction re-lays the generated trails in place.
-document.querySelector('[data-key="genDir"]').addEventListener('click', () => setTimeout(() => { if (gen.length) { snapshot(); gen.forEach(sp => layGen(sp)); updateSel(); wake(); } }));
 function syncGen() {
   while (gen.length < S.vpCount) { const sp = genSpec(gen.length); gen.push(sp); layGen(sp, true); }
   while (gen.length > S.vpCount) { const g = gen.pop().g; cubes = cubes.filter(c => c.g !== g); rowScale.delete(g); }
   updateSel(); wake();
 }
 function generate() {
-  S.vp = S.depth = S.permanent = true; vpPos = [AW / 2, AH / 2]; sync();
+  S.vp = !S.parallel; S.depth = S.permanent = true; vpPos = [AW / 2, AH / 2]; sync();
   cubes = []; rowScale.clear(); genScale.clear(); select(null);
   gen = []; genTurn = Math.random() * Math.PI * 2;
   syncGen();
