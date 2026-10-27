@@ -470,12 +470,37 @@ async function buildSvgImages() {
   }
   return out;
 }
-// An SVG for the export: its drawing as a <symbol> (ids made unique to it), placed in each cube with <use>, so it
-// comes into Figma as vectors; photos stay image fills.
-function svgSymbol(text, id) {
+// An SVG for the export, kept once in <defs> as a plain group (ids made unique to it). Clip groups that only cut
+// to the drawing's own frame are unwrapped, since each cube is a frame that clips anyway. Returns the group and
+// the square view (the drawing's viewBox squared about its middle) the cubes show it in.
+function svgDef(text, id) {
   const doc = new DOMParser().parseFromString(text, 'image/svg+xml'), root = doc.documentElement, pre = id + '_';
-  const all = [...root.querySelectorAll('*')], fix = v => v.replace(/url\(\s*#([^)\s]+)\s*\)/g, (m, x) => `url(#${pre}${x})`);
-  for (const el of all) {
+  const w = parseFloat(root.getAttribute('width')) || 100, h = parseFloat(root.getAttribute('height')) || 100;
+  const vb = (root.getAttribute('viewBox') || `0 0 ${w} ${h}`).trim().split(/[\s,]+/).map(Number);
+  // A rectangle clip is redundant when it holds the whole view (the cube's frame clips that) or everything it
+  // clips (measured on a hidden copy of the drawing).
+  const groups = [...root.querySelectorAll('[clip-path]')], live = document.importNode(root, true), host = document.createElement('div');
+  host.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden'; host.append(live); document.body.append(host);
+  const liveGroups = [...live.querySelectorAll('[clip-path]')];
+  groups.forEach((g, i) => {
+    const ref = (g.getAttribute('clip-path').match(/url\(\s*#([^)\s]+)\s*\)/) || [])[1], cp = ref && doc.getElementById(ref), kids = cp ? [...cp.children] : [];
+    if (kids.length !== 1 || kids[0].tagName !== 'rect') return;
+    const k = kids[0], t = (k.getAttribute('transform') || '').match(/^\s*translate\(\s*([-\d.e]+)(?:[\s,]+([-\d.e]+))?\s*\)\s*$/);
+    if (k.getAttribute('transform') && !t) return;
+    const x0 = (parseFloat(k.getAttribute('x')) || 0) + (t ? parseFloat(t[1]) : 0), y0 = (parseFloat(k.getAttribute('y')) || 0) + (t && t[2] ? parseFloat(t[2]) : 0);
+    const x1 = x0 + (parseFloat(k.getAttribute('width')) || 0), y1 = y0 + (parseFloat(k.getAttribute('height')) || 0);
+    const covers = x0 <= vb[0] + .5 && y0 <= vb[1] + .5 && x1 >= vb[0] + vb[2] - .5 && y1 >= vb[1] + vb[3] - .5;
+    let inside = false;
+    try { const lg = liveGroups[i]; lg.removeAttribute('clip-path'); const bb = lg.getBBox(); inside = bb.x >= x0 - 1 && bb.y >= y0 - 1 && bb.x + bb.width <= x1 + 1 && bb.y + bb.height <= y1 + 1; } catch { /* not measurable */ }
+    if (!covers && !inside) return;
+    g.removeAttribute('clip-path');
+    if (g.tagName === 'g' && g.attributes.length === 0) g.replaceWith(...g.childNodes);
+  });
+  host.remove();
+  for (const cp of [...root.querySelectorAll('clipPath')]) if (!root.querySelector(`[clip-path="url(#${cp.id})"]`)) cp.remove();
+  for (const d of [...root.querySelectorAll('defs')]) if (!d.children.length) d.remove();
+  const fix = v => v.replace(/url\(\s*#([^)\s]+)\s*\)/g, (m, x) => `url(#${pre}${x})`);
+  for (const el of root.querySelectorAll('*')) {
     if (el.id) el.id = pre + el.id;
     for (const at of [...el.attributes]) {
       if ((at.name === 'href' || at.name === 'xlink:href') && at.value.startsWith('#')) el.setAttribute(at.name, '#' + pre + at.value.slice(1));
@@ -483,11 +508,10 @@ function svgSymbol(text, id) {
     }
     if (el.tagName === 'style') el.textContent = fix(el.textContent).replace(/#([A-Za-z_][\w-]*)/g, (m, x) => doc.getElementById(pre + x) ? `#${pre}${x}` : m);
   }
-  const w = parseFloat(root.getAttribute('width')) || 100, h = parseFloat(root.getAttribute('height')) || 100;
-  const vb = root.getAttribute('viewBox') || `0 0 ${w} ${h}`, ser = new XMLSerializer();
-  const keep = [...root.attributes].filter(a => !/^(xmlns.*|width|height|viewBox|x|y|version|id|class|style)$/.test(a.name)).map(a => ` ${a.name}="${a.value}"`).join('');
+  const ser = new XMLSerializer(), fill = root.getAttribute('fill');
   const inner = [...root.childNodes].map(n => ser.serializeToString(n)).join('').replace(/ xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g, '');
-  return `<symbol id="${id}" viewBox="${vb}" preserveAspectRatio="xMidYMid meet"><g${keep}>${inner}</g></symbol>`;
+  const m = Math.max(vb[2], vb[3]), view = [vb[0] - (m - vb[2]) / 2, vb[1] - (m - vb[3]) / 2, m, m];
+  return { def: `<g id="${id}"${fill && fill !== 'none' ? ` fill="${fill}"` : ''}>${inner}</g>`, view };
 }
 let svgKey = '', svgTimer = 0;
 const svgKeyNow = () => JSON.stringify([S.palette, S.paper, S.ink, S.svgColor, svgSeed]);
@@ -583,7 +607,7 @@ function toSvg(now, st, lut) {
   // a gaussian filter on the row's group, written the way Figma exports a layer blur so it imports as one.
   const rows = rowsOf(now, st, lut), maxSize = Math.max(0, ...rows.map(r => r.size));
   let nCube = 0;
-  const used = new Set();
+  const used = new Set(), svgDefs = new Map();
   rows.forEach((row, i) => {
     const blur = blurOf(row, maxSize, st), id = `filter${i}_f_trazo`;
     if (blur >= .15) {
@@ -599,14 +623,18 @@ function toSvg(now, st, lut) {
     for (const [x, y, s, col, img] of row.items) {
       if (img >= 0) used.add(img);
       const vec = img >= 0 && images[img].vec;
-      if (vec) out.push(`<g id="cubo-${++nCube}"><rect x="${r(x - s / 2)}" y="${r(y - s / 2)}" width="${r(s)}" height="${r(s)}" fill="${WHITE}"/><use href="#svg${img}" xlink:href="#svg${img}" x="${r(x - s / 2)}" y="${r(y - s / 2)}" width="${r(s)}" height="${r(s)}"/></g>`);
+      if (vec) {
+        // A frame (nested <svg>, which clips) on a white square, the drawing in it.
+        const d = svgDefs.get(img) || svgDefs.set(img, svgDef(images[img].vec, `svg${img}`)).get(img), [vx, vy, vm] = d.view, q = v => Math.round(v * 100) / 100;
+        out.push(`<svg id="cubo-${++nCube}" x="${r(x - s / 2)}" y="${r(y - s / 2)}" width="${r(s)}" height="${r(s)}" viewBox="${q(vx)} ${q(vy)} ${q(vm)} ${q(vm)}"><rect x="${q(vx)}" y="${q(vy)}" width="${q(vm)}" height="${q(vm)}" fill="${WHITE}"/><use href="#svg${img}" xlink:href="#svg${img}"/></svg>`);
+      }
       else out.push(`<rect id="cubo-${++nCube}" x="${r(x - s / 2)}" y="${r(y - s / 2)}" width="${r(s)}" height="${r(s)}" fill="${img >= 0 ? `url(#pattern${img})` : col}"/>`);
     }
     out.push('</g>');
   });
   for (const k of used) {
     const im = images[k];
-    if (im.vec) { defs.push(svgSymbol(im.vec, `svg${k}`)); continue; } im.url ??= im.png ? im.canvas.toDataURL('image/png') : im.canvas.toDataURL('image/jpeg', .88);
+    if (im.vec) { defs.push(svgDefs.get(k).def); continue; } im.url ??= im.png ? im.canvas.toDataURL('image/png') : im.canvas.toDataURL('image/jpeg', .88);
     defs.push(`<pattern id="pattern${k}" patternContentUnits="objectBoundingBox" width="1" height="1"><use xlink:href="#image${k}" transform="scale(${1 / IMG})"/></pattern>` +
       `<image id="image${k}" width="${IMG}" height="${IMG}" preserveAspectRatio="none" xlink:href="${im.url}"/>`);
   }
