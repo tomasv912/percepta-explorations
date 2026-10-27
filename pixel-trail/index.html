@@ -164,7 +164,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <i class="tip" id="tip" hidden title="Arrastrá para redireccionar el trazo"></i>
       <div class="vp" id="vp" hidden title="Punto de fuga: arrastralo con el cursor, doble clic para centrarlo"><svg viewBox="0 0 26 26" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="13" cy="13" r="6"/><path d="M13 1v7M13 18v7M1 13h7M18 13h7"/></svg></div>
     </div>
-    <div class="drop" id="drop" hidden>Soltá el .zip o las imágenes (o pegalas con Ctrl+V)</div>
     <div class="hud"><span id="stats">Hacé clic y arrastrá sobre la mesa</span><span class="dim"><kbd>B</kbd> pincel · <kbd>V</kbd> cursor (arrastrá en vacío para elegir varias, el último cubo para redireccionar) · <kbd>⌘C</kbd> <kbd>⌘V</kbd> copiar y pegar · <kbd>⌘Z</kbd> deshacer · <kbd>Shift</kbd> línea</span></div>
   </main>
 
@@ -363,7 +362,22 @@ function lifeScale(c, now) {
 // file with the palette dealt at random (darkest stays darkest), Recolorear deals again. Original: as drawn.
 const IMG = 256, SVG_VARIANTS = 4, SLOTS = ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89'];
 let images = [], photos = [], svgs = [], imgSeed = 0, svgSeed = 1, imgVersion = 0;
-const imageOf = n => Math.floor(hashUnit(n * 7919 + imgSeed * 104729) * images.length);
+// Each cube's photo, chosen at random but never the one the cube before it took: cube n picks among the others,
+// stepping on from cube n−1's. Worked out in order and kept, until the seed or the set changes.
+let picks = new Int32Array(0), picksKey = '';
+function imageOf(n) {
+  const L = images.length, key = imgSeed + ':' + L;
+  if (L < 2) return 0;
+  if (key !== picksKey) { picksKey = key; picks = new Int32Array(0); }
+  if (n >= picks.length) {
+    const from = picks.length, next = new Int32Array(Math.max(n + 1, from * 2, 1024)).fill(-1); next.set(picks); picks = next;
+    for (let i = from; i < picks.length; i++) {
+      const h = hashUnit(i * 7919 + imgSeed * 104729);
+      picks[i] = i === 0 ? Math.floor(h * L) : (picks[i - 1] + 1 + Math.floor(h * (L - 1))) % L;
+    }
+  }
+  return picks[n];
+}
 // Just enough of a zip reader for photo folders: central directory, stored or deflated entries.
 async function unzip(buf) {
   const v = new DataView(buf), out = [], dec = new TextDecoder();
@@ -424,8 +438,10 @@ async function rasterSvg(text) {
   im.src = url;
   try { await im.decode(); } finally { URL.revokeObjectURL(url); }
   const w = im.naturalWidth || IMG, h = im.naturalHeight || IMG, k = IMG / Math.max(w, h);
-  const c = document.createElement('canvas'); c.width = c.height = IMG;
-  c.getContext('2d').drawImage(im, (IMG - w * k) / 2, (IMG - h * k) / 2, w * k, h * k); // contained, transparent around
+  const c = document.createElement('canvas'), x = c.getContext('2d'); c.width = c.height = IMG;
+  // A square tile like the photos: white behind and around the drawing.
+  x.fillStyle = WHITE; x.fillRect(0, 0, IMG, IMG);
+  x.drawImage(im, (IMG - w * k) / 2, (IMG - h * k) / 2, w * k, h * k);
   return c;
 }
 async function buildSvgImages() {
@@ -434,7 +450,8 @@ async function buildSvgImages() {
     if (S.svgColor === 'original') { out.push({ canvas: await rasterSvg(sv.text), url: null, png: true }); continue; }
     const pal = S.palette.map(h => onBg(h, S.paper)), src = [...sv.colors].sort((a, b) => lum(a) - lum(b));
     if (S.svgColor === 'palette') {
-      const map = Object.fromEntries(src.map(c => [c, onBg(slotColor(c), S.paper)]));
+      // The background rule swaps palette colours only: white inside a drawing (a logo's letters) stays white.
+      const map = Object.fromEntries(src.map(c => { const m = slotColor(c); return [c, m === WHITE ? m : onBg(m, S.paper)]; }));
       try { out.push({ canvas: await rasterSvg(recolor(sv.text, map)), url: null, png: true }); } catch { /* unreadable */ }
       continue;
     }
@@ -620,11 +637,9 @@ $('#img-seed').addEventListener('input', e => { imgSeed = Math.min(999999999, pa
 $('#img-clear').addEventListener('click', () => { if (!images.length) return; images = []; photos = []; svgs = []; imgVersion++; sync(); wake(); toast('Imágenes borradas'); });
 $('#svg-recolor').addEventListener('click', () => { svgSeed = Math.floor(Math.random() * 1e6); refreshImages(); });
 document.querySelectorAll('[data-svgc]').forEach(b => b.addEventListener('click', () => { S.svgColor = b.dataset.svgc; refreshImages(); }));
-let dragDepth = 0;
-stage.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; $('#drop').hidden = false; });
-stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#drop').hidden = true; } });
+// Files dropped on the table load too, with no overlay in the way of the shapes.
 stage.addEventListener('dragover', e => e.preventDefault());
-stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; addImages([...e.dataTransfer.files]); });
+stage.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer?.files?.length) addImages([...e.dataTransfer.files]); });
 // Ctrl+V: pasted images (a screenshot, an image copied from a page) or copied files, a .zip included.
 addEventListener('paste', e => {
   if (e.target.closest?.('textarea, input:not([type=range]):not([type=checkbox])')) return; // typing, not a slider
