@@ -226,7 +226,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
             <button class="btn icon" id="img-mix" title="Otra semilla: cada cubo toma otra foto" aria-label="Otra semilla de imágenes"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg></button>
           </div>
           <div class="btns" id="svg-row">
-            <div class="seg" style="flex:1" aria-label="Color de los SVG"><button data-svgc="palette">Colorear</button><button data-svgc="original">Original</button></div>
+            <div class="seg" style="flex:1" aria-label="Color de los SVG"><button data-svgc="palette">Paleta</button><button data-svgc="mix">Mezclar</button><button data-svgc="original">Original</button></div>
             <button class="btn" id="svg-recolor" style="flex:none" title="Otra combinación de colores para los SVG">Recolorear</button>
           </div>
           <input type="file" id="img-file" accept="image/*,.svg,image/svg+xml,.zip,application/zip" multiple hidden>
@@ -357,10 +357,11 @@ function lifeScale(c, now) {
 // Color "Imágenes": every cube is a photo, square-cropped, picked at random from the set for each cube (by its
 // drop number and the image seed, so it keeps its photo until the seed changes). There are none until some are
 // uploaded, loose or in a .zip read in the browser; every upload starts from a new seed.
-// SVGs come in coloured with the palette (Colorear): each SVG gives SVG_VARIANTS cubes' worth of versions, every
-// one with its colours swapped for palette colours (darkest stays darkest, as far as the palette goes), and
-// Recolorear deals the colours again. Original keeps the file's own colours.
-const IMG = 256, SVG_VARIANTS = 4;
+// The set starts as d1.zip (photos and SVGs of the brand). SVGs take the palette's colours, three ways:
+// Paleta: each colour follows the palette slot it was drawn with (the nearest of the default palette), so editing
+// the palette recolours them; light greys stay white, dark ones take the ink. Mezclar: SVG_VARIANTS versions per
+// file with the palette dealt at random (darkest stays darkest), Recolorear deals again. Original: as drawn.
+const IMG = 256, SVG_VARIANTS = 4, SLOTS = ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89'];
 let images = [], photos = [], svgs = [], imgSeed = 0, svgSeed = 1, imgVersion = 0;
 const imageOf = n => Math.floor(hashUnit(n * 7919 + imgSeed * 104729) * images.length);
 // Just enough of a zip reader for photo folders: central directory, stored or deflated entries.
@@ -396,6 +397,16 @@ function svgColors(doc) {
   }
   return [...seen];
 }
+const rgbOf = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+// Paleta: greys stay white (light) or take the ink (dark); a colour takes the palette colour in the slot of the
+// default palette colour nearest to it.
+function slotColor(c) {
+  const [r, g, b] = rgbOf(c);
+  if (Math.max(r, g, b) - Math.min(r, g, b) < 24) return lum(c) > 160 ? WHITE : S.ink;
+  let best = 0, bd = Infinity;
+  SLOTS.forEach((s2, i) => { const [r2, g2, b2] = rgbOf(s2), d = (r - r2) ** 2 + (g - g2) ** 2 + (b - b2) ** 2; if (d < bd) { bd = d; best = i; } });
+  return S.palette[best % S.palette.length];
+}
 const lum = h => { const n = parseInt(h.slice(1), 16); return .2126 * (n >> 16 & 255) + .7152 * (n >> 8 & 255) + .0722 * (n & 255); };
 // One recoloured copy: source colours from dark to light take palette colours from a shuffled, dark-to-light order.
 function recolor(text, map) {
@@ -422,6 +433,11 @@ async function buildSvgImages() {
   for (const [si, sv] of svgs.entries()) {
     if (S.svgColor === 'original') { out.push({ canvas: await rasterSvg(sv.text), url: null, png: true }); continue; }
     const pal = S.palette.map(h => onBg(h, S.paper)), src = [...sv.colors].sort((a, b) => lum(a) - lum(b));
+    if (S.svgColor === 'palette') {
+      const map = Object.fromEntries(src.map(c => [c, onBg(slotColor(c), S.paper)]));
+      try { out.push({ canvas: await rasterSvg(recolor(sv.text, map)), url: null, png: true }); } catch { /* unreadable */ }
+      continue;
+    }
     for (let v = 0; v < SVG_VARIANTS; v++) {
       let ri = 0; const base = svgSeed * 7919 + si * 131 + v * 17, r = () => hashUnit(base * 31 + ri++), order = [...pal].sort(() => r() - .5);
       const picked = src.map((_, i) => order[i % order.length]).sort((a, b) => lum(a) - lum(b)); // keep light and dark apart
@@ -431,9 +447,15 @@ async function buildSvgImages() {
   }
   return out;
 }
-let svgKey = '';
-async function refreshImages() { svgKey = JSON.stringify([S.palette, S.paper, S.svgColor, svgSeed]); images = [...photos, ...await buildSvgImages()]; imgVersion++; sync(); wake(); }
-async function addImages(files) {
+let svgKey = '', svgTimer = 0;
+const svgKeyNow = () => JSON.stringify([S.palette, S.paper, S.ink, S.svgColor, svgSeed]);
+let refreshN = 0;
+async function refreshImages() {
+  svgKey = svgKeyNow(); const n = ++refreshN, built = await buildSvgImages();
+  if (n !== refreshN) return; // a newer recolouring is on its way
+  images = [...photos, ...built]; imgVersion++; sync(); wake();
+}
+async function addImages(files, quiet) {
   const blobs = [];
   for (const f of files) {
     if (/\.zip$/i.test(f.name) || f.type.includes('zip')) { try { blobs.push(...await unzip(await f.arrayBuffer())); } catch { toast(`No se pudo abrir ${f.name}.`); } }
@@ -454,8 +476,9 @@ async function addImages(files) {
       bm.close?.(); photos.push({ canvas: c, url: null }); added++;
     } catch { /* not a readable image */ }
   }
-  if (!added) return toast('No encontré imágenes.');
+  if (!added) return quiet || toast('No encontré imágenes.');
   await refreshImages();
+  if (quiet) return;
   imgSeed = Math.floor(Math.random() * 1e6);
   S.colorMode = 'image'; sync(); wake();
   toast(`${added} ${added === 1 ? 'imagen cargada' : 'imágenes cargadas'} · ${photos.length + svgs.length} en total`);
@@ -639,8 +662,8 @@ function sync() {
   $('#sl-life').hidden = S.permanent;
   $('#sl-depthBlur').hidden = !S.depth;
   $('#img-box').hidden = S.colorMode !== 'image';
-  if (svgs.length && svgKey !== JSON.stringify([S.palette, S.paper, S.svgColor, svgSeed])) refreshImages(); // palette or background changed
-  $('#svg-row').hidden = !svgs.length; document.querySelectorAll('[data-svgc]').forEach(b => b.setAttribute('aria-pressed', b.dataset.svgc === S.svgColor));
+  if (svgs.length && svgKey !== svgKeyNow()) { clearTimeout(svgTimer); svgTimer = setTimeout(() => svgKey !== svgKeyNow() && refreshImages(), 120); } // palette, ink or background changed
+  $('#svg-row').hidden = !svgs.length; document.querySelectorAll('[data-svgc]').forEach(b => b.setAttribute('aria-pressed', b.dataset.svgc === S.svgColor)); $('#svg-recolor').hidden = S.svgColor !== 'mix';
   $('#img-hint').hidden = images.length > 0; $('#img-seed-row').hidden = !images.length; $('#img-clear').hidden = !images.length;
   const is = $('#img-seed'); if (document.activeElement !== is && is.value !== String(imgSeed)) is.value = imgSeed;
   const th = $('#thumbs');
@@ -1040,6 +1063,8 @@ $('#svg').addEventListener('click', () => download(`pixel-trail-${stamp()}.svg`,
 sync();
 setTool('draw');
 generate();
+// The starting set of images.
+fetch('d1.zip').then(r => r.ok ? r.blob() : null).then(b => b && addImages([new File([b], 'd1.zip', { type: 'application/zip' })], true)).catch(() => {});
 </script>
 </body>
 </html>
