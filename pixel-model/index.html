@@ -153,7 +153,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <div class="seg" data-key="ttFps" aria-label="Cuadros por segundo del video" data-for="boil float hover turn">
         <button data-v="12">12</button><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button>
       </div>
-      <button class="btn primary" id="video" data-for="boil float hover turn" title="MP4 en loop, recortado al modelo, con el fondo (MP4 no tiene transparencia)">Exportar video</button>
+      <button class="btn primary" id="video" data-for="boil float hover turn" title="MP4 4K en loop, recortado al modelo, con el fondo (MP4 no tiene transparencia)">Exportar video</button>
     </div>
   </main>
 
@@ -686,14 +686,15 @@ $('#video').addEventListener('click', async () => {
       if (S.anim === 'hover') sim = hoverSim();
     }
     const b = { x0: Math.max(0, x0 - pad), y0: Math.max(0, y0 - pad), x1: Math.min(AW, x1 + pad), y1: Math.min(AH, y1 + pad) };
-    // At most 1920 px on the long side, even dimensions (H.264).
-    const sc = Math.min(RES, 1920 / Math.max(b.x1 - b.x0, b.y1 - b.y0)), W = Math.round((b.x1 - b.x0) * sc / 2) * 2, H = Math.round((b.y1 - b.y0) * sc / 2) * 2;
+    // 4K: the crop drawn as large as fits 3840 × 2160 (or 2160 × 3840 when it stands up), every pixel redrawn at
+    // that size so it stays sharp; even dimensions (H.264).
+    const bw = b.x1 - b.x0, bh = b.y1 - b.y0, sc = Math.min(3840 / Math.max(bw, bh), 2160 / Math.min(bw, bh)), W = Math.round((b.x1 - b.x0) * sc / 2) * 2, H = Math.round((b.y1 - b.y0) * sc / 2) * 2;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d');
     // H.264 where the browser has it (plays everywhere); VP9 in MP4 otherwise.
     let config = null, kind = '';
-    for (const [codec, k2] of [['avc1.640033', 'avc'], ['avc1.4d0033', 'avc'], ['avc1.42003e', 'avc'], ['vp09.00.51.08', 'vp9'], ['vp09.00.10.08', 'vp9']]) {
-      const cfg = { codec, width: W, height: H, bitrate: Math.round(W * H * fps * .25), framerate: fps };
+    for (const [codec, k2] of [['avc1.640034', 'avc'], ['avc1.640033', 'avc'], ['avc1.4d0033', 'avc'], ['avc1.42003e', 'avc'], ['vp09.00.51.08', 'vp9'], ['vp09.00.10.08', 'vp9']]) {
+      const cfg = { codec, width: W, height: H, bitrate: Math.min(80e6, Math.round(W * H * fps * .15)), framerate: fps };
       if ((await VideoEncoder.isConfigSupported(cfg)).supported) { config = cfg; kind = k2; break; }
     }
     if (!config) throw new Error('codec');
