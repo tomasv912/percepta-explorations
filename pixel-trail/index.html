@@ -159,6 +159,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <button id="copy" title="Copiar filas (⌘C / Ctrl+C)" aria-label="Copiar filas" disabled><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="7.5" y="7.5" width="10" height="10" rx="1.5"/><path d="M14.5 4.5h-8a2 2 0 0 0-2 2v8"/></svg></button>
       <button id="paste" title="Pegar filas (⌘V / Ctrl+V)" aria-label="Pegar filas" disabled><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><rect x="5" y="5" width="12" height="13.5" rx="1.5"/><path d="M8.5 5V3.5h5V5"/><path d="M8.5 11h5M8.5 14h3"/></svg></button>
       <span class="tsep"></span>
+      <button id="front" title="Traer al frente (⌘])" aria-label="Traer al frente" disabled><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="9.5" width="9" height="9" rx="1" stroke-dasharray="2 2"/><rect x="9.5" y="3.5" width="9" height="9" rx="1" fill="currentColor"/></svg></button>
+      <button id="back" title="Llevar al fondo (⌘[)" aria-label="Llevar al fondo" disabled><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="9.5" width="9" height="9" rx="1" fill="currentColor"/><rect x="9.5" y="3.5" width="9" height="9" rx="1" stroke-dasharray="2 2"/></svg></button>
+      <span class="tsep"></span>
       <button id="undo" title="Deshacer (⌘Z / Ctrl+Z)" aria-label="Deshacer"><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 8H4V4"/><path d="M4.4 8A7 7 0 1 1 5 14.5"/></svg></button>
     </div>
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Rastro de cubos que deja el puntero"></canvas>
@@ -180,16 +183,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-vpCount"></div>
         <div id="sl-vpGap"></div>
         <div class="btns"><button class="btn" id="vp-all">Llevar al punto</button><button class="btn" id="vp-gen">Generar</button></div>
-      </section>
-
-      <section>
-        <h2>Trazo</h2>
-        <div id="sl-response"></div>
-        <div id="sl-gap"></div>
-        <div id="sl-maxGap"></div>
-        <div id="sl-scatter"></div>
-        <div id="sl-lineGap"></div>
-        <label class="check"><input type="checkbox" data-check="snap"> Ajustar a rejilla</label>
       </section>
 
       <section>
@@ -237,6 +230,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <div class="thumbs" id="thumbs"></div>
         </div>
         <p class="sub" id="pal-sub">Paleta</p>
+        <div class="seg" data-key="palCount" id="palcount" aria-label="Cantidad de colores"><button data-v="5">5 colores</button><button data-v="4">4</button><button data-v="3">3</button></div>
         <div class="palette" id="palette-row" aria-label="Paleta, en orden"></div>
         <div class="inks" id="inks" aria-label="Tinta"></div>
         <div class="row" id="ink-row" style="grid-template-columns:56px 1fr">
@@ -267,7 +261,7 @@ const DEFAULTS = {
   style: 'mono', size: 16, variation: .3, speedSize: 0,
   life: 2.5, permanent: true,
   colorMode: 'palette', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89'],
-  depth: false, depthBlur: 14, vp: true, vpDepth: false, vpCount: 16, vpGap: 0, parallel: false,
+  depth: false, depthBlur: 14, vp: false, vpDepth: false, vpCount: 16, vpGap: 0, parallel: false, palCount: '5',
   ink: '#272727', grain: .05, paper: '#F6F6F6', svgColor: 'palette', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -300,7 +294,9 @@ const BACKGROUNDS = [['#F6F6F6', 'Blanco'], ['#E4DEFC', 'Lila'], ['#A8A5EC', 'Vi
 // The background's colour is never used in the picture: those cubes turn white (white on white turns ink).
 const WHITE = '#F6F6F6', INK = '#14191F';
 const onBg = (c, bg) => c.toLowerCase() !== bg.toLowerCase() ? c : bg.toLowerCase() === WHITE.toLowerCase() ? INK : WHITE;
-function buildLut(st) { return { ink: shadesOf(onBg(st.ink, st.paper), st.grain), palette: st.palette.map(h => shadesOf(onBg(h, st.paper), 0)) }; }
+// Colores: the palette's first 5, 4 or 3 colours (the ones on the right drop out first).
+const activePal = st => st.palette.slice(0, +st.palCount || st.palette.length);
+function buildLut(st) { return { ink: shadesOf(onBg(st.ink, st.paper), st.grain), palette: activePal(st).map(h => shadesOf(onBg(h, st.paper), 0)) }; }
 // Palette mode cycles through the colors in drop order.
 const shadesFor = (c, st, lut) => st.colorMode === 'palette' ? lut.palette[c.n % lut.palette.length] : lut.ink;
 
@@ -421,7 +417,8 @@ const rgbOf = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, 
 // palette slot, so editing the palette recolours it. Anything else (other colours, greys, white) stays as drawn.
 function slotColor(c) {
   const [r, g, b] = rgbOf(c), i = SLOTS.findIndex(s2 => { const [r2, g2, b2] = rgbOf(s2); return Math.abs(r - r2) + Math.abs(g - g2) + Math.abs(b - b2) <= 6; });
-  return i < 0 ? c : S.palette[i % S.palette.length];
+  const ap = activePal(S);
+  return i < 0 ? c : ap[i % ap.length];
 }
 const lum = h => { const n = parseInt(h.slice(1), 16); return .2126 * (n >> 16 & 255) + .7152 * (n >> 8 & 255) + .0722 * (n & 255); };
 // One recoloured copy: source colours from dark to light take palette colours from a shuffled, dark-to-light order.
@@ -460,7 +457,7 @@ async function buildSvgImages() {
   for (const [si, sv] of svgs.entries()) {
     try {
       if (S.svgColor === 'original') { out.push(await svgImage(sv, null)); continue; }
-      const pal = S.palette.map(h => onBg(h, S.paper)), src = [...sv.colors].sort((a, b) => lum(a) - lum(b));
+      const pal = activePal(S).map(h => onBg(h, S.paper)), src = [...sv.colors].sort((a, b) => lum(a) - lum(b));
       if (S.svgColor === 'palette') { out.push(await svgImage(sv, Object.fromEntries(src.map(c => [c, slotColor(c)])))); continue; }
       for (let v = 0; v < SVG_VARIANTS; v++) {
         let ri = 0; const base = svgSeed * 7919 + si * 131 + v * 17, r = () => hashUnit(base * 31 + ri++), order = [...pal].sort(() => r() - .5);
@@ -515,7 +512,7 @@ function svgDef(text, id) {
   return { def: `<g id="${id}"${fill && fill !== 'none' ? ` fill="${fill}"` : ''}>${inner}</g>`, view };
 }
 let svgKey = '', svgTimer = 0;
-const svgKeyNow = () => JSON.stringify([S.palette, S.paper, S.ink, S.svgColor, svgSeed]);
+const svgKeyNow = () => JSON.stringify([S.palette, S.palCount, S.paper, S.ink, S.svgColor, svgSeed]);
 let refreshN = 0;
 async function refreshImages() {
   svgKey = svgKeyNow(); const n = ++refreshN, built = await buildSvgImages();
@@ -651,11 +648,6 @@ let lut = null, raf = 0, size = { w: 0, h: 0 };
 
 const pct = v => Math.round(v * 100) + '%';
 const SLIDERS = {
-  response: { label: 'Respuesta a la velocidad', min: 0, max: 1, step: .01, fmt: pct, emph: true },
-  gap: { label: 'Separación en lento', min: .05, max: 2, step: .05, fmt: v => '×' + v.toFixed(2) },
-  maxGap: { label: 'Separación máxima', min: 20, max: 600, step: 10, fmt: v => v + ' px' },
-  lineGap: { label: 'Separación en línea (Shift)', min: .5, max: 10, step: .05, fmt: v => '×' + v.toFixed(2) },
-  scatter: { label: 'Dispersión', min: 0, max: 1, step: .01, fmt: pct },
   size: { label: 'Tamaño', min: 2, max: 80, step: 1, fmt: v => v + ' px' },
   variation: { label: 'Variación', min: 0, max: 1, step: .01, fmt: pct },
   speedSize: { label: 'Tamaño según velocidad', min: -1, max: 1, step: .01, fmt: v => (v > 0 ? '+' : '') + Math.round(v * 100) + '%' },
@@ -745,9 +737,10 @@ function sync() {
   $('#sl-variation').hidden = $('#sl-speedSize').hidden = $('#sl-grain').hidden = S.style === 'mono';
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   const pal = S.colorMode === 'palette';
-  $('#palette-row').hidden = $('#pal-sub').hidden = !(pal || (S.colorMode === 'image' && svgs.length)); $('#ink-row').hidden = $('#inks').hidden = pal || S.colorMode === 'image';
+  $('#palette-row').hidden = $('#pal-sub').hidden = $('#palcount').hidden = !(pal || (S.colorMode === 'image' && svgs.length)); $('#ink-row').hidden = $('#inks').hidden = pal || S.colorMode === 'image';
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#bg').value = S.paper; $('#bg-chip').style.background = S.paper;
+  document.querySelectorAll('[data-pal]').forEach(inp => inp.parentElement.hidden = +inp.dataset.pal >= +S.palCount);
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal].toLowerCase(); if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
   lut = buildLut(S);
   updateSel();
@@ -884,7 +877,7 @@ function select(g) { sel = g == null ? new Set() : g instanceof Set ? g : new Se
 const only = () => sel.size === 1 ? [...sel][0] : null;
 function updateSel() {
   const el = $('#sel'), b = sel.size ? boxOf(sel) : null;
-  $('#copy').disabled = !sel.size; $('#paste').disabled = !clip;
+  $('#copy').disabled = $('#front').disabled = $('#back').disabled = !sel.size; $('#paste').disabled = !clip;
   if (!b) { el.hidden = $('#tip').hidden = true; sel = new Set(); return; }
   const k = frame.getBoundingClientRect().width / AW;
   el.hidden = false;
@@ -1025,6 +1018,21 @@ function pasteRows() {
   select(new Set(ids.values())); wake();
   return true;
 }
+// Traer al frente / Llevar al fondo: rows are drawn in order, so the selected ones move to the end or the start.
+function restack(front) {
+  if (!sel.size) return;
+  snapshot();
+  const mine = cubes.filter(c => sel.has(c.g)), rest = cubes.filter(c => !sel.has(c.g));
+  cubes = front ? [...rest, ...mine] : [...mine, ...rest];
+  updateSel(); wake();
+}
+$('#front').addEventListener('click', () => restack(true));
+$('#back').addEventListener('click', () => restack(false));
+addEventListener('keydown', e => {
+  if (!(e.metaKey || e.ctrlKey) || e.target.closest('input:not([type=range]):not([type=checkbox]), textarea')) return;
+  if (e.key === ']' || e.key === '}') { e.preventDefault(); restack(true); }
+  else if (e.key === '[' || e.key === '{') { e.preventDefault(); restack(false); }
+});
 $('#copy').addEventListener('click', copyRows);
 $('#paste').addEventListener('click', pasteRows);
 // The system shortcuts: copy writes a marker, so a later paste knows the rows are wanted (images still paste).
@@ -1180,7 +1188,7 @@ function syncGen() {
   updateSel(); wake();
 }
 function generate() {
-  S.vp = !S.parallel; S.depth = S.permanent = true; vpPos = [AW / 2, AH / 2]; sync();
+  S.depth = S.permanent = true; vpPos = [AW / 2, AH / 2]; sync(); // trails aim at the centre; Punto de fuga stays as set
   cubes = []; rowScale.clear(); genScale.clear(); select(null);
   gen = []; genTurn = Math.random() * Math.PI * 2;
   syncGen();
