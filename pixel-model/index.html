@@ -690,6 +690,8 @@ $('#video').addEventListener('click', async () => {
     const sc = Math.min(RES, 1920 / Math.max(b.x1 - b.x0, b.y1 - b.y0)), W = Math.round((b.x1 - b.x0) * sc / 2) * 2, H = Math.round((b.y1 - b.y0) * sc / 2) * 2;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d');
+    // Video white is pure white (#FFFFFF), so it sits flush on white pages and players; colours stay as chosen.
+    const vbg = S.bg.toLowerCase() === WHITE.toLowerCase() ? '#FFFFFF' : S.bg;
     // H.264 where the browser has it (plays everywhere); VP9 in MP4 otherwise.
     let config = null, kind = '';
     for (const [codec, k2] of [['avc1.640033', 'avc'], ['avc1.4d0033', 'avc'], ['avc1.42003e', 'avc'], ['vp09.00.51.08', 'vp9'], ['vp09.00.10.08', 'vp9']]) {
@@ -704,7 +706,7 @@ $('#video').addEventListener('click', async () => {
     for (let i = 0; i < N; i++) {
       if (failed) throw failed;
       const list = frameAt(i);
-      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = S.bg; ctx.fillRect(0, 0, W, H);
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = vbg; ctx.fillRect(0, 0, W, H);
       ctx.setTransform(sc, 0, 0, sc, 0, 0); draw(ctx, list, b.x0, b.y0);
       const f = new VideoFrame(c, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) });
       enc.encode(f, { keyFrame: i % (fps * 2) === 0 }); f.close();
