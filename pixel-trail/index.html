@@ -356,9 +356,8 @@ function lifeScale(c, now) {
 // Color "Imágenes": every cube is a photo, square-cropped, picked at random from the set for each cube (by its
 // drop number and the image seed, so it keeps its photo until the seed changes). There are none until some are
 // uploaded, loose or in a .zip read in the browser; every upload starts from a new seed.
-// The set starts as d1.zip (photos and SVGs of the brand). SVGs take the palette's colours, three ways:
-// Paleta: each colour follows the palette slot it was drawn with (the nearest of the default palette), so editing
-// the palette recolours them; light greys stay white, dark ones take the ink. Mezclar: SVG_VARIANTS versions per
+// The set starts as d1.zip (photos and SVGs of the brand). SVG colours, three ways: Paleta: as drawn, except the
+// default palette's colours, which follow their slot, so editing the palette recolours them. Mezclar: SVG_VARIANTS versions per
 // file with the palette dealt at random (darkest stays darkest), Recolorear deals again. Original: as drawn.
 const IMG = 256, SVG_VARIANTS = 4, SLOTS = ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89'];
 let images = [], photos = [], svgs = [], imgSeed = 0, svgSeed = 1, imgVersion = 0;
@@ -412,14 +411,11 @@ function svgColors(doc) {
   return [...seen];
 }
 const rgbOf = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
-// Paleta: greys stay white (light) or take the ink (dark); a colour takes the palette colour in the slot of the
-// default palette colour nearest to it.
+// Paleta: an SVG keeps the colours it was drawn with; a colour that is one of the default palette's follows that
+// palette slot, so editing the palette recolours it. Anything else (other colours, greys, white) stays as drawn.
 function slotColor(c) {
-  const [r, g, b] = rgbOf(c);
-  if (Math.max(r, g, b) - Math.min(r, g, b) < 24) return lum(c) > 160 ? WHITE : S.ink;
-  let best = 0, bd = Infinity;
-  SLOTS.forEach((s2, i) => { const [r2, g2, b2] = rgbOf(s2), d = (r - r2) ** 2 + (g - g2) ** 2 + (b - b2) ** 2; if (d < bd) { bd = d; best = i; } });
-  return S.palette[best % S.palette.length];
+  const [r, g, b] = rgbOf(c), i = SLOTS.findIndex(s2 => { const [r2, g2, b2] = rgbOf(s2); return Math.abs(r - r2) + Math.abs(g - g2) + Math.abs(b - b2) <= 6; });
+  return i < 0 ? c : S.palette[i % S.palette.length];
 }
 const lum = h => { const n = parseInt(h.slice(1), 16); return .2126 * (n >> 16 & 255) + .7152 * (n >> 8 & 255) + .0722 * (n & 255); };
 // One recoloured copy: source colours from dark to light take palette colours from a shuffled, dark-to-light order.
@@ -450,8 +446,7 @@ async function buildSvgImages() {
     if (S.svgColor === 'original') { out.push({ canvas: await rasterSvg(sv.text), url: null, png: true }); continue; }
     const pal = S.palette.map(h => onBg(h, S.paper)), src = [...sv.colors].sort((a, b) => lum(a) - lum(b));
     if (S.svgColor === 'palette') {
-      // The background rule swaps palette colours only: white inside a drawing (a logo's letters) stays white.
-      const map = Object.fromEntries(src.map(c => { const m = slotColor(c); return [c, m === WHITE ? m : onBg(m, S.paper)]; }));
+      const map = Object.fromEntries(src.map(c => [c, slotColor(c)]));
       try { out.push({ canvas: await rasterSvg(recolor(sv.text, map)), url: null, png: true }); } catch { /* unreadable */ }
       continue;
     }
