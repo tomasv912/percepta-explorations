@@ -1,16 +1,15 @@
 // Shared top bar. Each exploration lives in its own folder with an index.html;
 // add it to the list below and it shows up on every page (and on Home, as D1). Retired tools go under
-// Descartes. The Percepta mark links to Home.
+// Descartes (not listed on Home); general tools (GENERAL) are on Home only. The Percepta mark links to Home.
 (() => {
   const EXPLORATIONS = [
     { name: 'Pixel Waves', path: '' },
     { name: 'Pixel Trail', path: 'pixel-trail/' },
-    { name: 'Photo Preset', path: 'photo-preset/' },
-    { name: 'Pixel Rise', path: 'pixel-rise/' },
-    { name: 'Cluster', path: 'cluster/' },
     { name: 'Pixel Model', path: 'pixel-model/' },
     {
       name: 'Descartes', path: 'descartes/', children: [
+        { name: 'Pixel Rise', path: 'pixel-rise/' },
+        { name: 'Cluster', path: 'cluster/' },
         { name: 'Cube Dispersion', path: 'cube-dispersion/' },
         { name: 'Dispersion v2', path: 'dispersion-v2/' },
         { name: 'Text Dissolve', path: 'text-dissolve/' },
@@ -18,6 +17,8 @@
       ],
     },
   ];
+  // Tools that belong to no direction: only on Home, not in the bar.
+  const GENERAL = [{ name: 'Photo Preset', path: 'photo-preset/' }];
 
   const script = document.currentScript;
   const root = new URL('./', script.src);
@@ -57,7 +58,7 @@
   }).join('');
   nav.innerHTML = `<a class="tb-brand" href="${link('home/')}"${isHere('home/') ? ' aria-current="page"' : ''}>Percepta</a><div class="tb-tabs">${links}${crumb}</div>`;
   script.replaceWith(nav);
-  window.PERCEPTA_EXPLORATIONS = EXPLORATIONS;
+  window.PERCEPTA_EXPLORATIONS = EXPLORATIONS; window.PERCEPTA_GENERAL = GENERAL;
 
   // Every section of a tool's side panel folds: its title opens and closes it, and the page remembers
   // which ones were closed. Closing only hides the section's contents, so the tool's own markup and
