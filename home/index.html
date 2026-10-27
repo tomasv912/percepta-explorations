@@ -39,7 +39,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
 main { flex: 1; min-height: 0; overflow-y: auto; padding: 40px 32px 64px; }
 .wrap { max-width: 1120px; margin: 0 auto; }
 h1 { margin: 0 0 28px; font-size: 20px; font-weight: 600; }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; align-items: start; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
 .card { display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: var(--surface); color: inherit; text-decoration: none; box-shadow: 0 0 0 1px var(--line); }
 a.card { transition: box-shadow .15s ease-out, transform .15s ease-out; }
 a.card:hover { box-shadow: 0 0 0 1px var(--text-3), 0 6px 20px rgb(0 0 0 / .06); transform: translateY(-1px); }
@@ -71,11 +71,6 @@ a.card:focus-visible, .apps a:focus-visible { outline: 2px solid var(--accent); 
         <div class="body"><h2>Exploraciones</h2><p>Las herramientas de la barra de arriba.</p></div>
         <ul class="apps" id="apps"></ul>
       </section>
-      <section class="card" aria-labelledby="gen">
-        <div class="head"><b id="gen">General</b><span>en este sitio</span></div>
-        <div class="body"><h2>Herramientas</h2><p>Para cualquier dirección.</p></div>
-        <ul class="apps" id="general"></ul>
-      </section>
       <!-- D2 and D3 are claude.ai artifacts: the links open their current version, so edits made to them
            elsewhere show up here without touching this page. -->
       <a class="card" href="https://claude.ai/artifact/LFni9jikP5hasdNXCUrwyo?sk=7dDiYbwSpabb6NTYHylLQw#gradients" target="_blank" rel="noopener">
@@ -86,6 +81,11 @@ a.card:focus-visible, .apps a:focus-visible { outline: 2px solid var(--accent); 
         <div class="head"><b>D3</b><span>artifact ↗</span></div>
         <div class="body"><h2>D3</h2><p>Formas e imágenes hechas de círculos por densidad, con pincel, goma, dedo y gota.</p><span class="open">Abrir la versión actual</span></div>
       </a>
+      <section class="card" aria-labelledby="gen">
+        <div class="head"><b id="gen">General</b><span>en este sitio</span></div>
+        <div class="body"><h2>Herramientas</h2><p>Para cualquier dirección.</p></div>
+        <ul class="apps" id="general"></ul>
+      </section>
     </div>
   </div>
 </main>
