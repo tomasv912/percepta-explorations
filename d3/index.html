@@ -211,6 +211,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <label class="check"><input type="checkbox" data-check="am"> Amplitud modulada</label>
         <div id="sl-dmin"></div>
         <div id="sl-dmax"></div>
+        <label class="check"><input type="checkbox" data-check="join"> Unir</label>
+        <div id="sl-joinR"></div>
       </section>
 
       <section>
@@ -261,7 +263,7 @@ const DEFAULTS = {
   source: 'shape', seed: 1,
   bulbs: 3, waist: .5, fold: .55, droop: .45, twist: .3, yaw: 0, tilt: 18, shade: 0, light: 135,
   invert: false, contrast: 1.2, threshold: .15,
-  count: 29000, size: 4.5, hide: true, grid: true, pitch: 6, am: true, dmin: .5, dmax: 5, fadeT: false, fadeB: false, fadeD: .5,
+  count: 29000, size: 4.5, hide: true, grid: true, pitch: 6, am: true, dmin: .5, dmax: 5, join: false, joinR: .4, fadeT: false, fadeB: false, fadeD: .5,
   fadeTA: null, fadeTB: null, fadeBA: null, fadeBB: null, // gradient nodes (content units): A dispersed, B solid
   palette: 'off', p0: '#ffef99', p1: '#ccefec', p2: '#ffb2cf', p3: '#d9b7f6',
   fillColor: '#f4f1ea',
@@ -772,9 +774,23 @@ function colorsOf(it) {
 
 // ---------- Drawing ----------
 // Filled dots, one by one in order when the palette mixes colours (near dots drawn last), else one path.
-function draw(ctx, it) {
+// k: device pixels per artboard unit, for Unir's field (computed at up to 3 px per unit).
+function draw(ctx, it, k = 1) {
   const R = radii(it), cols = colorsOf(it), pal = PAL();
   ctx.fillStyle = S.fillColor;
+  if (S.join) {
+    const kk = Math.min(3, k), w = Math.ceil(AW * kk), h = Math.ceil(AH * kk), c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const cx = c.getContext('2d'), img = cx.createImageData(w, h);
+    for (let g = 0; g < (cols ? 4 : 1); g++) {
+      const part = cols ? it.map((v, i) => cols[i >> 1] === g ? v : NaN) : it, m = fieldMask(part, R, kk, 0, 0, w, h);
+      const n = parseInt((cols ? pal[g] : S.fillColor).slice(1), 16), d = img.data;
+      for (let o = 0; o < m.length; o++) if (m[o]) { d[o * 4] = n >> 16; d[o * 4 + 1] = n >> 8 & 255; d[o * 4 + 2] = n & 255; d[o * 4 + 3] = Math.max(d[o * 4 + 3], m[o]); }
+    }
+    cx.putImageData(img, 0, 0);
+    ctx.drawImage(c, 0, 0, AW, AH);
+    return;
+  }
   if (cols) {
     for (let i = 0; i < it.length; i += 2) {
       if (it[i] !== it[i]) continue;
@@ -801,10 +817,37 @@ function toSvg(it) {
   return out.join('\n');
 }
 
+// Unir: each dot spreads a soft field out to Alcance × its radius; where neighbours' fields add up past
+// the threshold they melt into one blob with rounded joints, like metaballs. Each dot's field is scaled
+// so that alone it's exactly its own circle. Returns 0..255 coverage for a w×h grid at k px per unit,
+// whose top-left corner sits at (ox, oy) in drawn units (pan included).
+const joinReach = () => 1.25 + S.joinR * 2.75;
+function fieldMask(it, R, k, ox, oy, w, h) {
+  const F = new Float32Array(w * h), reach = joinReach(), g0 = (1 - 1 / reach ** 2) ** 2;
+  let rs = 0, rn = 0;
+  for (let i = 0; i < it.length; i += 2) {
+    if (it[i] !== it[i]) continue;
+    const r = R[i >> 1], Ri = r * reach, Ri2 = Ri * Ri, cx = it[i] + panX, cy = it[i + 1] + panY;
+    rs += r; rn++;
+    const xa = Math.max(0, Math.floor((cx - Ri - ox) * k)), xb = Math.min(w - 1, Math.ceil((cx + Ri - ox) * k));
+    const ya = Math.max(0, Math.floor((cy - Ri - oy) * k)), yb = Math.min(h - 1, Math.ceil((cy + Ri - oy) * k));
+    for (let y = ya; y <= yb; y++) {
+      const dy = oy + (y + .5) / k - cy;
+      for (let x = xa; x <= xb; x++) {
+        const dx = ox + (x + .5) / k - cx, d2 = dx * dx + dy * dy;
+        if (d2 < Ri2) { const u = 1 - d2 / Ri2; F[y * w + x] += u * u / g0; }
+      }
+    }
+  }
+  // About one pixel of anti-aliasing at a typical dot's edge.
+  const m = new Uint8ClampedArray(w * h), sharp = k * (rn ? rs / rn : 1) * (reach * reach - 1) / 4;
+  for (let o = 0; o < F.length; o++) m[o] = ((F[o] - 1) * sharp + .5) * 255;
+  return m;
+}
 function unionPath(it, R, half = 0) {
   let rmin = Infinity, rmax = 0;
   for (const v of R) { if (v < rmin) rmin = v; if (v > rmax) rmax = v; }
-  const outer = rmax + half + 1, k = clamp(6 / Math.max(.5, rmin), 1.5, 5);
+  const outer = rmax * (S.join ? joinReach() : 1) + half + 1, k = clamp(6 / Math.max(.5, rmin), 1.5, 5);
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (let i = 0; i < it.length; i += 2) {
     const x = it[i] + panX, y = it[i + 1] + panY;
@@ -813,9 +856,10 @@ function unionPath(it, R, half = 0) {
   }
   if (x0 > x1) return '';
   x0 -= outer; y0 -= outer;
-  const w = Math.ceil((x1 + outer - x0) * k) + 2, h = Math.ceil((y1 + outer - y0) * k) + 2, m = new Uint8Array(w * h);
+  const w = Math.ceil((x1 + outer - x0) * k) + 2, h = Math.ceil((y1 + outer - y0) * k) + 2;
+  const m = S.join ? fieldMask(it, R, k, x0, y0, w, h) : new Uint8Array(w * h);
   // Coverage of each pixel centre, from its distance to the circle (or ring) edge.
-  for (let i = 0; i < it.length; i += 2) {
+  if (!S.join) for (let i = 0; i < it.length; i += 2) {
     if (it[i] !== it[i]) continue;
     const r = R[i >> 1], cx = (it[i] + panX - x0) * k, cy = (it[i + 1] + panY - y0) * k, Rk = (r + half) * k + 1;
     for (let y = Math.max(0, Math.floor(cy - Rk)); y <= Math.min(h - 1, Math.ceil(cy + Rk)); y++) for (let x = Math.max(0, Math.floor(cx - Rk)); x <= Math.min(w - 1, Math.ceil(cx + Rk)); x++) {
@@ -946,7 +990,7 @@ function render() {
   ctx.fillStyle = S.paper; ctx.fillRect(0, 0, AW, AH);
   ctx.shadowColor = 'transparent';
   ctx.save(); ctx.beginPath(); ctx.rect(0, 0, AW, AH); ctx.clip();
-  draw(ctx, it);
+  draw(ctx, it, dpr * t.k);
   ctx.restore();
   drawFadeNodes(ctx, t, dpr);
   $('#zoom-fit').textContent = Math.round(zoom * 100) + '%';
@@ -1090,6 +1134,7 @@ const SLIDERS = {
   size: { label: 'Diámetro', min: 1, max: 40, step: .5, fmt: v => v + ' px' },
   pitch: { label: 'Paso de la grilla', min: 2, max: 40, step: .5, fmt: v => v + ' px' },
   dmin: { label: 'Punto menor', min: .5, max: 40, step: .5, fmt: v => v + ' px' },
+  joinR: { label: 'Alcance', min: 0, max: 1, step: .01, fmt: pct },
   dmax: { label: 'Punto mayor', min: .5, max: 40, step: .5, fmt: v => v + ' px' },
   fadeD: { label: 'Dispersión', min: 0, max: 1, step: .01, fmt: pct },
 };
@@ -1173,6 +1218,7 @@ function sync() {
   $('#image-controls').hidden = shape;
   $('#sl-pitch').hidden = !S.grid;
   $('#sl-dmin').hidden = $('#sl-dmax').hidden = !S.am;
+  $('#sl-joinR').hidden = !S.join;
   $('#sl-fadeD').hidden = $('#fade-hint').hidden = !S.fadeT && !S.fadeB;
   $('#sl-size').hidden = S.am;
   paintSwatch($('[data-color=fillColor]').closest('.swatch'), S.fillColor, true);
@@ -1242,7 +1288,7 @@ $('#png').addEventListener('click', () => {
   const c = document.createElement('canvas'); c.width = AW * RES; c.height = AH * RES;
   const ctx = c.getContext('2d');
   ctx.setTransform(RES, 0, 0, RES, 0, 0);
-  draw(ctx, shownDots());
+  draw(ctx, shownDots(), RES);
   // Transparent, cropped to the pixels the dots cover.
   const { data } = ctx.getImageData(0, 0, c.width, c.height);
   let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
