@@ -259,7 +259,7 @@ const RES = 2;              // exports render at 2x
 const GRID = 480;           // luminance grid of the image, long side
 const DEFAULTS = {
   source: 'shape', seed: 1,
-  bulbs: 4, waist: .45, fold: .45, droop: .35, twist: .25, yaw: 0, tilt: 18, shade: 0, light: 135,
+  bulbs: 3, waist: .5, fold: .55, droop: .45, twist: .3, yaw: 0, tilt: 18, shade: 0, light: 135,
   invert: false, contrast: 1.2, threshold: .15,
   count: 29000, size: 4.5, hide: true, grid: true, pitch: 6, am: true, dmin: .5, dmax: 5, fadeT: false, fadeB: false, fadeD: .5,
   fadeTA: null, fadeTB: null, fadeBA: null, fadeBB: null, // gradient nodes (content units): A dispersed, B solid
@@ -369,53 +369,34 @@ function imageDots(st) {
 }
 
 // ---------- Shape ----------
-// An organic membrane: a stack of wide lobes around a meandering axis, pinched between them, each lobe
-// flattened, leaning and bulging to one side, its rim rippled, folded and drooping, twisted along the axis. Dots sit in even
-// rows over the surface, so in perspective they crowd where it folds or turns edge-on and thin out where
-// it faces the camera. Nothing is hidden: the far side shows through.
-const NT = 320, NA = 220; // mesh: rows along the stem × points around it
-const WIDTH = .5, PETALS = 1.3, CURVE = .35, PERSP = .35, ORDER = .85;
+// A murmuration: one long sheet of birds hanging in the air. It runs sideways, sweeping up and down in a
+// few long waves (Ondas), rolls over along its length (Torsión) and billows in slow folds (Pliegues);
+// it tapers to wisps at both ends and its width breathes (Ancho). The sheet is a very flat tube, so the
+// same machinery lays even rows of dots over it; in perspective they crowd where it folds or turns
+// edge-on, like the dark bands of a real flock. Soltura frays the rims and lets birds stray off it.
+const NT = 320, NA = 220; // mesh: rows along the sheet × points around its (flat) section
+const PERSP = .35, ORDER = .85;
 let orbiting = false; // while the shape is being turned, hidden surfaces use a coarser depth buffer
 function membraneMesh(st) {
-  const rand = rng(st.seed * 31 + 7), n3 = perlin3(rand), k = st.bulbs, bulbs = [];
-  // Each lobe is a wide, flattened, tilted dish that bulges to one side and sits off the axis, so the
-  // stack reads as folded sheets rather than a tube on a stem.
-  for (let i = 0; i < k; i++) {
-    const phi = rand() * Math.PI * 2, th = rand() * Math.PI, psi = rand() * Math.PI * 2;
-    bulbs.push({
-      t: (i + .5 + (rand() - .5) * .6) / k, r: WIDTH * (.7 + .6 * rand()), w: (.17 + .17 * rand()) / Math.sqrt(k),
-      ox: Math.cos(phi) * (.15 + .35 * rand()), oz: Math.sin(phi) * (.15 + .35 * rand()), // off-axis shift, × radius
-      bulge: .15 + .25 * rand(), phi,                       // one-sided swelling
-      flat: .1 + .25 * rand(), th,                           // elliptical section
-      tilt: (rand() - .5) * .7, psi,                       // the dish leans
-    });
-  }
-  const neck = WIDTH * (1 - st.waist) * .55, ripple = st.fold * .8;
-  const ft = 1.5 + PETALS * 2, P = new Float32Array((NT + 1) * NA * 3);
+  const rand = rng(st.seed * 31 + 7), n3 = perlin3(rand), P = new Float32Array((NT + 1) * NA * 3);
+  const ph = rand() * Math.PI * 2, ph2 = rand() * Math.PI * 2, wide = .3 + st.waist * .9, f = st.fold * .4;
   for (let i = 0; i <= NT; i++) {
-    const t = i / NT, tw = st.twist * Math.PI * 2 * t;
-    // Soft max of the lobes for the size, and their weights to blend shift, bulge, section and lean.
-    let sum = neck ** 4, W = 1e-6, ox = 0, oz = 0, bx = 0, bz = 0, fx = 0, fz = 0, lx = 0, lz = 0;
-    for (const b of bulbs) {
-      const g = Math.exp(-(((t - b.t) / b.w) ** 2)), rr = b.r * g;
-      sum += rr ** 4; W += g;
-      ox += b.ox * rr * g; oz += b.oz * rr * g;
-      bx += Math.cos(b.phi) * b.bulge * g; bz += Math.sin(b.phi) * b.bulge * g;
-      fx += Math.cos(2 * b.th) * b.flat * g; fz += Math.sin(2 * b.th) * b.flat * g;
-      lx += Math.cos(b.psi) * b.tilt * g; lz += Math.sin(b.psi) * b.tilt * g;
-    }
-    const e = sum ** .25;
-    const cx = CURVE * .6 * n3(t * 1.7, 11.3, .5) + ox / W, cz = CURVE * .6 * n3(t * 1.7, 47.1, .5) + oz / W;
-    bx /= W; bz /= W; fx /= W; fz /= W; lx /= W; lz /= W;
+    const t = i / NT, taper = Math.sin(Math.PI * t) ** .55;
+    const W = wide * taper * (.6 + .3 * (n3(t * 2.3, 3.1, .7) + 1)) + .01, th = .012 + W * .025;
+    // Centre line: long, sweeping waves up and down and in depth.
+    const cx = (t - .5) * 2.8;
+    const cy = .3 * Math.sin(Math.PI * st.bulbs * t + ph) + .25 * n3(t * 1.8, 5.5, 2.2);
+    const cz = .45 * Math.sin(Math.PI * st.bulbs * .5 * t + ph2) + .3 * n3(t * 1.6, 8.8, 4.4);
+    // The sheet rolls over along its length.
+    const phi = st.twist * Math.PI * 2 * t + 1.4 * n3(t * 1.2, 13.7, 6.6), cp = Math.cos(phi), sp = Math.sin(phi);
     for (let j = 0; j < NA; j++) {
-      const a = j / NA * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a), aa = a + tw, c = Math.cos(aa), sn = Math.sin(aa);
-      const shape = Math.exp(bx * c + bz * sn + fx * Math.cos(2 * aa) + fz * Math.sin(2 * aa)); // always round
-      const r = e * shape * Math.max(.05, 1 + ripple * 1.1 * n3(ca * PETALS, sa * PETALS, t * ft));
-      const fold = st.fold * e * .8 * n3(ca * PETALS + 19.7, sa * PETALS + 3.1, t * ft + 7.7), o = (i * NA + j) * 3;
-      const x = r * c, z = r * sn;
-      P[o] = cx + x;
-      P[o + 1] = (t - .5) * 2 + fold - st.droop * r * r / WIDTH * .6 + (lx * x + lz * z) * .6;
-      P[o + 2] = cz + z;
+      const a = j / NA * Math.PI * 2, X = W * Math.cos(a), Y = th * Math.sin(a) + f * .9 * X * X * n3(t * 2, 21.1, 1.1); // cupped across
+      let x = cx, y = cy + cp * X - sp * Y, z = cz + sp * X + cp * Y;
+      // Slow billowing folds: the whole sheet is pushed around by a smooth 3D field.
+      const dx = n3(x * 1.4 + 1.7, y * 1.4, z * 1.4), dy = n3(x * 1.4, y * 1.4 + 9.2, z * 1.4), dz = n3(x * 1.4, y * 1.4, z * 1.4 + 4.5);
+      x += f * .6 * dx; y += f * dy; z += f * dz;
+      const o = (i * NA + j) * 3;
+      P[o] = x; P[o + 1] = y; P[o + 2] = z;
     }
   }
   return P;
@@ -459,6 +440,19 @@ function shapeLattice(st) {
       at3.push(i, u < .5 ? j : (j + 1) % NA);
       pts.push(lerp(ring[o], ring[o2], u) + (rand() - .5) * js, lerp(ring[o + 1], ring[o2 + 1], u) + (rand() - .5) * js, lerp(ring[o + 2], ring[o2 + 2], u) + (rand() - .5) * js);
     }
+  }
+  // Soltura: near the rims and the ends some birds drop out and the rest stray off the sheet, more the
+  // nearer the edge; a few stray anywhere.
+  if (st.droop > 0) {
+    const P2 = [], A2 = [], g = () => (rand() + rand() + rand() - 1.5) * 1.15;
+    for (let q = 0; q < at3.length / 2; q++) {
+      const i = at3[q * 2], j = at3[q * 2 + 1], rim = Math.abs(Math.cos(j / NA * Math.PI * 2)), end = Math.abs(i / NT * 2 - 1);
+      const e = Math.max(clamp((rim - .7) / .3), clamp((end - .65) / .35)) ** 1.5;
+      if (rand() < st.droop * e * .85) continue;
+      const m = st.droop * h * (1.5 + 14 * e);
+      P2.push(pts[q * 3] + g() * m, pts[q * 3 + 1] + g() * m, pts[q * 3 + 2] + g() * m); A2.push(i, j);
+    }
+    return { P, pts: P2, at3: A2 };
   }
   return { P, pts, at3 };
 }
@@ -1084,10 +1078,10 @@ const pct = v => Math.round(v * 100) + '%';
 const SLIDERS = {
   contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
   threshold: { label: 'Umbral', min: 0, max: .99, step: .01, fmt: pct },
-  bulbs: { label: 'Bulbos', min: 1, max: 8, step: 1, fmt: String },
-  waist: { label: 'Cintura', min: 0, max: 1, step: .01, fmt: pct },
+  bulbs: { label: 'Ondas', min: 1, max: 8, step: 1, fmt: String },
+  waist: { label: 'Ancho', min: 0, max: 1, step: .01, fmt: pct },
   fold: { label: 'Pliegues', min: 0, max: 1, step: .01, fmt: pct },
-  droop: { label: 'Caída', min: -1, max: 1, step: .01, fmt: pct },
+  droop: { label: 'Soltura', min: 0, max: 1, step: .01, fmt: pct },
   twist: { label: 'Torsión', min: -1, max: 1, step: .01, fmt: pct },
   yaw: { label: 'Giro', min: 0, max: 360, step: 1, fmt: v => v + '°' },
   shade: { label: 'Sombras', min: 0, max: 1, step: .01, fmt: pct },
@@ -1132,7 +1126,7 @@ $('#negate').addEventListener('click', () => { for (const k of ['fillColor', 'pa
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('#reseed').addEventListener('click', reseed);
 // A new seed plus fresh values for every shape setting, within ranges that stay recognisable.
-const SHUFFLE = { bulbs: [2, 6], waist: [.35, .9], fold: [.15, .75], droop: [-.4, .7], twist: [-.6, .6], yaw: [0, 360], light: [0, 360] };
+const SHUFFLE = { bulbs: [1, 5], waist: [.25, .9], fold: [.25, .85], droop: [.15, .75], twist: [-.7, .7], yaw: [0, 360], light: [0, 360] };
 $('#shuffle').addEventListener('click', () => {
   for (const [k, [a, b]] of Object.entries(SHUFFLE)) S[k] = Math.round(lerp(a, b, Math.random()) / SLIDERS[k].step) * SLIDERS[k].step;
   reseed();
