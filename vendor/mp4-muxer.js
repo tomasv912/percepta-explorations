@@ -415,7 +415,46 @@ var Mp4Muxer = (() => {
     i16(65535)
     // Pre-defined
   ], [
-    VIDEO_CODEC_TO_CONFIGURATION_BOX[track.info.codec](track)
+    VIDEO_CODEC_TO_CONFIGURATION_BOX[track.info.codec](track),
+    track.info.decoderConfig.colorSpace ? colr(track) : null
+  ]);
+  var COLOR_PRIMARIES_MAP = {
+    "bt709": 1,
+    // ITU-R BT.709
+    "bt470bg": 5,
+    // ITU-R BT.470BG
+    "smpte170m": 6
+    // ITU-R BT.601 525 - SMPTE 170M
+  };
+  var TRANSFER_CHARACTERISTICS_MAP = {
+    "bt709": 1,
+    // ITU-R BT.709
+    "smpte170m": 6,
+    // SMPTE 170M
+    "iec61966-2-1": 13
+    // IEC 61966-2-1
+  };
+  var MATRIX_COEFFICIENTS_MAP = {
+    "rgb": 0,
+    // Identity
+    "bt709": 1,
+    // ITU-R BT.709
+    "bt470bg": 5,
+    // ITU-R BT.470BG
+    "smpte170m": 6
+    // SMPTE 170M
+  };
+  var colr = (track) => box("colr", [
+    ascii("nclx"),
+    // Colour type
+    u16(COLOR_PRIMARIES_MAP[track.info.decoderConfig.colorSpace.primaries]),
+    // Colour primaries
+    u16(TRANSFER_CHARACTERISTICS_MAP[track.info.decoderConfig.colorSpace.transfer]),
+    // Transfer characteristics
+    u16(MATRIX_COEFFICIENTS_MAP[track.info.decoderConfig.colorSpace.matrix]),
+    // Matrix coefficients
+    u8((track.info.decoderConfig.colorSpace.fullRange ? 1 : 0) << 7)
+    // Full range flag
   ]);
   var avcC = (track) => track.info.decoderConfig && box("avcC", [
     // For AVC, description is an AVCDecoderConfigurationRecord, so nothing else to do here
@@ -842,8 +881,8 @@ var Mp4Muxer = (() => {
       if (options.chunked !== void 0 && typeof options.chunked !== "boolean") {
         throw new TypeError("options.chunked, when provided, must be a boolean.");
       }
-      if (options.chunkSize !== void 0 && (!Number.isInteger(options.chunkSize) || options.chunkSize <= 0)) {
-        throw new TypeError("options.chunkSize, when provided, must be a positive integer.");
+      if (options.chunkSize !== void 0 && (!Number.isInteger(options.chunkSize) || options.chunkSize < 1024)) {
+        throw new TypeError("options.chunkSize, when provided, must be an integer and not smaller than 1024.");
       }
     }
   };
@@ -997,13 +1036,28 @@ var Mp4Muxer = (() => {
     __privateSet(this, _buffer, newBuffer);
     __privateSet(this, _bytes, newBytes);
   };
-  var _target2, _sections;
+  var DEFAULT_CHUNK_SIZE = 2 ** 24;
+  var MAX_CHUNKS_AT_ONCE = 2;
+  var _target2, _sections, _chunked, _chunkSize, _chunks, _writeDataIntoChunks, writeDataIntoChunks_fn, _insertSectionIntoChunk, insertSectionIntoChunk_fn, _createChunk, createChunk_fn, _flushChunks, flushChunks_fn;
   var StreamTargetWriter = class extends Writer {
     constructor(target) {
       super();
+      __privateAdd(this, _writeDataIntoChunks);
+      __privateAdd(this, _insertSectionIntoChunk);
+      __privateAdd(this, _createChunk);
+      __privateAdd(this, _flushChunks);
       __privateAdd(this, _target2, void 0);
       __privateAdd(this, _sections, []);
+      __privateAdd(this, _chunked, void 0);
+      __privateAdd(this, _chunkSize, void 0);
+      /**
+       * The data is divided up into fixed-size chunks, whose contents are first filled in RAM and then flushed out.
+       * A chunk is flushed if all of its contents have been written.
+       */
+      __privateAdd(this, _chunks, []);
       __privateSet(this, _target2, target);
+      __privateSet(this, _chunked, target.options?.chunked ?? false);
+      __privateSet(this, _chunkSize, target.options?.chunkSize ?? DEFAULT_CHUNK_SIZE);
     }
     write(data) {
       __privateGet(this, _sections).push({
@@ -1040,48 +1094,24 @@ var Mp4Muxer = (() => {
             chunk.data.set(section.data, section.start - chunk.start);
           }
         }
-        __privateGet(this, _target2).options.onData?.(chunk.data, chunk.start);
+        if (__privateGet(this, _chunked)) {
+          __privateMethod(this, _writeDataIntoChunks, writeDataIntoChunks_fn).call(this, chunk.data, chunk.start);
+          __privateMethod(this, _flushChunks, flushChunks_fn).call(this);
+        } else {
+          __privateGet(this, _target2).options.onData?.(chunk.data, chunk.start);
+        }
       }
       __privateGet(this, _sections).length = 0;
     }
     finalize() {
+      if (__privateGet(this, _chunked)) {
+        __privateMethod(this, _flushChunks, flushChunks_fn).call(this, true);
+      }
     }
   };
   _target2 = new WeakMap();
   _sections = new WeakMap();
-  var DEFAULT_CHUNK_SIZE = 2 ** 24;
-  var MAX_CHUNKS_AT_ONCE = 2;
-  var _target3, _chunkSize, _chunks, _writeDataIntoChunks, writeDataIntoChunks_fn, _insertSectionIntoChunk, insertSectionIntoChunk_fn, _createChunk, createChunk_fn, _flushChunks, flushChunks_fn;
-  var ChunkedStreamTargetWriter = class extends Writer {
-    constructor(target) {
-      super();
-      __privateAdd(this, _writeDataIntoChunks);
-      __privateAdd(this, _insertSectionIntoChunk);
-      __privateAdd(this, _createChunk);
-      __privateAdd(this, _flushChunks);
-      __privateAdd(this, _target3, void 0);
-      __privateAdd(this, _chunkSize, void 0);
-      /**
-       * The data is divided up into fixed-size chunks, whose contents are first filled in RAM and then flushed out.
-       * A chunk is flushed if all of its contents have been written.
-       */
-      __privateAdd(this, _chunks, []);
-      __privateSet(this, _target3, target);
-      __privateSet(this, _chunkSize, target.options?.chunkSize ?? DEFAULT_CHUNK_SIZE);
-      if (!Number.isInteger(__privateGet(this, _chunkSize)) || __privateGet(this, _chunkSize) < 2 ** 10) {
-        throw new Error("Invalid StreamTarget options: chunkSize must be an integer not smaller than 1024.");
-      }
-    }
-    write(data) {
-      __privateMethod(this, _writeDataIntoChunks, writeDataIntoChunks_fn).call(this, data, this.pos);
-      __privateMethod(this, _flushChunks, flushChunks_fn).call(this);
-      this.pos += data.byteLength;
-    }
-    finalize() {
-      __privateMethod(this, _flushChunks, flushChunks_fn).call(this, true);
-    }
-  };
-  _target3 = new WeakMap();
+  _chunked = new WeakMap();
   _chunkSize = new WeakMap();
   _chunks = new WeakMap();
   _writeDataIntoChunks = new WeakSet();
@@ -1153,7 +1183,7 @@ var Mp4Muxer = (() => {
       if (!chunk.shouldFlush && !force)
         continue;
       for (let section of chunk.written) {
-        __privateGet(this, _target3).options.onData?.(
+        __privateGet(this, _target2).options.onData?.(
           chunk.data.subarray(section.start, section.end),
           chunk.start + section.start
         );
@@ -1161,7 +1191,7 @@ var Mp4Muxer = (() => {
       __privateGet(this, _chunks).splice(i--, 1);
     }
   };
-  var FileSystemWritableFileStreamTargetWriter = class extends ChunkedStreamTargetWriter {
+  var FileSystemWritableFileStreamTargetWriter = class extends StreamTargetWriter {
     constructor(target) {
       super(new StreamTarget({
         onData: (data, position) => target.stream.write({
@@ -1169,6 +1199,7 @@ var Mp4Muxer = (() => {
           data,
           position
         }),
+        chunked: true,
         chunkSize: target.options?.chunkSize
       }));
     }
@@ -1221,7 +1252,7 @@ var Mp4Muxer = (() => {
       if (options.target instanceof ArrayBufferTarget) {
         __privateSet(this, _writer, new ArrayBufferTargetWriter(options.target));
       } else if (options.target instanceof StreamTarget) {
-        __privateSet(this, _writer, options.target.options?.chunked ? new ChunkedStreamTargetWriter(options.target) : new StreamTargetWriter(options.target));
+        __privateSet(this, _writer, new StreamTargetWriter(options.target));
       } else if (options.target instanceof FileSystemWritableFileStreamTarget) {
         __privateSet(this, _writer, new FileSystemWritableFileStreamTargetWriter(options.target));
       } else {
@@ -1506,6 +1537,9 @@ var Mp4Muxer = (() => {
     } else if (![false, "in-memory", "fragmented"].includes(options.fastStart)) {
       throw new TypeError(`'fastStart' option must be false, 'in-memory', 'fragmented' or an object.`);
     }
+    if (options.minFragmentDuration !== void 0 && (!Number.isFinite(options.minFragmentDuration) || options.minFragmentDuration < 0)) {
+      throw new TypeError(`'minFragmentDuration' must be a non-negative number.`);
+    }
   };
   _writeHeader = new WeakSet();
   writeHeader_fn = function() {
@@ -1716,7 +1750,8 @@ var Mp4Muxer = (() => {
       let currentChunkDuration = sample.presentationTimestamp - track.currentChunk.startTimestamp;
       if (__privateGet(this, _options).fastStart === "fragmented") {
         let mostImportantTrack = __privateGet(this, _videoTrack) ?? __privateGet(this, _audioTrack);
-        if (track === mostImportantTrack && sample.type === "key" && currentChunkDuration >= 1) {
+        const chunkDuration = __privateGet(this, _options).minFragmentDuration ?? 1;
+        if (track === mostImportantTrack && sample.type === "key" && currentChunkDuration >= chunkDuration) {
           beginNewChunk = true;
           __privateMethod(this, _finalizeFragment, finalizeFragment_fn).call(this);
         }
