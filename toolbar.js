@@ -91,4 +91,55 @@
     }
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fold); else fold();
+
+  // Every image a tool downloads (PNG, JPG, SVG) is cropped to its pixels: whatever around them holds nothing is
+  // cut away. Without a background that is what is transparent; with one, what is the background's colour (the
+  // colour of all four corners). Tools hand their file to a link and click it; the click is caught here, the file
+  // cropped and handed on. MP4s are cropped where they are made (Pixel Model).
+  const clickLink = HTMLAnchorElement.prototype.click;
+  // The box of what differs from the background, or null when there is nothing to cut.
+  function pixelBox(d, W, H, tol) {
+    const at = (x, y) => (y * W + x) * 4, cs = [at(0, 0), at(W - 1, 0), at(0, H - 1), at(W - 1, H - 1)];
+    const clear = cs.some(i => d[i + 3] < 255), ref = cs[0];
+    if (!clear && cs.some(i => Math.abs(d[i] - d[ref]) > tol || Math.abs(d[i + 1] - d[ref + 1]) > tol || Math.abs(d[i + 2] - d[ref + 2]) > tol)) return null;
+    const r = d[ref], g = d[ref + 1], b = d[ref + 2];
+    const ink = clear ? i => d[i + 3] > 0 : i => Math.abs(d[i] - r) > tol || Math.abs(d[i + 1] - g) > tol || Math.abs(d[i + 2] - b) > tol;
+    let x0 = W, y0 = H, x1 = -1, y1 = -1;
+    for (let y = 0; y < H; y++) for (let x = 0, i = y * W * 4; x < W; x++, i += 4) if (ink(i)) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; y1 = y; }
+    if (x1 < 0 || (x0 === 0 && y0 === 0 && x1 === W - 1 && y1 === H - 1)) return null;
+    return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  }
+  async function cropped(blob, name) {
+    const svg = /\.svg$/i.test(name), jpg = /\.jpe?g$/i.test(name), text = svg ? await blob.text() : '';
+    const url = URL.createObjectURL(svg ? new Blob([text], { type: 'image/svg+xml' }) : blob), img = new Image();
+    img.src = url;
+    try { await img.decode(); } finally { URL.revokeObjectURL(url); }
+    const W = img.naturalWidth, H = img.naturalHeight;
+    if (!W || !H) return null;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const ctx = c.getContext('2d', { willReadFrequently: true }); ctx.drawImage(img, 0, 0);
+    const b = pixelBox(ctx.getImageData(0, 0, W, H).data, W, H, jpg ? 10 : 0);
+    if (!b) return null;
+    if (svg) {
+      // Same drawing, a smaller window on it: width, height and viewBox cut to the box.
+      const tag = text.match(/<svg\b[^>]*>/)[0], num = k => parseFloat((tag.match(new RegExp(`\\s${k}="([^"]*)"`)) || [])[1]);
+      const vb = ((tag.match(/\sviewBox="([^"]*)"/) || [])[1] || `0 0 ${W} ${H}`).trim().split(/[\s,]+/).map(Number);
+      const sx = vb[2] / (num('width') || W), sy = vb[3] / (num('height') || H), r = v => Math.round(v * 100) / 100;
+      let t = tag.replace(/\s(width|height|viewBox)="[^"]*"/g, '');
+      t = t.replace(/^<svg/, `<svg width="${b.w}" height="${b.h}" viewBox="${r(vb[0] + b.x * sx)} ${r(vb[1] + b.y * sy)} ${r(b.w * sx)} ${r(b.h * sy)}"`);
+      return new Blob([text.replace(tag, t)], { type: 'image/svg+xml' });
+    }
+    const o = document.createElement('canvas'); o.width = b.w; o.height = b.h;
+    o.getContext('2d').drawImage(c, -b.x, -b.y);
+    return new Promise(res => o.toBlob(res, jpg ? 'image/jpeg' : 'image/png', .92));
+  }
+  HTMLAnchorElement.prototype.click = function () {
+    const name = this.download;
+    if (!name || this.dataset.cropped || !/^blob:/.test(this.href) || !/\.(png|jpe?g|svg)$/i.test(name)) return clickLink.call(this);
+    const file = fetch(this.href).then(r => r.blob());
+    file.then(b => cropped(b, name).catch(() => null).then(c => c || b)).then(out => {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(out); a.download = name; a.dataset.cropped = '1';
+      document.body.append(a); clickLink.call(a); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    }, () => clickLink.call(this));
+  };
 })();
