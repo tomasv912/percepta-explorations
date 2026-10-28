@@ -175,7 +175,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <div id="sl-blLength"></div>
           <div id="sl-blChannel"></div>
           <div id="sl-blStem"></div>
-          <div id="sl-blTravel"></div>
           <div id="sl-blFlowers"></div>
           <div id="sl-blSize"></div>
           <div id="sl-blFlorets"></div>
@@ -442,7 +441,9 @@ function generate(st) {
         })();
         // Then laid along the flow (its up turned to point downstream), so the ray it sits on is its stem and
         // the leaves stand across it. In Vertical the whole picture turns a quarter and the flower stands up.
-        const mesh = Flora3D.view(src, st.blYaw, st.blPitch, best.R * 1.55);
+        // Flowers that open upwards are tipped towards us a little, so their faces show and not just their profile.
+        const faceUp = ['rosa', 'clavel', 'petunia'].includes(st.blModel) ? 40 : 0;
+        const mesh = Flora3D.view(src, st.blYaw, st.blPitch + faceUp, best.R * 1.55);
         for (let k = 0; k < mesh.length; k += 3) { const x = mesh[k]; mesh[k] = -mesh[k + 1]; mesh[k + 1] = x; }
         // The ray runs into the base of the model as it is turned (the middle of its rearmost sliver).
         let mx = Infinity, sy = 0, c = 0;
@@ -450,7 +451,7 @@ function generate(st) {
         for (let k = 0; k < mesh.length; k += 18) for (let j = 0; j < 9; j += 3) if (mesh[k + j] < mx + best.R * .06) { sy += mesh[k + j + 1]; c++; }
         const A = [best.x + mx + best.R * .02, best.y + sy / c];
         // Over its first stretch the model fades in (a long one for a stalk, a short one for leaves).
-        const fade = best.R * (st.blModel === 'cala' || st.blModel === 'tulipan' ? .7 : .2);
+        const fade = best.R * (st.blModel === 'cala' ? .7 : .2);
         heads.push({ x: best.x, y: best.y, R: best.R, A, mesh, mx, fade, turns: .75 + st.blTravel * 1.75, ph: r() * Math.PI * 2 });
       }
     }
@@ -476,8 +477,10 @@ function generate(st) {
       // turning over as they go, so they cross and knot; the far edge and the start fade as in Olas.
       const xE = fEnd * AR, E = [xE, heads.reduce((t, h) => t + h.A[1], 0) / F * .5];
       const { layers, height, focal, zNear, zFar } = waveField(), zMid = (zNear + zFar) / 2, y0 = .9 / zMid * focal;
-      const c0 = 1 - st.blChannel, turns = .5 + st.blTravel * 1.5, ph0 = r() * 6.3, sc = 1.1 * Math.min(1.4, st.blLength);
-      const stemShare = .1 + .05 * F / 10, len = heads.map(h => Math.hypot(h.A[0] - E[0], h.A[1] - E[1]));
+      // The sheets flow into the point as Olas' do at their far end: over the whole run each sheet's height eases
+      // toward E's (sooner with more Encauce), never pinched, a thin wavy band left at the very end.
+      const ease = 3.2 - 2.6 * st.blChannel, ph0 = r() * 6.3, sc = 1.1 * Math.min(1.4, st.blLength);
+      const stemShare = .04 + .02 * F / 10, len = heads.map(h => Math.hypot(h.A[0] - E[0], h.A[1] - E[1]));
       for (let tries = 0; got < n && tries < n * 6; tries++) {
         const w = r() - .5;
         let x, y, d = .5;
@@ -486,8 +489,8 @@ function generate(st) {
           const keep = smooth(0, .12 + st.fade * .2, v) * (1 - smooth(1 - st.fade * .7, 1, v)) * smooth(0, .05 + st.fade * .12, u);
           if (r() > keep) continue;
           const z = zNear + v * (zFar - zNear), yw = ((.9 - height(L, u, v) - gauss(r) * st.thickness * .06) / z * focal - y0) * sc;
-          const c = smooth(c0, 1, u), tw = Math.cos(Math.PI * turns * c * c);
-          x = u * xE + (1 - c) * .04 * (v - .5); y = E[1] * c + yw * Math.pow(1 - c, 1.6) * tw + g() * .0025 * c; d = v;
+          const c = .97 * Math.pow(u, ease);
+          x = u * xE; y = E[1] * c + yw * (1 - c); d = v;
         } else {
           // A stem: a gentle S from the knot that meets the flower's base head-on, then straight on to its middle.
           const hi = Math.floor(r() * F), h = heads[hi], q = r() * 1.15, L = len[hi];
@@ -496,7 +499,7 @@ function generate(st) {
             x = m * m * m * E[0] + 3 * m * m * q * P1[0] + 3 * m * q * q * P2[0] + q * q * q * h.A[0];
             y = m * m * m * E[1] + 3 * m * m * q * P1[1] + 3 * m * q * q * P2[1] + q * q * q * h.A[1];
           } else { const t = (q - 1) / .15; x = h.A[0] + (h.x - h.A[0]) * t; y = h.A[1] + (h.y - h.A[1]) * t; }
-          const wid = .004 + .006 * Math.sin(Math.PI * Math.min(1, q)) ;
+          const wid = .002 + .004 * Math.sin(Math.PI * Math.min(1, q));
           y += wid * w * 2 * Math.cos(2 * Math.PI * 1.5 * q + ph0 + hi) + g() * .0015;
         }
         if (behind(x, y)) continue;
@@ -787,7 +790,6 @@ const SLIDERS = {
   blLength: { label: 'Largo de la ola', min: .4, max: 1.8, step: .01, fmt: v => '×' + v.toFixed(2), emph: true },
   blChannel: { label: 'Encauce', min: .1, max: .9, step: .01, fmt: pct },
   blStem: { label: 'Largo del tallo', min: 0, max: 1, step: .01, fmt: pct, emph: true },
-  blTravel: { label: 'Vueltas del nudo', min: 0, max: 1, step: .01, fmt: pct, emph: true },
   blFlowers: { label: 'Flores', min: 1, max: 10, step: 1, fmt: String, emph: true },
   blSize: { label: 'Tamaño de las flores', min: 0, max: 1.5, step: .01, fmt: pct, emph: true },
   blFlorets: { label: 'Florecillas por flor', min: 8, max: 80, step: 1, fmt: String },

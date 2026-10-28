@@ -243,7 +243,7 @@ function rng(seed) {
 // ---------- Model ----------
 // Built-in flowers and plants (flora3d.js; the seed gives a variant), a trefoil knot, or an uploaded file.
 // Positions are centred and scaled to fit a unit sphere.
-const PRESETS = [['hortensia', 'Hortensia'], ['florecilla', 'Florecilla'], ['tulipan', 'Tulipán'], ['cala', 'Cala'], ['margarita', 'Margarita'], ['suculenta', 'Suculenta']];
+const PRESETS = Flora3D.NAMES;
 let model = null, modelName = '', preset = 'hortensia', presetSeed = -1;
 function loadPreset() {
   const tris = new Float32Array(Flora3D.MODELS[preset](rng(S.seed * 7 + 3)));
