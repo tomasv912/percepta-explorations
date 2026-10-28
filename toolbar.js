@@ -82,6 +82,43 @@
 .pal-sets button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text); }
 .pal-sets button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 `;
+  // Backgrounds: white, black or any colour of the palette in use. A colour that is the background's is never used
+  // in the picture: on white it turns black, on black white, and on a palette colour whichever of the two stands
+  // out more from it (contrast ratio), unless flipped with the button beside the Fondo menu.
+  const WHITE = '#F6F6F6', INK = '#272727';
+  const lin = c => { const v = c / 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
+  const lum = h => { const n = parseInt(h.slice(1), 16); return .2126 * lin(n >> 16 & 255) + .7152 * lin(n >> 8 & 255) + .0722 * lin(n & 255); };
+  const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+  const same = (a, b) => a.toLowerCase() === b.toLowerCase();
+  window.PerceptaBg = {
+    WHITE, INK,
+    pick(bg, flip) { const best = contrast(WHITE, bg) >= contrast(INK, bg) ? WHITE : INK; return flip ? (best === WHITE ? INK : WHITE) : best; },
+    swap(c, bg, flip) { return !same(c, bg) ? c : same(bg, WHITE) ? INK : same(bg, INK) ? WHITE : this.pick(bg, flip); },
+    // Wires a Fondo menu (select + colour chip) and its flip button; update() redraws the options when the palette
+    // changes and shows the flip button only on a palette background, its chip the colour in use.
+    control(select, chip, flipBtn, palette, get, set, flip) {
+      let keyP = '';
+      select.addEventListener('change', e => set(e.target.value));
+      flipBtn.addEventListener('click', flip);
+      const update = flipped => {
+        const pal = palette(), k = pal.join();
+        if (k !== keyP) {
+          keyP = k;
+          select.innerHTML = [[WHITE, 'Blanco · ' + WHITE], [INK, 'Negro · ' + INK], ...pal.map(c => [c, c])].map(([h, n]) => `<option value="${h}">${n}</option>`).join('');
+          if (![WHITE, INK, ...pal].some(c => same(c, get()))) { set(WHITE); return; }
+        }
+        const bg = get(); select.value = [...select.options].find(o => same(o.value, bg))?.value ?? WHITE; chip.style.background = bg;
+        const onPal = !same(bg, WHITE) && !same(bg, INK);
+        flipBtn.hidden = !onPal;
+        if (onPal) { const c = this.pick(bg, flipped); flipBtn.querySelector('i').style.background = c; flipBtn.title = `Los píxeles del color del fondo van en ${same(c, WHITE) ? 'blanco' : 'negro'}: clic para cambiar`; }
+      };
+      return update;
+    },
+  };
+  style.textContent += `
+.bg-flip { gap: 4px; }
+.bg-flip i { width: 14px; height: 14px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .25); display: block; }
+`;
   window.palettePicker = (host, get, set) => {
     host.classList.add('pal-sets'); host.setAttribute('aria-label', 'Paletas');
     host.innerHTML = PALETTES.map((p, i) => `<button data-set="${i}" title="${p.name}" aria-label="Paleta ${p.name}">${p.colors.map(c => `<i style="background:${c}"></i>`).join('')}</button>`).join('');

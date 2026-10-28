@@ -133,9 +133,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <h2>Color</h2>
         <div id="palsets"></div>
         <div class="levels" id="levels" aria-label="Colores"></div>
-        <div class="row" style="grid-template-columns:56px 1fr">
+        <div class="row" style="grid-template-columns:56px 1fr auto">
           <span>Fondo</span>
-          <label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label>
+          <label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label><button class="btn icon bg-flip" id="bg-flip" hidden aria-label="Blanco o negro para el color del fondo"><i></i></button>
         </div>
         <label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label>
       </section>
@@ -155,7 +155,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 let COLORS = window.PERCEPTA_PALETTES[0].colors.slice();
 const BACKGROUNDS = window.PERCEPTA_BACKGROUNDS;
 const WHITE = '#F6F6F6', INK = '#272727';
-const onBg = (c, bg) => c.toLowerCase() !== bg.toLowerCase() ? c : bg.toLowerCase() === WHITE.toLowerCase() ? INK : WHITE;
+const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 const AW = 1600, AH = 1200, RES = 2, TRAIL_BANDS = 12;
 const DEFAULTS = {
   shape: 'cloud', arms: 12,
@@ -296,8 +296,7 @@ const renderLevels = () => { $('#levels').innerHTML = COLORS.map((c, i) => `<but
 renderLevels();
 const markPalette = palettePicker($('#palsets'), () => COLORS, colors => { COLORS = colors; S.on = colors.map(() => true); renderLevels(); sync(); });
 $('#levels').addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (!b) return; S.on[+b.dataset.i] = !S.on[+b.dataset.i]; sync(); });
-$('#bg').innerHTML = BACKGROUNDS.map(([h, n]) => `<option value="${h}">${n} · ${h}</option>`).join('');
-$('#bg').addEventListener('change', e => { S.bg = e.target.value; sync(); });
+const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => COLORS, () => S.bg, v => { S.bg = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
@@ -313,7 +312,7 @@ function sync() {
   }
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('#levels [data-i]').forEach(b => b.setAttribute('aria-pressed', S.on[+b.dataset.i])); markPalette();
-  $('#bg').value = S.bg; $('#bg-chip').style.background = S.bg;
+  updateBg(S.bgFlip);
   $('#sl-arms').hidden = S.shape === 'cloud' || S.shape === 'ring';
   $('#sl-arms label').textContent = { firework: 'Rayos', spiral: 'Brazos', wave: 'Ondas' }[S.shape] || 'Rayos';
   $('#out-arms').textContent = S.shape === 'spiral' ? Math.max(2, Math.round(S.arms / 3)) : S.shape === 'wave' ? (Math.max(1, S.arms / 6)).toFixed(1) : S.arms;

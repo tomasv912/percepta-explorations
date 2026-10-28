@@ -238,8 +238,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <span>Tinta</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="ink" aria-label="Tinta"></label>
         </div>
         <div id="sl-grain"></div>
-        <div class="row" style="grid-template-columns:56px 1fr">
-          <span>Fondo</span><label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label>
+        <div class="row" style="grid-template-columns:56px 1fr auto">
+          <span>Fondo</span><label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label><button class="btn icon bg-flip" id="bg-flip" hidden aria-label="Blanco o negro para el color del fondo"><i></i></button>
         </div>
         <label class="check"><input type="checkbox" data-check="bgExport"> Incluir fondo al exportar</label>
       </section>
@@ -294,7 +294,7 @@ function shadesOf(hex, grain) {
 const BACKGROUNDS = window.PERCEPTA_BACKGROUNDS;
 // The background's colour is never used in the picture: those cubes turn white (white on white turns ink).
 const WHITE = '#F6F6F6', INK = '#272727';
-const onBg = (c, bg) => c.toLowerCase() !== bg.toLowerCase() ? c : bg.toLowerCase() === WHITE.toLowerCase() ? INK : WHITE;
+const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 // Colores: the palette's first 5, 4 or 3 colours (the ones on the right drop out first).
 const activePal = st => st.palette.slice(0, Math.min(st.palette.length, +st.palCount || 5));
 function buildLut(st) { return { ink: shadesOf(onBg(st.ink, st.paper), st.grain), palette: activePal(st).map(h => shadesOf(onBg(h, st.paper), 0)) }; }
@@ -513,7 +513,7 @@ function svgDef(text, id) {
   return { def: `<g id="${id}"${fill && fill !== 'none' ? ` fill="${fill}"` : ''}>${inner}</g>`, view };
 }
 let svgKey = '', svgTimer = 0;
-const svgKeyNow = () => JSON.stringify([S.palette, S.palCount, S.paper, S.ink, S.svgColor, svgSeed]);
+const svgKeyNow = () => JSON.stringify([S.palette, S.palCount, S.paper, S.bgFlip, S.ink, S.svgColor, svgSeed]);
 let refreshN = 0;
 async function refreshImages() {
   svgKey = svgKeyNow(); const n = ++refreshN, built = await buildSvgImages();
@@ -674,8 +674,7 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
 document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
 
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
-$('#bg').innerHTML = BACKGROUNDS.map(([h, n]) => `<option value="${h}">${n} · ${h}</option>`).join('');
-$('#bg').addEventListener('change', e => { S.paper = e.target.value; sync(); });
+const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => S.palette, () => S.paper, v => { S.paper = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
 // Swatches of the palette (editable) and of the inks (the palette plus black and white), redrawn when a palette
 // of another length is chosen.
 function renderPalette() {
@@ -746,7 +745,7 @@ function sync() {
   const pal = S.colorMode === 'palette';
   $('#palette-row').hidden = $('#pal-sub').hidden = $('#palcount').hidden = !(pal || (S.colorMode === 'image' && svgs.length)); $('#ink-row').hidden = $('#inks').hidden = pal || S.colorMode === 'image';
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
-  $('#bg').value = S.paper; $('#bg-chip').style.background = S.paper;
+  updateBg(S.bgFlip);
   markPalette(); $('#palcount').querySelectorAll('[data-v]').forEach(b => b.hidden = +b.dataset.v > S.palette.length); $('#palcount').style.display = S.palette.length <= 3 ? 'none' : '';
   document.querySelectorAll('[data-pal]').forEach(inp => inp.parentElement.hidden = +inp.dataset.pal >= +S.palCount);
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal].toLowerCase(); if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
