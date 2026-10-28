@@ -213,6 +213,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div class="seg" data-key="colorMode" aria-label="Color de los cubos">
           <button data-v="ink">Tinta</button><button data-v="palette" title="Paleta alternada">Paleta</button><button data-v="image">Imágenes</button>
         </div>
+        <div id="palsets"></div>
         <div id="img-box">
           <div class="btns"><button class="btn" id="img-up">Subir fotos, SVGs o .zip</button><button class="btn" id="img-clear" style="flex:none">Borrar</button></div>
           <p class="hint" id="img-hint">Todavía no hay imágenes: subí fotos o SVGs sueltos o en un .zip, o pegalos con Ctrl+V.</p>
@@ -290,12 +291,12 @@ function shadesOf(hex, grain) {
   return { base };
 }
 // The palette is used exactly as given: no tone variation.
-const BACKGROUNDS = [['#F6F6F6', 'Blanco'], ['#E4DEFC', 'Lila'], ['#A8A5EC', 'Violeta'], ['#A0C2FF', 'Celeste'], ['#98DEDF', 'Agua'], ['#3DDB89', 'Verde']];
+const BACKGROUNDS = window.PERCEPTA_BACKGROUNDS;
 // The background's colour is never used in the picture: those cubes turn white (white on white turns ink).
-const WHITE = '#F6F6F6', INK = '#14191F';
+const WHITE = '#F6F6F6', INK = '#272727';
 const onBg = (c, bg) => c.toLowerCase() !== bg.toLowerCase() ? c : bg.toLowerCase() === WHITE.toLowerCase() ? INK : WHITE;
 // Colores: the palette's first 5, 4 or 3 colours (the ones on the right drop out first).
-const activePal = st => st.palette.slice(0, +st.palCount || st.palette.length);
+const activePal = st => st.palette.slice(0, Math.min(st.palette.length, +st.palCount || 5));
 function buildLut(st) { return { ink: shadesOf(onBg(st.ink, st.paper), st.grain), palette: activePal(st).map(h => shadesOf(onBg(h, st.paper), 0)) }; }
 // Palette mode cycles through the colors in drop order.
 const shadesFor = (c, st, lut) => st.colorMode === 'palette' ? lut.palette[c.n % lut.palette.length] : lut.ink;
@@ -671,13 +672,19 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
   S[seg.dataset.key] = b.dataset.v; sync();
 }));
 document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
-const INKS = ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89', '#272727', '#F6F6F6'];
-$('#inks').innerHTML = INKS.map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join('');
+
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
 $('#bg').innerHTML = BACKGROUNDS.map(([h, n]) => `<option value="${h}">${n} · ${h}</option>`).join('');
 $('#bg').addEventListener('change', e => { S.paper = e.target.value; sync(); });
-$('#palette-row').innerHTML = S.palette.map((_, i) => `<label title="Color ${i + 1}"><input type="color" data-pal="${i}" aria-label="Color ${i + 1}"></label>`).join('');
-document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('input', () => { S.palette[+inp.dataset.pal] = inp.value; sync(); }));
+// Swatches of the palette (editable) and of the inks (the palette plus black and white), redrawn when a palette
+// of another length is chosen.
+function renderPalette() {
+  $('#palette-row').innerHTML = S.palette.map((_, i) => `<label title="Color ${i + 1}"><input type="color" data-pal="${i}" aria-label="Color ${i + 1}"></label>`).join('');
+  document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('input', () => { S.palette[+inp.dataset.pal] = inp.value; sync(); }));
+  $('#inks').innerHTML = [...S.palette, INK, WHITE].map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join('');
+}
+renderPalette();
+const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.palette = colors; renderPalette(); sync(); });
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
 $('#img-up').addEventListener('click', () => $('#img-file').click());
 $('#img-file').addEventListener('change', e => { addImages([...e.target.files]); e.target.value = ''; });
@@ -740,6 +747,7 @@ function sync() {
   $('#palette-row').hidden = $('#pal-sub').hidden = $('#palcount').hidden = !(pal || (S.colorMode === 'image' && svgs.length)); $('#ink-row').hidden = $('#inks').hidden = pal || S.colorMode === 'image';
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#bg').value = S.paper; $('#bg-chip').style.background = S.paper;
+  markPalette(); $('#palcount').querySelectorAll('[data-v]').forEach(b => b.hidden = +b.dataset.v > S.palette.length); $('#palcount').style.display = S.palette.length <= 3 ? 'none' : '';
   document.querySelectorAll('[data-pal]').forEach(inp => inp.parentElement.hidden = +inp.dataset.pal >= +S.palCount);
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal].toLowerCase(); if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
   lut = buildLut(S);

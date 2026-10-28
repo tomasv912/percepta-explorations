@@ -220,6 +220,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div class="row" id="ink-row" style="grid-template-columns:56px 1fr">
           <span>Color</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="ink" aria-label="Color de los cubos"></label>
         </div>
+        <div id="palsets"></div>
         <div id="palette-box">
           <div class="palette" id="palette"></div>
           <button class="btn" id="shuffle">Restablecer paleta</button>
@@ -275,14 +276,14 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 const SIZES = { '3:2': [3000, 2000], '4:3': [3000, 2250], '1:1': [3000, 3000], '4:5': [2400, 3000], '16:9': [3200, 1800] };
 // Background: white or one of the palette colours. Cubes of the background's colour would vanish into it,
 // so they turn white instead (white cubes on white turn ink).
-const BACKGROUNDS = [['#F6F6F6', 'Blanco'], ['#E4DEFC', 'Lila'], ['#A8A5EC', 'Violeta'], ['#A0C2FF', 'Celeste'], ['#98DEDF', 'Agua'], ['#3DDB89', 'Verde']];
-const WHITE = '#F6F6F6', INK = '#14191F';
+const BACKGROUNDS = window.PERCEPTA_BACKGROUNDS;
+const WHITE = '#F6F6F6', INK = '#272727';
 const onBg = (c, bg) => c.toLowerCase() !== bg.toLowerCase() ? c : bg.toLowerCase() === WHITE.toLowerCase() ? INK : WHITE;
 const DEFAULTS = {
   seed: 1, aspect: '3:2', source: 'waves',
   layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5,
   rfChannels: 3, rfFocus: .42, rfChaos: .7, rfSpread: .6, rfAmp: .5, rfFreq: 1, rfOrder: .7, rfWaist: 0,
-  blModel: 'hortensia', blYaw: 0, blPitch: 0, blTravel: .5, blStem: .3, blLength: 1, blChannel: .45, blFlowers: 3, blSize: .5, blFlorets: 32, blShare: .5, orient: 'h',
+  blModel: 'hortensia', blYaw: 0, blPitch: 0, blTravel: .5, blStem: .3, blLength: 1, blChannel: .45, blFlowers: 1, blSize: .5, blFlorets: 32, blShare: .5, orient: 'h',
   contrast: 1.2, threshold: .1, invert: false, grid: false, gridCols: 140, rotX: 0, rotY: 0, rotZ: 0,
   style: 'mono', count: 45000, size: 3.5, mod: .6, variation: .35, grain: .12,
   colorMode: 'single', ink: '#272727', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89'],
@@ -351,7 +352,7 @@ function loadImage(el) {
 // Either way the result is fitted inside the frame, every cube included, so nothing is ever cut.
 function generate(st) {
   // Vertical: the frame turns on its side, and the composition (except an image) flows bottom to top.
-  const [W, H] = st.orient === 'v' ? [...SIZES[st.aspect]].reverse() : SIZES[st.aspect], r = rng(st.seed), mono = st.style === 'mono', image = st.source === 'image' && img;
+  const [W, H] = st.orient === 'v' ? [...SIZES[st.aspect]].reverse() : SIZES[st.aspect], r = rng(st.seed), rand = r, mono = st.style === 'mono', image = st.source === 'image' && img;
   const gridRows = image ? Math.max(1, Math.round(st.gridCols / img.ar)) : 0, grid = image && st.grid;
   const n = grid ? st.gridCols * gridRows : st.count;
   const px = new Float32Array(n), py = new Float32Array(n), size = new Float32Array(n), shade = new Uint8Array(n);
@@ -367,7 +368,7 @@ function generate(st) {
     got++;
   };
   // Olas' sheets: Capas height fields of a few long sine waves, seen in perspective (Hortensia uses them too).
-  const waveField = () => {
+  const waveField = (r = rand) => {
     const layers = Array.from({ length: st.layers }, (_, l) => ({
       waves: Array.from({ length: st.complexity }, (_, k) => ({
         f: st.freq * (k === 0 ? 1 : 1 + k * .7) * (.7 + r() * .6) * Math.PI * 2,
@@ -421,17 +422,22 @@ function generate(st) {
     // into the base of a flower head, modelled in 3D and stippled (flora3d.js), and on behind it to its middle:
     // what falls behind a head is hidden, and a stalk of the model fades in over the stem, so they are one.
     const bloom = st.source === 'bloom', fEnd = bloom ? .85 * st.blLength : 1, F = st.blFlowers, heads = [];
+    // Flor: Olas' picture, and at the end of some of its sheets (one per flower; more flowers than sheets share a
+    // sheet by depth bands) a flower, placed with its base on where that sheet's wave ends (pushed on by Largo del
+    // tallo).
+    let wv = null;
     if (bloom) {
-      const Rh = .08 + st.blSize * .3, travel = fEnd * AR * (.03 + st.blStem * .45), side = Math.ceil(Math.sqrt(F)), cw = Rh * 1.2 * side, ch = Rh * 2.1 * Math.ceil(F / side);
-      const x0 = fEnd * AR + travel + Rh;
+      // Drawn from the seed as Olas draws them, so with the same seed the waves are exactly Olas' waves.
+      const X0 = fEnd * AR, { layers, height, focal, zNear, zFar } = waveField(rng(st.seed)), zMid = (zNear + zFar) / 2, y0 = .9 / zMid * focal;
+      const raw = (L, u, v, n) => (.9 - height(L, u, v) - n) / (zNear + v * (zFar - zNear)) * focal;
+      const ys = []; for (let i = 0; i < 600; i++) ys.push(raw(layers[i % layers.length], r(), r(), 0)); ys.sort((a, b) => a - b);
+      // Olas' proportions: its sheets' height to their length as Olas fits them in the frame.
+      const sc = .68 * st.blLength / Math.max(.05, ys[588] - ys[12]), bands = Math.max(1, Math.ceil(F / layers.length));
+      wv = { X0, layers, bands, proj: (L, u, v, n) => (raw(L, u, v, n) - y0) * sc };
+      const Rh = .08 + st.blSize * .3, travel = X0 * st.blStem * .35;
       for (let i = 0; i < F; i++) {
-        let best = null;
-        for (let t = 0; t < 200; t++) {
-          const c = [x0 + r() * cw, (r() - .5) * ch - (F === 1 ? Rh * .6 : 0)], R = Rh * (.8 + r() * .4);
-          const gap = heads.reduce((m, h) => Math.min(m, Math.hypot(h.x - c[0], h.y - c[1]) - h.R - R), Infinity);
-          if (!best || gap > best.gap) best = { x: c[0], y: c[1], R, gap };
-          if (gap > -R * .2) break;
-        }
+        const L = layers[Math.floor(i / bands) % layers.length], E = [X0 + travel, wv.proj(L, 1, (i % bands + .5) / bands, 0)];
+        const best = { x: 0, y: 0, R: Rh * (.8 + r() * .4) };
         // The chosen flower (Pixel Model's models), turned by Giro / Inclinación. The hydrangea takes Florecillas
         // (they count the front half; the head is florets all round so it can turn).
         const src = st.blModel !== 'hortensia' ? Flora3D.MODELS[st.blModel](r, { trim: true }) : (() => {
@@ -449,8 +455,12 @@ function generate(st) {
         let mx = Infinity, sy = 0, c = 0;
         for (let k = 0; k < mesh.length; k += 18) for (let j = 0; j < 9; j += 3) mx = Math.min(mx, mesh[k + j]);
         for (let k = 0; k < mesh.length; k += 18) for (let j = 0; j < 9; j += 3) if (mesh[k + j] < mx + best.R * .06) { sy += mesh[k + j + 1]; c++; }
-        // Models that mark their base (where a stem would start) take the wave there; the rest at their back.
-        const A = mesh.base ? [best.x - mesh.base[1], best.y + mesh.base[0]] : [best.x + mx + best.R * .02, best.y + sy / c];
+        // The flower sits with its base (the point its model marks, else the middle of its back) on the wave's end;
+        // flowers that would overlap are moved apart across the flow.
+        const off = mesh.base ? [-mesh.base[1], mesh.base[0]] : [mx + best.R * .02, sy / c];
+        best.x = E[0] - off[0]; best.y = E[1] - off[1];
+        for (let t = 0; t < 40; t++) { const o = heads.find(h => Math.hypot(h.x - best.x, h.y - best.y) < h.R + best.R * .9); if (!o) break; const dir = best.y >= o.y ? 1 : -1; best.y += dir * best.R * .5; E[1] += dir * best.R * .5; }
+        const A = E;
         // Over its first stretch the model fades in (a long one for a stalk, a short one for leaves).
         const fade = best.R * .2;
         heads.push({ x: best.x, y: best.y, R: best.R, A, mesh, mx, fade, turns: .75 + st.blTravel * 1.75, ph: r() * Math.PI * 2 });
@@ -472,28 +482,23 @@ function generate(st) {
     if (bloom) {
       const behind = (x, y) => heads.some(h => {
         const b = h.buf, ix = Math.floor((x - h.x - b.box.x0) * b.k), iy = Math.floor((y - h.y - b.box.y0) * b.k);
-        return x - h.x > h.mx + h.fade * .8 && ix >= 0 && iy >= 0 && ix < b.W && iy < b.H && b.mask[iy * b.W + ix];
+        return x > h.A[0] - h.R * .05 && ix >= 0 && iy >= 0 && ix < b.W && iy < b.H && b.mask[iy * b.W + ix];
       });
-      // The body: Olas' sheets, and the stem is the sheets themselves. Past Encauce each sheet slice heads for its
-      // flower (by depth, one band per flower): its middle line bends to the flower's base, and its spread about that
-      // line (the wave as it is) turns over once, the two edges crossing, opens again into a lens and closes at the
-      // base. Nothing is pinched: the wave keeps its shape, only its width turns.
-      const X0 = fEnd * AR, { layers, height, focal, zNear, zFar } = waveField(), zMid = (zNear + zFar) / 2, y0 = .9 / zMid * focal;
-      const us = .15 + .6 * (1 - st.blChannel), sc = 1.1 * Math.min(1.4, st.blLength);
-      const bands = Math.max(1, Math.ceil(F / layers.length));
-      const proj = (L, u, v, n) => ((.9 - height(L, u, v) - n) / (zNear + v * (zFar - zNear)) * focal - y0) * sc;
+      // The body: Olas' sheets. A flower's sheet, past Encauce, bends its middle line to the flower's base while its
+      // spread about that line, the wave as it is, turns over once (the edges cross, open into a lens and close at the
+      // base); sheets with no flower stay as in Olas, fading out at their end.
+      const { X0, layers, bands, proj } = wv, us = .15 + .6 * (1 - st.blChannel);
       for (let tries = 0; got < n && tries < n * 6; tries++) {
-        const L = layers[Math.floor(r() * layers.length)], u = r(), v = r();
-        const keep = smooth(0, .12 + st.fade * .2, v) * (1 - smooth(1 - st.fade * .7, 1, v)) * smooth(0, .05 + st.fade * .12, u);
+        const L = layers[Math.floor(r() * layers.length)], u = r(), v = r(), li = layers.indexOf(L);
+        const slot = li * bands + Math.min(bands - 1, Math.floor(v * bands)), h = slot < F ? heads[slot] : null;
+        const keep = smooth(0, .12 + st.fade * .2, v) * (1 - smooth(1 - st.fade * .7, 1, v)) * smooth(0, .05 + st.fade * .12, u) * (h ? 1 : smooth(0, .05 + st.fade * .12, 1 - u));
         if (r() > keep) continue;
-        // Each flower takes slots (a sheet, or a depth band of one) in turn; a third slot or more of the same flower
-        // folds into its second as it converges, so a stem is never more than two strands.
-        const li = layers.indexOf(L), slot = li * bands + Math.min(bands - 1, Math.floor(v * bands)), fi = slot % F, rank = Math.floor(slot / F);
-        const h = heads[fi], c = smooth(us, 1, u);
-        const nz = gauss(r) * st.thickness * .06, L2 = rank >= 2 ? layers[Math.floor((fi + F) / bands) % layers.length] : L, k2 = L2 === L ? 0 : smooth(0, .5, c);
-        const yw = proj(L, u, v, nz) * (1 - k2) + proj(L2, u, v, nz) * k2, mid = proj(L, u, .5, 0) * (1 - k2) + proj(L2, u, .5, 0) * k2;
-        const env = Math.cos(Math.PI * c) * Math.pow(1 - c, .35);
-        const x = u * X0 + (h.A[0] - X0) * Math.pow(c, 1.3), y = mid + (h.A[1] - mid) * smooth(0, 1, c) + (yw - mid) * env, d = v;
+        const yw = proj(L, u, v, gauss(r) * st.thickness * .06), d = v;
+        let x = u * X0, y = yw;
+        if (h) {
+          const c = smooth(us, 1, u), mid = proj(L, u, .5, 0), env = Math.cos(Math.PI * c) * Math.pow(1 - c, .35);
+          x += (h.A[0] - X0) * Math.pow(c, 1.3); y = mid + (h.A[1] - mid) * smooth(0, 1, c) + (yw - mid) * env;
+        }
         if (behind(x, y)) continue;
         add(x, y, 1, 0, undefined, clamp(d));
       }
@@ -822,17 +827,21 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
 }));
 document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
-$('#palette').innerHTML = S.palette.map((_, i) => `<label title="Color ${i + 1}"><input type="color" data-pal="${i}" aria-label="Color ${i + 1}"></label>`).join('');
-document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('input', () => { S.palette[+inp.dataset.pal] = inp.value; sync(); }));
-// Un color: the five palette colours plus a black and a white, one click each; the picker below takes any other.
-const INKS = ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89', '#272727', '#F6F6F6'];
-$('#inks').innerHTML = INKS.map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join('');
+// The palette's colours (one swatch each, editable) and the Un color swatches (the palette plus black and white;
+// the picker below takes any other) are redrawn when a palette is chosen, since palettes differ in length.
+function renderPalette() {
+  $('#palette').innerHTML = S.palette.map((_, i) => `<label title="Color ${i + 1}"><input type="color" data-pal="${i}" aria-label="Color ${i + 1}"></label>`).join('');
+  document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('input', () => { S.palette[+inp.dataset.pal] = inp.value; sync(); }));
+  $('#inks').innerHTML = [...S.palette, INK, WHITE].map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join('');
+}
+renderPalette();
+const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.palette = colors; if (!colors.includes(S.ink) && S.ink !== INK && S.ink !== WHITE) S.ink = colors[colors.length - 1]; renderPalette(); sync(); });
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
 $('#blModel').innerHTML = Flora3D.NAMES.map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
 $('#blModel').addEventListener('change', e => { S.blModel = e.target.value; sync(); });
 $('#bg').innerHTML = BACKGROUNDS.map(([h, n]) => `<option value="${h}">${n} · ${h}</option>`).join('');
 $('#bg').addEventListener('change', e => { S.bg = e.target.value; sync(); });
-$('#shuffle').addEventListener('click', () => { S.palette = DEFAULTS.palette.slice(); sync(); });
+$('#shuffle').addEventListener('click', () => { S.palette = DEFAULTS.palette.slice(); renderPalette(); sync(); });
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('#reseed').addEventListener('click', reseed); $('#bl-reseed').addEventListener('click', reseed);
@@ -876,6 +885,7 @@ function sync() {
   $('#sl-gridCols').hidden = !S.grid; $('#sl-count').hidden = image && S.grid;
   $('.rt-bar [data-tool="rotate"]').hidden = !image; if (!image && tools.tool === 'rotate') tools.setTool('scatter');
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
+  markPalette();
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
   const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.contrast, S.threshold, S.invert,
     S.style, S.count, S.size, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);

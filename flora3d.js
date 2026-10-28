@@ -266,7 +266,7 @@
         blade(o, [0, -.04, .07], unit([0, -1, .35]), [1, 0, 0], unit([0, .35, 1]), .32, u => .07 * Math.sin(Math.PI * u) + .09 * Math.exp(-Math.pow((u - .25) / .12, 2)), (u, vv) => .12 * u * u - .05 * Math.abs(vv), 12, 8);
         tube(o, t => [0, .02 + t * .07, .02 + t * .1], () => .03, 6, 6); // the column
       };
-      if (opts.trim) { placed(out, one, [0, 0, 0], size); stalk(out, r, opts, 'oval', [0, -.12 * size, -.1]); }
+      if (opts.trim) { placed(out, one, [0, 0, 0], size); stalk(out, r, opts, 'oval', [0, -.04 * size, -.12]); } // the wave meets it behind its middle
       else {
         const n = 1 + Math.floor(r() * 3), nb = 1 + Math.floor(r() * 3), arc = t => [t * 1.6, 1.4 * Math.sin(t * 1.4), 0];
         tube(out, t => add3([0, -1.2, 0], arc(t * 1.15)), () => .025, 24, 6);

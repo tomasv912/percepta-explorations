@@ -199,6 +199,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div class="seg" data-key="colorMode" aria-label="Color">
           <button data-v="ink">Un color</button><button data-v="tone">Por tono</button><button data-v="random">Al azar</button>
         </div>
+        <div id="palsets"></div>
         <div class="levels" id="inks" aria-label="Color"></div>
         <div class="row" style="grid-template-columns:56px 1fr">
           <span>Fondo</span>
@@ -220,10 +221,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 // A 3D model drawn with overlapping square pixels: rendered with depth and a light with cast shadows
 // (stipple3d.js), then stippled — more pixels in the shade and on edges, where one part passes over another.
 // Drag the model to turn it.
-const COLORS = ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89'];
-const INKS = [...COLORS, '#272727', '#F6F6F6'];
-const BACKGROUNDS = [['#F6F6F6', 'Blanco'], ['#E4DEFC', 'Lila'], ['#A8A5EC', 'Violeta'], ['#A0C2FF', 'Celeste'], ['#98DEDF', 'Agua'], ['#3DDB89', 'Verde'], ['#14191F', 'Negro']];
-const WHITE = '#F6F6F6', INK = '#14191F';
+const BACKGROUNDS = window.PERCEPTA_BACKGROUNDS;
+const WHITE = '#F6F6F6', INK = '#272727';
 const onBg = (c, bg) => c.toLowerCase() !== bg.toLowerCase() ? c : bg.toLowerCase() === WHITE.toLowerCase() ? INK : WHITE;
 const AW = 1600, AH = 1200, RES = 2;
 const DEFAULTS = {
@@ -231,7 +230,7 @@ const DEFAULTS = {
   count: 40000, size: 3, contrast: 1.6, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false,
-  colorMode: 'ink', ink: '#272727', bg: '#F6F6F6', bgExport: false,
+  colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -304,8 +303,8 @@ function stipple(n, r, sc = scene) {
   return out;
 }
 function colorOf(p) {
-  const c = S.colorMode === 'tone' ? COLORS[clamp(Math.floor((1 - p.tone) * COLORS.length), 0, COLORS.length - 1)]
-    : S.colorMode === 'random' ? COLORS[Math.floor(p.pick * COLORS.length)] : S.ink;
+  const P = S.palette, c = S.colorMode === 'tone' ? P[clamp(Math.floor((1 - p.tone) * P.length), 0, P.length - 1)]
+    : S.colorMode === 'random' ? P[Math.floor(p.pick * P.length)] : S.ink;
   return onBg(c, S.bg);
 }
 // Pixels are drawn where they are now: home plus the animation's offset (p.dx, p.dy).
@@ -363,7 +362,9 @@ for (const [key, d] of Object.entries(SLIDERS)) {
 }
 $('#presets').innerHTML = PRESETS.map(([k, n]) => `<button data-p="${k}">${n}</button>`).join('');
 $('#presets').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (b) { preset = b.dataset.p; loadPreset(); key = ''; sync(); } });
-$('#inks').innerHTML = INKS.map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join('');
+const renderInks = () => { $('#inks').innerHTML = [...S.palette, INK, WHITE].map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join(''); };
+renderInks();
+const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.palette = colors; renderInks(); sync(); });
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
 $('#bg').innerHTML = BACKGROUNDS.map(([h, n]) => `<option value="${h}">${n} · ${h}</option>`).join('');
 $('#bg').addEventListener('change', e => { S.bg = e.target.value; sync(); });
@@ -387,7 +388,7 @@ function sync(fast) {
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
-  $('#inks').hidden = S.colorMode !== 'ink';
+  $('#inks').hidden = S.colorMode !== 'ink'; markPalette();
   document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn'))); });
   $('#turn').setAttribute('aria-pressed', S.turn);
   document.querySelectorAll('[data-p]').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === preset && !modelName.includes('.')));

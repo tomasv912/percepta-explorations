@@ -171,8 +171,8 @@ const SIZES = { '3:2': [1800, 1200], '4:3': [1800, 1350], '1:1': [1500, 1500], '
 const RES = 2; // raster and export at 2x
 // Background: white or a palette colour. The background's colour is never used in the picture: that ink turns
 // white (white on white turns ink).
-const BACKGROUNDS = [['#F6F6F6', 'Blanco'], ['#E4DEFC', 'Lila'], ['#A8A5EC', 'Violeta'], ['#A0C2FF', 'Celeste'], ['#98DEDF', 'Agua'], ['#3DDB89', 'Verde']];
-const WHITE = '#F6F6F6', INK = '#14191F';
+const BACKGROUNDS = window.PERCEPTA_BACKGROUNDS;
+const WHITE = '#F6F6F6', INK = '#272727';
 const onBg = (c, bg) => c.toLowerCase() !== bg.toLowerCase() ? c : bg.toLowerCase() === WHITE.toLowerCase() ? INK : WHITE;
 const inkOf = () => onBg(S.ink, S.paper);
 const DEFAULTS = {

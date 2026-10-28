@@ -60,6 +60,36 @@
   script.replaceWith(nav);
   window.PERCEPTA_EXPLORATIONS = EXPLORATIONS; window.PERCEPTA_GENERAL = GENERAL;
 
+  // Palettes every tool with colour offers. White and black stay as they are (#F6F6F6, #272727): they are the two
+  // backgrounds, and the ink; a palette only swaps the colours. palettePicker(host, get, set) fills host with one
+  // button per palette, pressed when get() matches, set(colors) on click; returns a function that re-marks it.
+  const PALETTES = [
+    { name: 'Percepta', colors: ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89'] },
+    { name: 'Lavanda', colors: ['#C9BEF9', '#A4E1EF', '#71A3FE'] },
+    { name: 'Lila', colors: ['#E4DEFC', '#A8A5EC', '#A0C2FF'] },
+    { name: 'Durazno', colors: ['#FCEEDE', '#ECABA5', '#BCA0FF'] },
+    { name: 'Atardecer', colors: ['#FFE89D', '#FFC778', '#FF885D'] },
+    { name: 'Coral', colors: ['#FCE2DE', '#ECB3A5', '#FF706B'] },
+    { name: 'Caramelo', colors: ['#FFE799', '#FCABD8', '#5EAFF2'] },
+    { name: 'Rosado', colors: ['#FCDEF6', '#D1A5EC', '#FFA0DB'] },
+  ];
+  window.PERCEPTA_PALETTES = PALETTES;
+  window.PERCEPTA_BACKGROUNDS = [['#F6F6F6', 'Blanco'], ['#272727', 'Negro']];
+  style.textContent += `
+.pal-sets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.pal-sets button { display: flex; height: 22px; padding: 0; border: 0; border-radius: 5px; overflow: hidden; cursor: pointer; box-shadow: 0 0 0 1px var(--line); background: none; }
+.pal-sets button i { flex: 1; }
+.pal-sets button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text); }
+.pal-sets button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+`;
+  window.palettePicker = (host, get, set) => {
+    host.classList.add('pal-sets'); host.setAttribute('aria-label', 'Paletas');
+    host.innerHTML = PALETTES.map((p, i) => `<button data-set="${i}" title="${p.name}" aria-label="Paleta ${p.name}">${p.colors.map(c => `<i style="background:${c}"></i>`).join('')}</button>`).join('');
+    host.addEventListener('click', e => { const b = e.target.closest('[data-set]'); if (b) set(PALETTES[+b.dataset.set].colors.slice()); });
+    const mark = () => { const cur = get().join().toLowerCase(); host.querySelectorAll('[data-set]').forEach(b => b.setAttribute('aria-pressed', PALETTES[+b.dataset.set].colors.join().toLowerCase() === cur)); };
+    mark(); return mark;
+  };
+
   // Every section of a tool's side panel folds: its title opens and closes it, and the page remembers
   // which ones were closed. Closing only hides the section's contents, so the tool's own markup and
   // scripts don't change.
