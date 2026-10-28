@@ -455,10 +455,9 @@ function generate(st) {
         let mx = Infinity, sy = 0, c = 0;
         for (let k = 0; k < mesh.length; k += 18) for (let j = 0; j < 9; j += 3) mx = Math.min(mx, mesh[k + j]);
         for (let k = 0; k < mesh.length; k += 18) for (let j = 0; j < 9; j += 3) if (mesh[k + j] < mx + best.R * .06) { sy += mesh[k + j + 1]; c++; }
-        // The flower sits with its base (the point its model marks, else the middle of its back) on the wave's end;
+        // The flower's middle sits on the wave's end, as if it grew out of it, and covers it (see behind());
         // flowers that would overlap are moved apart across the flow.
-        const off = mesh.base ? [-mesh.base[1], mesh.base[0]] : [mx + best.R * .02, sy / c];
-        best.x = E[0] - off[0]; best.y = E[1] - off[1];
+        best.x = E[0]; best.y = E[1];
         for (let t = 0; t < 40; t++) { const o = heads.find(h => Math.hypot(h.x - best.x, h.y - best.y) < h.R + best.R * .9); if (!o) break; const dir = best.y >= o.y ? 1 : -1; best.y += dir * best.R * .5; E[1] += dir * best.R * .5; }
         const A = E;
         // Over its first stretch the model fades in (a long one for a stalk, a short one for leaves).
@@ -474,15 +473,15 @@ function generate(st) {
       h.buf = buf;
       const pts = Stipple3D.sample(buf, e, Math.round(n * st.blShare / F), r, { gamma: 1.9, edge: .8, floor: .01, gain: 1.25 });
       for (let i = 0; i < pts.length && got < n; i += 3) {
-        if (r() > smooth(h.mx, h.mx + h.fade, pts[i])) continue;
         const ix = Math.min(buf.W - 1, Math.floor((pts[i] - box.x0) * buf.k)), iy = Math.min(buf.H - 1, Math.floor((pts[i + 1] - box.y0) * buf.k)), z = buf.depth[iy * buf.W + ix];
         add(h.x + pts[i], h.y + pts[i + 1], .85, 0, undefined, clamp(.5 - (z > -1e9 ? z : 0) / (R * 1.55) * .3)); // every flower carries all the colours
       }
     });
     if (bloom) {
+      // Wave points under a flower are left out: the flower is on top of everything and nothing mixes into it.
       const behind = (x, y) => heads.some(h => {
         const b = h.buf, ix = Math.floor((x - h.x - b.box.x0) * b.k), iy = Math.floor((y - h.y - b.box.y0) * b.k);
-        return x > h.A[0] - h.R * .05 && ix >= 0 && iy >= 0 && ix < b.W && iy < b.H && b.mask[iy * b.W + ix];
+        return ix >= 0 && iy >= 0 && ix < b.W && iy < b.H && b.mask[iy * b.W + ix];
       });
       // The body: Olas' sheets. A flower's sheet, past Encauce, bends its middle line to the flower's base while its
       // spread about that line, the wave as it is, turns over once (the edges cross, open into a lens and close at the
