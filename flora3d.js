@@ -86,6 +86,7 @@
       const q = F(...p), m = unit(cross(sub(F(...add3(p, mul(t1, e))), q), sub(F(...add3(p, mul(t2, e))), q)));
       out[i + j] = q[0]; out[i + j + 1] = q[1]; out[i + j + 2] = q[2]; out[i + 9 + j] = m[0]; out[i + 10 + j] = m[1]; out[i + 11 + j] = m[2];
     }
+    if (out.base) out.base = F(...out.base);
     return out;
   }
   const pick = (r, a, b) => a + r() * (b - a), warp = r => r() * r() * 1.3; // mostly a little, now and then a lot
@@ -135,9 +136,21 @@
       blade(out, [Math.cos(a) * .04, y, Math.sin(a) * .04], D, S, U, L * pick(r, .85, 1.15), u => Wd * Math.sin(Math.PI * Math.pow(u, .6)) * (1 - u * .7), (u, vv) => -.05 * u * u, 8, 4);
     }
   }
-  // A stem with a couple of leaves under a flower, unless trimmed (Pixel Waves, where the wave is the stem).
-  function stalk(out, r, opts, leaf = 'oval') {
-    if (opts.trim) return;
+  // A stem with a couple of leaves under a flower. Trimmed (Pixel Waves, where the wave is the stem): no stem, just
+  // a leaf on each side of the base, angled back, so they flank the wave as it arrives; the base is marked for it.
+  function stalk(out, r, opts, leaf = 'oval', base = [0, 0, 0]) {
+    out.base = base;
+    if (opts.trim) {
+      for (const az of [0, Math.PI]) {
+        if (leaf === 'grass') { const D = unit([Math.cos(az), -.5, 0]), S = unit([-D[1], D[0], 0]), L = pick(r, .5, .8), Wd = pick(r, .04, .07); blade(out, base, D, S, [0, 0, 1], L, u => Wd * Math.sin(Math.PI * Math.pow(u, .7)), (u, vv) => -.15 * L * u * u, 14, 4); }
+        else {
+          // Flat to the viewer (as the hydrangea's), angled back from the base.
+          const D = unit([Math.cos(az), pick(r, -.75, -.4), 0]), S = unit([-D[1], D[0], 0]), L = pick(r, .55, .85), Wd = pick(r, .16, .24);
+          blade(out, base, D, S, [0, 0, 1], L, u => Wd * Math.pow(Math.sin(Math.PI * Math.min(1, u * .95 + .05)), .8), (u, vv) => Wd * .25 * Math.abs(vv) - .1 * L * u * u, 12, 6);
+        }
+      }
+      return;
+    }
     const c = stem(out, r, pick(r, 1.3, 2.2), pick(r, .03, .045)), nl = 1 + Math.floor(r() * 3), az0 = r() * 6.3;
     for (let i = 0; i < nl; i++) {
       const p = c(pick(r, .3, .75)), az = az0 + i * Math.PI * 2 / nl + (r() - .5) * .8;
@@ -182,7 +195,7 @@
           half: u => W * Math.pow(Math.sin(Math.PI * Math.min(1, u * .8 + .12)), .55) });
       }
       sepals(out, r, 5, -.15, pick(r, .3, .45), .05, pick(r, .3, 1.2));
-      stalk(out, r, opts);
+      stalk(out, r, opts, 'oval', [0, -.15, 0]);
       return distort(out, r, warp(r));
     },
     // A carnation: many frilled petals in a ruffled ball from a slim calyx with five teeth.
@@ -196,7 +209,7 @@
           t0: .12 + 1.35 * open * Math.pow(t, 1.2), t1: .4 * t - .3 * (1 - t), cup: .3, ruffle: fr, freq: 16 + r() * 8, ph: r() * 6.3,
           half: u => W * Math.pow(Math.min(1, u * 1.3), .7) });
       }
-      stalk(out, r, opts, 'grass');
+      stalk(out, r, opts, 'grass', [0, -Lc, 0]);
       return distort(out, r, warp(r));
     },
     // Jasmine facing us: a small cluster of white stars, five (or six) flat petals at the mouth of a thin tube that
@@ -220,7 +233,8 @@
         else placed(out, o => flower(o, r() < .25 ? 6 : 5, pick(r, .26, .36)), it.pos, 1, it.yaw, it.tilt);
         tube(out, t => add3(base, mul(sub(add3(it.pos, [0, 0, -.3]), base), t)), () => .014, 6, 4);
       }
-      if (!opts.trim) { tube(out, t => [base[0], base[1] - t * 1.2, base[2]], () => .025, 10, 6); for (const sd of [-1, 1]) ovalLeaf(out, [0, base[1] - .3, base[2]], Math.PI / 2 + sd * 1.1, pick(r, .35, .5), pick(r, .1, .15)); }
+      if (!opts.trim) { tube(out, t => [base[0], base[1] - t * 1.2, base[2]], () => .025, 10, 6); for (const sd of [-1, 1]) ovalLeaf(out, [0, base[1] - .3, base[2]], Math.PI / 2 + sd * 1.1, pick(r, .35, .5), pick(r, .1, .15)); out.base = base; }
+      else stalk(out, r, opts, 'oval', base);
       return distort(out, r, warp(r));
     },
     // A petunia: a wide funnel flaring into five shallow lobes with a ruffled rim, on its sepals.
@@ -241,16 +255,18 @@
     orquidea: (r, opts = {}) => {
       const out = [], size = pick(r, .85, 1.15), broad = pick(r, .7, 1), cupd = pick(r, .02, .1);
       const one = o => {
-        const part = (ang, L, W, round, bend) => { const D = [Math.sin(ang), Math.cos(ang), 0], S = [Math.cos(ang), -Math.sin(ang), 0];
-          blade(o, mul(D, .03), D, S, [0, 0, 1], L, u => W * Math.pow(Math.sin(Math.PI * Math.min(1, u * .95 + .05)), round), (u, vv) => cupd * Math.abs(vv) + bend * u * u, 12, 8); };
-        part(0, .5, .13, .7, .04);                                   // dorsal sepal
-        for (const sd of [-1, 1]) part(sd * pick(r, 2.1, 2.4), .48, .12, .7, .03); // lateral sepals
-        for (const sd of [-1, 1]) part(sd * pick(r, 1.25, 1.6), .5, .26 * broad, .5, .06); // petals
+        // Layered in depth so no part passes through another: the sepals at the back bending away, the petals in
+        // front of them, the lip in front of all.
+        const part = (ang, L, W, round, bend, z) => { const D = [Math.sin(ang), Math.cos(ang), 0], S = [Math.cos(ang), -Math.sin(ang), 0];
+          blade(o, add3(mul(D, .03), [0, 0, z]), D, S, [0, 0, 1], L, u => W * Math.pow(Math.sin(Math.PI * Math.min(1, u * .95 + .05)), round), (u, vv) => cupd * vv * vv + bend * u * u, 12, 8); };
+        part(0, .5, .13, .7, -.05, -.05);                                   // dorsal sepal
+        for (const sd of [-1, 1]) part(sd * pick(r, 2.1, 2.4), .48, .12, .7, -.05, -.05); // lateral sepals
+        for (const sd of [-1, 1]) part(sd * pick(r, 1.25, 1.6), .5, .26 * broad, .5, .02, 0); // petals
         // The lip: a tongue down and forward, with two side lobes near the base.
-        blade(o, [0, -.04, .04], unit([0, -1, .35]), [1, 0, 0], unit([0, .35, 1]), .32, u => .07 * Math.sin(Math.PI * u) + .09 * Math.exp(-Math.pow((u - .25) / .12, 2)), (u, vv) => .12 * u * u - .05 * Math.abs(vv), 12, 8);
+        blade(o, [0, -.04, .07], unit([0, -1, .35]), [1, 0, 0], unit([0, .35, 1]), .32, u => .07 * Math.sin(Math.PI * u) + .09 * Math.exp(-Math.pow((u - .25) / .12, 2)), (u, vv) => .12 * u * u - .05 * Math.abs(vv), 12, 8);
         tube(o, t => [0, .02 + t * .07, .02 + t * .1], () => .03, 6, 6); // the column
       };
-      if (opts.trim) placed(out, one, [0, 0, 0], size);
+      if (opts.trim) { placed(out, one, [0, 0, 0], size); stalk(out, r, opts, 'oval', [0, -.12 * size, -.1]); }
       else {
         const n = 1 + Math.floor(r() * 3), nb = 1 + Math.floor(r() * 3), arc = t => [t * 1.6, 1.4 * Math.sin(t * 1.4), 0];
         tube(out, t => add3([0, -1.2, 0], arc(t * 1.15)), () => .025, 24, 6);
@@ -262,7 +278,7 @@
     },
     // A rolled spathe that opens towards the front and peaks at the back, a spadix in it, a stem and maybe leaves.
     // Openness runs from a furled bud to a wide, flared trumpet.
-    cala: r => {
+    cala: (r, opts = {}) => {
       const out = [], open = r(), H = pick(r, 1.05, 1.5), peak = pick(r, .3, .75), flare = pick(r, .08, .35), wide = pick(r, .3, .5);
       // The sheet wraps round from the back (th = -90°); the gap, widening upwards, faces us; the rim flares out
       // and the back rises to a point.
@@ -272,6 +288,7 @@
         return [Math.cos(th) * rad, u * H + peak * Math.pow(u, 3) * back * back - .2 * Math.pow(u, 3) * (1 - back), Math.sin(th) * rad];
       }, 24, 28);
       tube(out, t => [0, .05 + t * pick(r, .55, .9) * (.6 + .4 * H), -.02], t => .055 * (1 - .3 * t), 10, 8);
+      if (opts.trim) { stalk(out, r, opts, 'oval', [0, 0, 0]); return distort(out, r, warp(r)); }
       const c = stem(out, r, pick(r, 1.5, 2.6), pick(r, .042, .058));
       // Long, broad leaves rising from the foot of the stem.
       const nl = [0, 0, 1, 1, 2, 3][Math.floor(r() * 6)], foot = c(1);
@@ -321,6 +338,11 @@
     for (let i = 0; i < tris.length; i += 18) {
       for (let j = 0; j < 9; j += 3) turn((tris[i + j] - cx) * k, (tris[i + j + 1] - cy) * k, (tris[i + j + 2] - cz) * k, i + j);
       for (let j = 9; j < 18; j += 3) turn(tris[i + j], tris[i + j + 1], tris[i + j + 2], i + j);
+    }
+    // A model's base (where its stem would start: tris.base, y-up) comes along, turned the same way.
+    if (tris.base) {
+      const [x, yy, z] = [(tris.base[0] - cx) * k, (tris.base[1] - cy) * k, (tris.base[2] - cz) * k], x1 = x * c1 + z * s1, z1 = -x * s1 + z * c1;
+      out.base = [x1, -(yy * c2 - z1 * s2), yy * s2 + z1 * c2];
     }
     return out;
   }

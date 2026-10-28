@@ -140,7 +140,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section>
         <h2>Fuente</h2>
         <div class="seg" data-key="source" aria-label="Fuente">
-          <button data-v="waves">Olas</button><button data-v="refract">Refracción</button><button data-v="bloom">Hortensia</button><button data-v="image">Imagen</button>
+          <button data-v="waves">Olas</button><button data-v="refract">Refracción</button><button data-v="bloom">Flor</button><button data-v="image">Imagen</button>
         </div>
         <button class="btn" id="upload">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10.5V2.5M4.5 6 8 2.5 11.5 6"/><path d="M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2"/></svg>
@@ -416,7 +416,7 @@ function generate(st) {
     const norm = ws.reduce((t, w) => t + w.a, 0);
     const sheet = (s, w) => { let h = 0; for (const q of ws) h += q.a * Math.sin(q.f * (s * Math.cos(q.th) + w * Math.sin(q.th)) + q.ph); return h / norm; };
     const tight = (1 - st.rfOrder) * .02 + .002, g = () => clamp(gauss(r), -2.6, 2.6);
-    // Hortensia: Olas' sheets (Capas, Altura, Frecuencia…) that, from Encauce on, are channelled into one strand,
+    // Flor: Olas' sheets (Capas, Altura, Frecuencia…) that, from Encauce on, are channelled into one strand,
     // turning over themselves into a knot (Recorrido y nudo); from the knot one thin stem per flower runs out and
     // into the base of a flower head, modelled in 3D and stippled (flora3d.js), and on behind it to its middle:
     // what falls behind a head is hidden, and a stalk of the model fades in over the stem, so they are one.
@@ -449,9 +449,10 @@ function generate(st) {
         let mx = Infinity, sy = 0, c = 0;
         for (let k = 0; k < mesh.length; k += 18) for (let j = 0; j < 9; j += 3) mx = Math.min(mx, mesh[k + j]);
         for (let k = 0; k < mesh.length; k += 18) for (let j = 0; j < 9; j += 3) if (mesh[k + j] < mx + best.R * .06) { sy += mesh[k + j + 1]; c++; }
-        const A = [best.x + mx + best.R * .02, best.y + sy / c];
+        // Models that mark their base (where a stem would start) take the wave there; the rest at their back.
+        const A = mesh.base ? [best.x - mesh.base[1], best.y + mesh.base[0]] : [best.x + mx + best.R * .02, best.y + sy / c];
         // Over its first stretch the model fades in (a long one for a stalk, a short one for leaves).
-        const fade = best.R * (st.blModel === 'cala' ? .7 : .2);
+        const fade = best.R * .2;
         heads.push({ x: best.x, y: best.y, R: best.R, A, mesh, mx, fade, turns: .75 + st.blTravel * 1.75, ph: r() * Math.PI * 2 });
       }
     }
@@ -459,7 +460,7 @@ function generate(st) {
     // the flowers, falling on shadows and on the edges where one sepal passes over another.
     if (bloom) heads.forEach((h, hi) => {
       const R = h.R, mesh = h.mesh, box = { x0: -1.7 * R, y0: -1.7 * R, x1: 1.7 * R, y1: 1.7 * R };
-      const buf = Stipple3D.render(mesh, box, 640, [-.35, -.5, .8], { ambient: .3, shadowDim: .4 }), e = Stipple3D.edges(buf, R * .015);
+      const buf = Stipple3D.render(mesh, box, 640, [-.35, -.5, .8], { ambient: .3, shadowDim: .4 }), e = Stipple3D.edges(buf, R * .03);
       h.buf = buf;
       const pts = Stipple3D.sample(buf, e, Math.round(n * st.blShare / F), r, { gamma: 1.9, edge: .8, floor: .01, gain: 1.25 });
       for (let i = 0; i < pts.length && got < n; i += 3) {
@@ -479,13 +480,18 @@ function generate(st) {
       // base. Nothing is pinched: the wave keeps its shape, only its width turns.
       const X0 = fEnd * AR, { layers, height, focal, zNear, zFar } = waveField(), zMid = (zNear + zFar) / 2, y0 = .9 / zMid * focal;
       const us = .15 + .6 * (1 - st.blChannel), sc = 1.1 * Math.min(1.4, st.blLength);
+      const bands = Math.max(1, Math.ceil(F / layers.length));
       const proj = (L, u, v, n) => ((.9 - height(L, u, v) - n) / (zNear + v * (zFar - zNear)) * focal - y0) * sc;
       for (let tries = 0; got < n && tries < n * 6; tries++) {
         const L = layers[Math.floor(r() * layers.length)], u = r(), v = r();
         const keep = smooth(0, .12 + st.fade * .2, v) * (1 - smooth(1 - st.fade * .7, 1, v)) * smooth(0, .05 + st.fade * .12, u);
         if (r() > keep) continue;
-        const h = heads[Math.min(F - 1, Math.floor(v * F))], c = smooth(us, 1, u);
-        const yw = proj(L, u, v, gauss(r) * st.thickness * .06), mid = proj(L, u, .5, 0);
+        // Each flower takes slots (a sheet, or a depth band of one) in turn; a third slot or more of the same flower
+        // folds into its second as it converges, so a stem is never more than two strands.
+        const li = layers.indexOf(L), slot = li * bands + Math.min(bands - 1, Math.floor(v * bands)), fi = slot % F, rank = Math.floor(slot / F);
+        const h = heads[fi], c = smooth(us, 1, u);
+        const nz = gauss(r) * st.thickness * .06, L2 = rank >= 2 ? layers[Math.floor((fi + F) / bands) % layers.length] : L, k2 = L2 === L ? 0 : smooth(0, .5, c);
+        const yw = proj(L, u, v, nz) * (1 - k2) + proj(L2, u, v, nz) * k2, mid = proj(L, u, .5, 0) * (1 - k2) + proj(L2, u, .5, 0) * k2;
         const env = Math.cos(Math.PI * c) * Math.pow(1 - c, .35);
         const x = u * X0 + (h.A[0] - X0) * Math.pow(c, 1.3), y = mid + (h.A[1] - mid) * smooth(0, 1, c) + (yw - mid) * env, d = v;
         if (behind(x, y)) continue;
