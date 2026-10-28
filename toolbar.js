@@ -6,6 +6,7 @@
     { name: 'Pixel Waves', path: '' },
     { name: 'Pixel Trail', path: 'pixel-trail/' },
     { name: 'Pixel Model', path: 'pixel-model/' },
+    { name: 'Pixel Motion', path: 'pixel-motion/' },
     {
       name: 'Descartes', path: 'descartes/', children: [
         { name: 'Pixel Rise', path: 'pixel-rise/' },
@@ -60,18 +61,11 @@
   script.replaceWith(nav);
   window.PERCEPTA_EXPLORATIONS = EXPLORATIONS; window.PERCEPTA_GENERAL = GENERAL;
 
-  // Palettes every tool with colour offers. White and black stay as they are (#F6F6F6, #272727): they are the two
+  // The palette every tool with colour uses (more can be listed to offer a choice). White and black stay as they are (#F6F6F6, #272727): they are the two
   // backgrounds, and the ink; a palette only swaps the colours. palettePicker(host, get, set) fills host with one
   // button per palette, pressed when get() matches, set(colors) on click; returns a function that re-marks it.
   const PALETTES = [
-    { name: 'Percepta', colors: ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89'] },
-    { name: 'Lavanda', colors: ['#C9BEF9', '#A4E1EF', '#71A3FE'] },
-    { name: 'Lila', colors: ['#E4DEFC', '#A8A5EC', '#A0C2FF'] },
-    { name: 'Durazno', colors: ['#FCEEDE', '#ECABA5', '#BCA0FF'] },
-    { name: 'Atardecer', colors: ['#FFE89D', '#FFC778', '#FF885D'] },
-    { name: 'Coral', colors: ['#FCE2DE', '#ECB3A5', '#FF706B'] },
-    { name: 'Caramelo', colors: ['#FFE799', '#FCABD8', '#5EAFF2'] },
-    { name: 'Rosado', colors: ['#FCDEF6', '#D1A5EC', '#FFA0DB'] },
+    { name: 'Percepta', colors: ['#E4DEFC', '#A8A5EC', '#A0C2FF'] },
   ];
   window.PERCEPTA_PALETTES = PALETTES;
   window.PERCEPTA_BACKGROUNDS = [['#F6F6F6', 'Blanco'], ['#272727', 'Negro']];
@@ -124,6 +118,7 @@
     host.innerHTML = PALETTES.map((p, i) => `<button data-set="${i}" title="${p.name}" aria-label="Paleta ${p.name}">${p.colors.map(c => `<i style="background:${c}"></i>`).join('')}</button>`).join('');
     host.addEventListener('click', e => { const b = e.target.closest('[data-set]'); if (b) set(PALETTES[+b.dataset.set].colors.slice()); });
     const mark = () => { const cur = get().join().toLowerCase(); host.querySelectorAll('[data-set]').forEach(b => b.setAttribute('aria-pressed', PALETTES[+b.dataset.set].colors.join().toLowerCase() === cur)); };
+    if (PALETTES.length < 2) host.hidden = true; // one palette: nothing to choose
     mark(); return mark;
   };
 
