@@ -359,8 +359,8 @@ function lifeScale(c, now) {
 // Color "Imágenes": every cube is a photo, square-cropped, picked at random from the set for each cube (by its
 // drop number and the image seed, so it keeps its photo until the seed changes). There are none until some are
 // uploaded, loose or in a .zip read in the browser; every upload starts from a new seed.
-// The set starts as d1.zip (photos and SVGs of the brand). SVG colours, three ways: Paleta: as drawn, except the
-// default palette's colours, which follow their slot, so editing the palette recolours them. Mezclar: SVG_VARIANTS versions per
+// The set starts as d1.zip (photos and SVGs of the brand). SVG colours, three ways: Paleta: recoloured with the
+// palette in use (see svgMap; with Percepta's own palette they stay as drawn). Mezclar: SVG_VARIANTS versions per
 // file with the palette dealt at random (darkest stays darkest), Recolorear deals again. Original: as drawn.
 const IMG = 256, SVG_VARIANTS = 4, SLOTS = ['#E4DEFC', '#A8A5EC', '#A0C2FF', '#98DEDF', '#3DDB89'];
 let images = [], photos = [], svgs = [], imgSeed = 0, svgSeed = 1, imgVersion = 0;
@@ -414,12 +414,23 @@ function svgColors(doc) {
   return [...seen];
 }
 const rgbOf = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
-// Paleta: an SVG keeps the colours it was drawn with; a colour that is one of the default palette's follows that
-// palette slot, so editing the palette recolours it. Anything else (other colours, greys, white) stays as drawn.
-function slotColor(c) {
-  const [r, g, b] = rgbOf(c), i = SLOTS.findIndex(s2 => { const [r2, g2, b2] = rgbOf(s2); return Math.abs(r - r2) + Math.abs(g - g2) + Math.abs(b - b2) <= 6; });
-  const ap = activePal(S);
-  return i < 0 ? c : ap[i % ap.length];
+// Paleta: with the Percepta palette as it comes, an SVG keeps the colours it was drawn with. Any other palette (or an
+// edited one) recolours every colour in it: the Percepta colours follow their slot, other colours the slot of the
+// Percepta colour nearest them, light greys and white the palette's lightest colour and dark ones its darkest; a
+// colour never lands on one another colour of the same drawing took, while the palette has others.
+function svgMap(src) {
+  const ap = activePal(S), slotOf = c => { const [r, g, b] = rgbOf(c); let best = 0, bd = Infinity; SLOTS.forEach((s2, i) => { const [r2, g2, b2] = rgbOf(s2), d = (r - r2) ** 2 + (g - g2) ** 2 + (b - b2) ** 2; if (d < bd) { bd = d; best = i; } }); return [best, bd]; };
+  const grey = c => { const [r, g, b] = rgbOf(c); return Math.max(r, g, b) - Math.min(r, g, b) < 24; };
+  if (ap.join().toLowerCase() === SLOTS.slice(0, ap.length).join().toLowerCase())
+    return Object.fromEntries(src.map(c => { const [i, d] = slotOf(c); return [c, d <= 12 && !grey(c) ? ap[i % ap.length] : c]; }));
+  const byL = [...ap].sort((a, b) => lum(a) - lum(b)), map = {}, taken = new Set();
+  for (const c of src) if (grey(c)) { map[c] = lum(c) > 160 ? byL[byL.length - 1] : byL[0]; taken.add(map[c]); }
+  for (const c of src) if (!grey(c)) {
+    let i = slotOf(c)[0] % ap.length;
+    for (let k = 0; k < ap.length && taken.has(ap[i]) && taken.size < ap.length; k++) i = (i + 1) % ap.length;
+    map[c] = ap[i]; taken.add(ap[i]); // distinct colours of one drawing stay distinct while the palette allows
+  }
+  return map;
 }
 const lum = h => { const n = parseInt(h.slice(1), 16); return .2126 * (n >> 16 & 255) + .7152 * (n >> 8 & 255) + .0722 * (n & 255); };
 // One recoloured copy: source colours from dark to light take palette colours from a shuffled, dark-to-light order.
@@ -459,7 +470,7 @@ async function buildSvgImages() {
     try {
       if (S.svgColor === 'original') { out.push(await svgImage(sv, null)); continue; }
       const pal = activePal(S).map(h => onBg(h, S.paper)), src = [...sv.colors].sort((a, b) => lum(a) - lum(b));
-      if (S.svgColor === 'palette') { out.push(await svgImage(sv, Object.fromEntries(src.map(c => [c, slotColor(c)])))); continue; }
+      if (S.svgColor === 'palette') { out.push(await svgImage(sv, svgMap(src))); continue; }
       for (let v = 0; v < SVG_VARIANTS; v++) {
         let ri = 0; const base = svgSeed * 7919 + si * 131 + v * 17, r = () => hashUnit(base * 31 + ri++), order = [...pal].sort(() => r() - .5);
         const picked = src.map((_, i) => order[i % order.length]).sort((a, b) => lum(a) - lum(b)); // keep light and dark apart
