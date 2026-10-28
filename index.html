@@ -473,35 +473,21 @@ function generate(st) {
         const b = h.buf, ix = Math.floor((x - h.x - b.box.x0) * b.k), iy = Math.floor((y - h.y - b.box.y0) * b.k);
         return x - h.x > h.mx + h.fade * .8 && ix >= 0 && iy >= 0 && ix < b.W && iy < b.H && b.mask[iy * b.W + ix];
       });
-      // The body: Olas' sheets along x from 0 to the knot E. From Encauce on, the sheets close in on E's height,
-      // turning over as they go, so they cross and knot; the far edge and the start fade as in Olas.
-      const xE = fEnd * AR, E = [xE, heads.reduce((t, h) => t + h.A[1], 0) / F * .5];
-      const { layers, height, focal, zNear, zFar } = waveField(), zMid = (zNear + zFar) / 2, y0 = .9 / zMid * focal;
-      // The sheets flow into the point as Olas' do at their far end: over the whole run each sheet's height eases
-      // toward E's (sooner with more Encauce), never pinched, a thin wavy band left at the very end.
-      const ease = 3.2 - 2.6 * st.blChannel, ph0 = r() * 6.3, sc = 1.1 * Math.min(1.4, st.blLength);
-      const stemShare = .04 + .02 * F / 10, len = heads.map(h => Math.hypot(h.A[0] - E[0], h.A[1] - E[1]));
+      // The body: Olas' sheets, and the stem is the sheets themselves. Past Encauce each sheet slice heads for its
+      // flower (by depth, one band per flower): its middle line bends to the flower's base, and its spread about that
+      // line (the wave as it is) turns over once, the two edges crossing, opens again into a lens and closes at the
+      // base. Nothing is pinched: the wave keeps its shape, only its width turns.
+      const X0 = fEnd * AR, { layers, height, focal, zNear, zFar } = waveField(), zMid = (zNear + zFar) / 2, y0 = .9 / zMid * focal;
+      const us = .15 + .6 * (1 - st.blChannel), sc = 1.1 * Math.min(1.4, st.blLength);
+      const proj = (L, u, v, n) => ((.9 - height(L, u, v) - n) / (zNear + v * (zFar - zNear)) * focal - y0) * sc;
       for (let tries = 0; got < n && tries < n * 6; tries++) {
-        const w = r() - .5;
-        let x, y, d = .5;
-        if (r() > stemShare) {
-          const L = layers[Math.floor(r() * layers.length)], u = r(), v = r();
-          const keep = smooth(0, .12 + st.fade * .2, v) * (1 - smooth(1 - st.fade * .7, 1, v)) * smooth(0, .05 + st.fade * .12, u);
-          if (r() > keep) continue;
-          const z = zNear + v * (zFar - zNear), yw = ((.9 - height(L, u, v) - gauss(r) * st.thickness * .06) / z * focal - y0) * sc;
-          const c = .97 * Math.pow(u, ease);
-          x = u * xE; y = E[1] * c + yw * (1 - c); d = v;
-        } else {
-          // A stem: a gentle S from the knot that meets the flower's base head-on, then straight on to its middle.
-          const hi = Math.floor(r() * F), h = heads[hi], q = r() * 1.15, L = len[hi];
-          if (q <= 1) {
-            const P1 = [E[0] + L * .4, E[1]], P2 = [h.A[0] - L * .4, h.A[1]], m = 1 - q;
-            x = m * m * m * E[0] + 3 * m * m * q * P1[0] + 3 * m * q * q * P2[0] + q * q * q * h.A[0];
-            y = m * m * m * E[1] + 3 * m * m * q * P1[1] + 3 * m * q * q * P2[1] + q * q * q * h.A[1];
-          } else { const t = (q - 1) / .15; x = h.A[0] + (h.x - h.A[0]) * t; y = h.A[1] + (h.y - h.A[1]) * t; }
-          const wid = .002 + .004 * Math.sin(Math.PI * Math.min(1, q));
-          y += wid * w * 2 * Math.cos(2 * Math.PI * 1.5 * q + ph0 + hi) + g() * .0015;
-        }
+        const L = layers[Math.floor(r() * layers.length)], u = r(), v = r();
+        const keep = smooth(0, .12 + st.fade * .2, v) * (1 - smooth(1 - st.fade * .7, 1, v)) * smooth(0, .05 + st.fade * .12, u);
+        if (r() > keep) continue;
+        const h = heads[Math.min(F - 1, Math.floor(v * F))], c = smooth(us, 1, u);
+        const yw = proj(L, u, v, gauss(r) * st.thickness * .06), mid = proj(L, u, .5, 0);
+        const env = Math.cos(Math.PI * c) * Math.pow(1 - c, .35);
+        const x = u * X0 + (h.A[0] - X0) * Math.pow(c, 1.3), y = mid + (h.A[1] - mid) * smooth(0, 1, c) + (yw - mid) * env, d = v;
         if (behind(x, y)) continue;
         add(x, y, 1, 0, undefined, clamp(d));
       }
