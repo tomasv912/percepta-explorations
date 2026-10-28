@@ -166,8 +166,16 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
     <div class="controls">
       <section>
         <h2>Fuente</h2>
-        <div class="seg" data-key="source" aria-label="Fuente">
-          <button data-v="shape">Forma</button><button data-v="image">Imagen</button>
+        <div class="seg" data-key="source" aria-label="Fuente" style="display:grid;grid-template-columns:repeat(3,1fr)">
+          <button data-v="shape">Forma</button><button data-v="murm">Murmuración</button><button data-v="cloud">Nubes</button>
+          <button data-v="waves">Olas</button><button data-v="image">Imagen</button>
+        </div>
+        <div class="row" id="seed-row">
+          <span>Semilla</span>
+          <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
+          <button class="btn icon" id="reseed" title="Otra forma (R)" aria-label="Otra forma">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg>
+          </button>
         </div>
         <button class="btn" id="upload">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10.5V2.5M4.5 6 8 2.5 11.5 6"/><path d="M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2"/></svg>
@@ -179,18 +187,42 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <label class="check"><input type="checkbox" data-check="invert"> Invertir imagen</label>
           <div id="sl-contrast"></div>
           <div id="sl-threshold"></div>
+          <div id="sl-iShadows"></div>
+          <div id="sl-iFolds"></div>
         </div>
+      </section>
+
+      <section id="murm-section">
+        <h2>Murmuración</h2>
+        <div id="sl-mLobes"></div>
+        <div id="sl-mVol"></div>
+        <div id="sl-mFold"></div>
+        <div id="sl-mSoft"></div>
+      </section>
+
+      <section id="cloud-section">
+        <h2>Nubes</h2>
+        <div id="sl-cLobes"></div>
+        <div id="sl-cScale"></div>
+        <div id="sl-cTurb"></div>
+        <div id="sl-cSoft"></div>
+        <div id="sl-cShadows"></div>
+        <div id="sl-cFolds"></div>
+      </section>
+
+      <section id="waves-section">
+        <h2>Olas</h2>
+        <div id="sl-wLayers"></div>
+        <div id="sl-wAmp"></div>
+        <div id="sl-wFreq"></div>
+        <div id="sl-wComplex"></div>
+        <div id="sl-wPersp"></div>
+        <div id="sl-wThick"></div>
+        <div id="sl-wFade"></div>
       </section>
 
       <section id="shape-section">
         <h2>Forma</h2>
-        <div class="row">
-          <span>Semilla</span>
-          <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
-          <button class="btn icon" id="reseed" title="Otra forma (R)" aria-label="Otra forma">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg>
-          </button>
-        </div>
         <button class="btn" id="shuffle">Todo al azar</button>
         <div id="sl-bulbs"></div>
         <div id="sl-waist"></div>
@@ -261,6 +293,10 @@ const RES = 2;              // exports render at 2x
 const GRID = 480;           // luminance grid of the image, long side
 const DEFAULTS = {
   source: 'shape', seed: 1,
+  mLobes: 3, mVol: .8, mFold: .5, mSoft: .35,                                      // Murmuración
+  cLobes: 4, cScale: .7, cTurb: .5, cSoft: .25, cShadows: .7, cFolds: 4,             // Nubes
+  wLayers: 2, wAmp: .55, wFreq: 1.1, wComplex: 3, wPersp: .55, wThick: .25, wFade: .5, // Olas
+  iShadows: .35, iFolds: 4,                                                        // Imagen
   bulbs: 3, waist: .5, fold: .55, droop: .45, twist: .3, yaw: 0, tilt: 18, shade: 0, light: 135,
   invert: false, contrast: 1.2, threshold: .15,
   count: 29000, size: 4.5, hide: true, grid: true, pitch: 6, am: true, dmin: .5, dmax: 5, join: false, joinR: .4, fadeT: false, fadeB: false, fadeD: .5,
@@ -335,14 +371,17 @@ function box(ar) {
 // touch a neighbour is rejected (not with amplitud modulada, where dots may overlap); the gap asked for grows as the tone lightens, so packing still reads
 // as density.
 function imageDots(st) {
-  const { gw, gh, lum } = src, rect = box(src.ar), n = gw * gh, cw = rect.w / gw, ch = rect.h / gh, t = st.threshold;
-  const M = new Float32Array(n), cdf = new Float64Array(n);
+  const { gw, gh } = src, n = gw * gh, t = st.threshold, M = new Float32Array(n), tex = texture(gw, gh, st.iShadows, st.iFolds);
+  for (let k = 0; k < n; k++) M[k] = t >= 1 ? -1 : (inkAt(k) - t) / (1 - t) * (tex ? tex[k] : 1);
+  return densityDots(M, gw, gh, box(src.ar), st);
+}
+// Dots spread over a density grid M (0..1, ≤0 empty) laid over rect: more where it's denser. Without
+// amplitud modulada a candidate that would touch a neighbour is rejected, and the gap asked for grows
+// as the density falls, so packing still reads as density. Each dot's tone is the density it fell on.
+function densityDots(M, gw, gh, rect, st) {
+  const n = gw * gh, cw = rect.w / gw, ch = rect.h / gh, cdf = new Float64Array(n);
   let sum = 0;
-  for (let k = 0; k < n; k++) {
-    const v = inkAt(k);
-    M[k] = t >= 1 ? -1 : (v - t) / (1 - t);
-    cdf[k] = sum += M[k] > 0 ? M[k] ** 1.2 : 0;
-  }
+  for (let k = 0; k < n; k++) cdf[k] = sum += M[k] > 0 ? M[k] ** 1.2 : 0;
   const rand = rng(st.seed), keep = st.am ? 0 : 1, cell = Math.max(1, st.am ? st.dmax : st.size), cells = new Map(), out = [], tone = [];
   const diam = m => st.am ? lerp(st.dmin, st.dmax, clamp(m)) : st.size;
   const fits = (x, y, m) => {
@@ -354,7 +393,7 @@ function imageDots(st) {
     }
     return true;
   };
-  // Rejected candidates don't count; tries are capped for when the image is full.
+  // Rejected candidates don't count; tries are capped for when the grid is full.
   if (sum > 0) for (let c = 0, tries = 0; c < st.count && tries < st.count * 8; tries++) {
     const r = rand() * sum; let lo = 0, hi = n - 1;
     while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < r) lo = mid + 1; else hi = mid; }
@@ -369,6 +408,177 @@ function imageDots(st) {
   }
   return { xy: Float32Array.from(out), tone: Float32Array.from(tone) };
 }
+
+// ---------- Murmuración, Nubes, Olas ----------
+// Ported from Mix Shapes (murmuration and cloud fields, the image texture) and Pixel Waves (the waves).
+// Murmuración and Nubes are density fields sampled with densityDots; Olas lays its dots directly.
+const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+function mrng(seed) { let t = seed >>> 0; return () => { t = t + 1831565813 >>> 0; let e = t; e = Math.imul(e ^ e >>> 15, e | 1); e ^= e + Math.imul(e ^ e >>> 7, e | 61); return ((e ^ e >>> 14) >>> 0) / 4294967296; }; }
+function perlin2(rnd) {
+  const p = new Uint8Array(512); for (let i = 0; i < 256; i++) p[i] = i;
+  for (let i = 255; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
+  for (let i = 0; i < 256; i++) p[i + 256] = p[i];
+  const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
+  const gr = (h, x, y) => { switch (h & 7) { case 0: return x + y; case 1: return -x + y; case 2: return x - y; case 3: return -x - y; case 4: return x; case 5: return -x; case 6: return y; default: return -y; } };
+  return (x, y) => {
+    const X = Math.floor(x), Y = Math.floor(y), xf = x - X, yf = y - Y, xi = X & 255, yi = Y & 255, u = fade(xf), v = fade(yf);
+    const aa = p[p[xi] + yi], ab = p[p[xi] + yi + 1], ba = p[p[xi + 1] + yi], bb = p[p[xi + 1] + yi + 1];
+    const x1 = gr(aa, xf, yf) + u * (gr(ba, xf - 1, yf) - gr(aa, xf, yf));
+    return x1 + v * (gr(ab, xf, yf - 1) + u * (gr(bb, xf - 1, yf - 1) - gr(ab, xf, yf - 1)) - x1);
+  };
+}
+function fbmMaker(rnd) {
+  const nz = perlin2(rnd);
+  return { fbm: (x, y, oct) => { let s = 0, a = .5, f = 1; for (let i = 0; i < oct; i++) { s += a * nz(x * f, y * f); f *= 2.03; a *= .5; } return s; }, off: Array.from({ length: 8 }, () => rnd() * 100) };
+}
+function boxBlur(src, w, h, rad) {
+  const a = new Float32Array(src), b = new Float32Array(src.length), n = 2 * rad + 1;
+  const pass = (s, d, len, stride, lines, lstride) => {
+    for (let l = 0; l < lines; l++) {
+      const o = l * lstride; let acc = 0;
+      for (let k = -rad; k <= rad; k++) acc += s[o + Math.min(len - 1, Math.max(0, k)) * stride];
+      for (let i = 0; i < len; i++) { d[o + i * stride] = acc / n; acc += s[o + Math.min(len - 1, i + rad + 1) * stride] - s[o + Math.max(0, i - rad) * stride]; }
+    }
+  };
+  pass(a, b, w, 1, h, w); pass(b, a, h, w, w, 1); return a;
+}
+// Light blur, then 0..1 against the 99.7th percentile, with an empty two-cell border.
+function prepare(F, gw, gh) {
+  const B = boxBlur(F, gw, gh, 1), sorted = Array.from(B.filter((_, i) => i % 5 === 0)).sort((a, b) => a - b), top = sorted[Math.floor(sorted.length * .997)] || 1;
+  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) { const k = j * gw + i; B[k] = i < 2 || j < 2 || i > gw - 3 || j > gh - 3 ? 0 : Math.min(1, B[k] / top); }
+  return B;
+}
+// Image texture from Mix Shapes: soft shadows plus thin bright folds, as a multiplier per cell.
+function texture(gw, gh, shadows, folds) {
+  if (!shadows) return null;
+  const { fbm, off } = fbmMaker(mrng(S.seed)), l = Math.min(gw, gh), m = .8 + folds * .9, T = new Float32Array(gw * gh);
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+    const u = x / l, v = y / l, f1 = fbm(u * 2.2 + off[0], v * 2.2 + off[1], 3), f2 = fbm(u * 2.2 + off[2], v * 2.2 + off[3], 3);
+    const R = 1 - Math.abs(fbm(u * m + off[4] + f1 * .2, v * m * 1.3 + off[5] + f2 * .2, 3)) * 2.4, E = Math.max(0, R) ** 3, C = .5 + fbm(u * 1.4 + off[6], v * 1.4 + off[7], 3);
+    T[y * gw + x] = Math.max(.05, 1 - shadows * .6 + shadows * (.7 * C + 1.4 * E));
+  }
+  return T;
+}
+const FG = 480; // long side of the density grids
+function fieldGrid() { const r = box(AW / AH); return { rect: r, gw: FG, gh: Math.round(FG * r.h / r.w) }; }
+
+// Murmuración: a thin 3D sheet of birds that curls, twists and pinches into lobes, seen from one side.
+// Its projected density is the field: where the sheet is edge-on or folds over itself it piles up with
+// a crisp rim; where it faces us it stays faint.
+const norm3 = v => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const dotp3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+function spline3(cp, n) {
+  const out = [], m = cp.length, P = i => cp[clamp(i, 0, m - 1)];
+  for (let s = 0; s < n; s++) {
+    const g = s / (n - 1) * (m - 1), i = Math.min(m - 2, Math.floor(g)), t = g - i, t2 = t * t, t3 = t2 * t, p0 = P(i - 1), p1 = P(i), p2 = P(i + 1), p3 = P(i + 2);
+    out.push([0, 1, 2].map(c => .5 * ((2 * p1[c]) + (-p0[c] + p2[c]) * t + (2 * p0[c] - 5 * p1[c] + 4 * p2[c] - p3[c]) * t2 + (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * t3)));
+  }
+  return out;
+}
+function murmSamples(st) {
+  const r = mrng(st.seed), { fbm } = fbmMaker(r), L = st.mLobes, K = L + 2;
+  let p = [0, 0, 0], h = r() * 6.28, el = (r() - .5) * .8; const cp = [p];
+  for (let i = 1; i < K; i++) { h += (r() - .5) * 1.6; el = clamp(el + (r() - .5) * .9, -1, 1); const sp = .5 + r() * .35; p = [p[0] + Math.cos(h) * Math.cos(el) * sp, p[1] + Math.sin(h) * Math.cos(el) * sp, p[2] + Math.sin(el) * sp]; cp.push(p); }
+  const Nu = 520, Nv = 120, C = spline3(cp, Nu);
+  const bumps = Array.from({ length: L }, (_, i) => ({ c: (i + .5 + (r() - .5) * .5) / L, a: .55 + r() * .75, s: .08 + r() * .12 }));
+  const width = u => { let w = .1; for (const b of bumps) w += b.a * Math.exp(-(((u - b.c) / b.s) ** 2)); return w * Math.min(1, smoothstep(0, .12, u) * 1.2 + .15) * Math.min(1, smoothstep(0, .12, 1 - u) * 1.2 + .15); };
+  const o1 = r() * 50, o2 = r() * 50, o3 = r() * 50, tw0 = r() * 6.28, crisp = r();
+  const out = [], jr = mrng(st.seed ^ 0x3c6ef372), gauss = () => (jr() + jr() + jr() - 1.5) * .8;
+  let e1 = null;
+  for (let i = 0; i < Nu; i++) {
+    const u = i / (Nu - 1), c = C[i], a = C[Math.min(Nu - 1, i + 1)], b = C[Math.max(0, i - 1)], T = norm3([a[0] - b[0], a[1] - b[1], a[2] - b[2]]);
+    if (!e1) { const up = Math.abs(T[2]) < .9 ? [0, 0, 1] : [1, 0, 0]; e1 = norm3(cross3(T, up)); } else { const t = dotp3(e1, T); e1 = norm3([e1[0] - T[0] * t, e1[1] - T[1] * t, e1[2] - T[2] * t]); }
+    const e2 = cross3(T, e1), phi = tw0 + st.mFold * 4 * fbm(u * 2.2 + o1, o1, 2), cp_ = Math.cos(phi), sp_ = Math.sin(phi);
+    const a1 = [cp_ * e1[0] + sp_ * e2[0], cp_ * e1[1] + sp_ * e2[1], cp_ * e1[2] + sp_ * e2[2]], a2 = [-sp_ * e1[0] + cp_ * e2[0], -sp_ * e1[1] + cp_ * e2[1], -sp_ * e1[2] + cp_ * e2[2]];
+    const w = width(u), span = Math.max(.02, st.mVol * Math.PI * 1.7 * (.55 + .9 * (.5 + fbm(u * 1.8 + o2, o2, 2)))), rho = 2 * w / span;
+    const ea = .04 + .5 * (.5 + .5 * Math.sin(u * 7 + o3)) ** 2 * (1 - crisp * .6), eb = .04 + .5 * (.5 + .5 * Math.cos(u * 5 + o3)) ** 2 * (.4 + crisp * .6);
+    const thick = w * (.02 + .3 * Math.pow(.5 + .5 * Math.sin(u * 4.3 + o2 + fbm(u * 3, o3, 2) * 3), 3));
+    for (let j = 0; j < Nv; j++) {
+      const v = j / (Nv - 1), th = (v - .5) * span, sa = rho * Math.sin(th), ca = rho * (1 - Math.cos(th));
+      const q = [c[0] + sa * a1[0] + ca * a2[0] + gauss() * thick, c[1] + sa * a1[1] + ca * a2[1] + gauss() * thick, c[2] + sa * a1[2] + ca * a2[2] + gauss() * thick];
+      const sh = .5 + .5 * Math.sin(u * 3.1 + o1), side = sh * v + (1 - sh) * (1 - v);
+      const dens = (.35 + .65 * clamp(.5 + fbm(u * 5 + o2, v * 2.5 + o3, 3) * 1.3)) * (.35 + 1.1 * side * side) * smoothstep(0, ea, v) * smoothstep(0, eb, 1 - v);
+      out.push([q[0], q[1], q[2], w * dens]);
+    }
+  }
+  const ya = r() * 6.28, pa = (r() - .5) * 1.4, ro = r() * 6.28;
+  const cy = Math.cos(ya), sy = Math.sin(ya), cpi = Math.cos(pa), spi = Math.sin(pa), cr = Math.cos(ro), sr = Math.sin(ro);
+  return out.map(([x, y, z, wt]) => { const X = cy * x + sy * z, Z = -sy * x + cy * z, Y = cpi * y - spi * Z; return [cr * X - sr * Y, sr * X + cr * Y, wt]; });
+}
+function murmField(st, gw, gh) {
+  const smp = murmSamples(st), A = gw / gh;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const q of smp) { if (q[2] < .02) continue; x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); }
+  const k = Math.min(A * .84 / (x1 - x0), .84 / (y1 - y0)), cy = (y0 + y1) / 2, ox = A / 2 - (x0 + x1) / 2 * k, F = new Float32Array(gw * gh);
+  for (const [x, y, wt] of smp) {
+    const gx = (x * k + ox) / A * gw - .5, gy = ((y - cy) * k + .5) * gh - .5, ix = Math.floor(gx), iy = Math.floor(gy), fx = gx - ix, fy = gy - iy;
+    if (ix < 0 || iy < 0 || ix >= gw - 1 || iy >= gh - 1) continue;
+    const b = iy * gw + ix;
+    F[b] += wt * (1 - fx) * (1 - fy); F[b + 1] += wt * fx * (1 - fy); F[b + gw] += wt * (1 - fx) * fy; F[b + gw + 1] += wt * fx * fy;
+  }
+  const rad = 1 + Math.round(st.mSoft * 4); let B = boxBlur(F, gw, gh, rad); B = boxBlur(B, gw, gh, Math.max(1, rad - 1));
+  let mB = 0; for (const v of B) mB = Math.max(mB, v);
+  for (let i = 0; i < B.length; i++) B[i] = Math.pow(B[i] / (mB || 1), .62);
+  return prepare(B, gw, gh);
+}
+// Nubes: soft lobes chained into a cloud, warped by noise, with shadows and thin bright folds.
+function makeLobes(rnd, n, W, H, scale) {
+  const L = []; let x = 0, y = 0, h = rnd() < .5 ? 0 : Math.PI;
+  for (let i = 0; i < n; i++) {
+    const rx = .16 + rnd() * .16, ry = rx * (.5 + rnd() * .5);
+    L.push({ x, y, rx, ry, a: (rnd() - .5) * 1.6, w: i === 0 ? 1 : .45 + rnd() * .55 });
+    h += (rnd() - .5) * 1.8; const st = rx * (.8 + rnd() * .7); x += Math.cos(h) * st; y += Math.sin(h) * st * .7;
+  }
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const l of L) {
+    const c = Math.cos(l.a), s = Math.sin(l.a), ex = Math.hypot(l.rx * c, l.ry * s), ey = Math.hypot(l.rx * s, l.ry * c);
+    x0 = Math.min(x0, l.x - ex); x1 = Math.max(x1, l.x + ex); y0 = Math.min(y0, l.y - ey); y1 = Math.max(y1, l.y + ey);
+  }
+  const k = Math.min(W * scale / (x1 - x0), H * scale / (y1 - y0)), mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+  return L.map(l => ({ x: (l.x - mx) * k + W / 2, y: (l.y - my) * k + H / 2, rx: l.rx * k, ry: l.ry * k, cos: Math.cos(l.a), sin: Math.sin(l.a), w: l.w }));
+}
+function cloudField(st, gw, gh) {
+  const r = mrng(st.seed), { fbm, off } = fbmMaker(r), m = Math.min(gw, gh), sw = gw / m, sh = gh / m, L = makeLobes(r, st.cLobes, sw, sh, st.cScale);
+  const F = new Float32Array(gw * gh), turb = .04 + st.cTurb * .3, v = .06 + st.cSoft * .6, fy = .8 + st.cFolds * .9;
+  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
+    const px = (i + .5) / gw * sw, py = (j + .5) / gh * sh, f = fbm(px * 2.2 + off[0], py * 2.2 + off[1], 3), b = fbm(px * 2.2 + off[2], py * 2.2 + off[3], 3), x = px + f * turb, y = py + b * turb;
+    let C = 0;
+    for (const l of L) { const dx = x - l.x, dy = y - l.y, u = (dx * l.cos + dy * l.sin) / l.rx, q = (-dx * l.sin + dy * l.cos) / l.ry; C += l.w * (1 - smoothstep(1 - v, 1 + v, Math.sqrt(u * u + q * q))); }
+    C = Math.min(C, 1.6);
+    const T = 1 - Math.abs(fbm(x * fy + off[4], y * fy * 1.3 + off[5], 3)) * 2.4, E = Math.max(0, T) ** 3, D = .5 + fbm(x * 1.4 + off[6], y * 1.4 + off[7], 3);
+    const O = 1 - st.cShadows * .7 + st.cShadows * (.9 * D + 2.2 * E);
+    F[j * gw + i] = C > 0 ? (C * Math.max(.02, O)) ** 1.35 : 0;
+  }
+  return prepare(F, gw, gh);
+}
+// Olas (Pixel Waves): a few wave sheets seen in perspective; dots are spread evenly over each sheet, so
+// they gather where it folds or turns edge-on, and the far edge and ends fade. Far dots come first.
+function wavesDots(st) {
+  const r = rng(st.seed), gauss = () => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
+  const layers = Array.from({ length: st.wLayers }, (_, l) => ({
+    waves: Array.from({ length: st.wComplex }, (_, k) => ({ f: st.wFreq * (k === 0 ? 1 : 1 + k * .7) * (.7 + r() * .6) * Math.PI * 2, th: (r() - .5) * 1.1, ph: r() * Math.PI * 2, a: 1 / (1 + k * 1.1) })),
+    base: (l - (st.wLayers - 1) / 2) * .35 + (r() - .5) * .15, tilt: (r() - .5) * .3,
+  }));
+  const height = (L, u, v) => { let h = 0, nrm = 0; for (const w of L.waves) { h += w.a * Math.sin(w.f * (u * Math.cos(w.th) + v * Math.sin(w.th)) + w.ph); nrm += w.a; } return L.base + L.tilt * (u - .5) + h / nrm * st.wAmp; };
+  const focal = .4 + st.wPersp * 1.4, zNear = 1, zFar = 1 + 1.5 + st.wPersp * 2.5, P = [];
+  for (let tries = 0; P.length < st.count && tries < st.count * 6; tries++) {
+    const L = layers[Math.floor(r() * layers.length)], u = r(), v = r(), fd = st.wFade;
+    const keep = smoothstep(0, .12 + fd * .2, v) * (1 - smoothstep(1 - fd * .7, 1, v)) * smoothstep(0, .05 + fd * .12, u) * smoothstep(0, .05 + fd * .12, 1 - u);
+    if (r() > keep) continue;
+    const z = zNear + v * (zFar - zNear), x = (u - .5) * 2 * z / focal * 1.1, y = height(L, u, v) + gauss() * st.wThick * .06;
+    P.push([x / z * focal, (.9 - y) / z * focal, z]);
+  }
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const [x, y, z] of P) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+  // Fill the width and a generous band vertically, like Pixel Waves.
+  const b = box(AW / AH), X0 = b.x, X1 = b.x + b.w, Y0 = b.y + b.h * .1, Y1 = b.y + b.h * .9;
+  P.sort((a, c) => c[2] - a[2]);
+  const xy = new Float32Array(P.length * 2), tone = new Float32Array(P.length);
+  P.forEach(([x, y, z], o) => { xy[o * 2] = X0 + (x - x0) / (x1 - x0 || 1) * (X1 - X0); xy[o * 2 + 1] = Y0 + (y - y0) / (y1 - y0 || 1) * (Y1 - Y0); tone[o] = (z1 - z) / (z1 - z0 || 1); });
+  return { xy, tone };
+}
+
 
 // ---------- Shape ----------
 // A murmuration: one long sheet of birds hanging in the air. It runs sideways, sweeping up and down in a
@@ -523,10 +733,18 @@ function shapeView(st, { P, pts, at3 }) {
 let dots = null, tones = null, scales = null, dotsKey = '', view = null;
 let base = null, baseKey = '';
 function currentDots() {
-  const image = S.source === 'image' && src;
-  const bk = JSON.stringify([image ? ['i', src.id, S.invert, S.contrast, S.threshold]
-    : ['s', S.bulbs, S.waist, S.fold, S.droop, S.twist, S.yaw, S.tilt, S.shade, S.light, S.hide, orbiting], S.seed, S.count, S.size, S.am, S.dmin, S.dmax]);
-  if (bk !== baseKey) { base = image ? imageDots(S) : shapeDots(S); baseKey = bk; }
+  const so = S.source === 'image' && !src ? 'shape' : S.source;
+  const bk = JSON.stringify([so, so === 'image' ? [src.id, S.invert, S.contrast, S.threshold, S.iShadows, S.iFolds]
+    : so === 'murm' ? [S.mLobes, S.mVol, S.mFold, S.mSoft]
+    : so === 'cloud' ? [S.cLobes, S.cScale, S.cTurb, S.cSoft, S.cShadows, S.cFolds]
+    : so === 'waves' ? [S.wLayers, S.wAmp, S.wFreq, S.wComplex, S.wPersp, S.wThick, S.wFade]
+    : [S.bulbs, S.waist, S.fold, S.droop, S.twist, S.yaw, S.tilt, S.shade, S.light, S.hide, orbiting], S.seed, S.count, S.size, S.am, S.dmin, S.dmax]);
+  if (bk !== baseKey) {
+    const fg = fieldGrid();
+    base = so === 'image' ? imageDots(S) : so === 'murm' ? densityDots(murmField(S, fg.gw, fg.gh), fg.gw, fg.gh, fg.rect, S)
+      : so === 'cloud' ? densityDots(cloudField(S, fg.gw, fg.gh), fg.gw, fg.gh, fg.rect, S) : so === 'waves' ? wavesDots(S) : shapeDots(S);
+    baseKey = bk;
+  }
   const key = JSON.stringify([bk, S.grid, S.pitch, fadeGradients(), S.fadeD]);
   if (key !== dotsKey) {
     let g = base;
@@ -1024,7 +1242,7 @@ stage.addEventListener('pointerdown', e => {
     return;
   }
   if (tool === 'orbit' && !space && e.button === 0) {
-    if (S.source !== 'shape') { toast('Girar funciona con la forma.'); return; }
+    if (S.source !== 'shape') { toast('Girar funciona con la Forma.'); return; }
     drag = { orbit: true, x: e.clientX, y: e.clientY, yaw: S.yaw, tilt: S.tilt };
     orbiting = true; stage.classList.add('dragging');
     return;
@@ -1120,6 +1338,25 @@ addEventListener('pointerdown', e => { if (!pop.hidden && !pop.contains(e.target
 // ---------- Controls ----------
 const pct = v => Math.round(v * 100) + '%';
 const SLIDERS = {
+  mLobes: { label: 'Lóbulos', min: 1, max: 5, step: 1, fmt: String },
+  mVol: { label: 'Volumen', min: 0, max: 1, step: .01, fmt: pct },
+  mFold: { label: 'Pliegues', min: 0, max: 1, step: .01, fmt: pct },
+  mSoft: { label: 'Suavidad', min: 0, max: 1, step: .01, fmt: pct },
+  cLobes: { label: 'Lóbulos', min: 1, max: 8, step: 1, fmt: String },
+  cScale: { label: 'Escala', min: .3, max: 1, step: .01, fmt: pct },
+  cTurb: { label: 'Ruido', min: 0, max: 1, step: .01, fmt: pct },
+  cSoft: { label: 'Borde', min: 0, max: 1, step: .01, fmt: pct },
+  cShadows: { label: 'Sombras', min: 0, max: 1, step: .01, fmt: pct },
+  cFolds: { label: 'Pliegues', min: 1, max: 10, step: .1, fmt: v => v.toFixed(1) },
+  wLayers: { label: 'Capas', min: 1, max: 4, step: 1, fmt: String },
+  wAmp: { label: 'Altura de las olas', min: 0, max: 1.5, step: .01, fmt: pct },
+  wFreq: { label: 'Frecuencia', min: .3, max: 3, step: .01, fmt: v => v.toFixed(2) },
+  wComplex: { label: 'Complejidad', min: 1, max: 6, step: 1, fmt: String },
+  wPersp: { label: 'Perspectiva', min: 0, max: 1, step: .01, fmt: pct },
+  wThick: { label: 'Grosor', min: 0, max: 1, step: .01, fmt: pct },
+  wFade: { label: 'Desvanecer', min: 0, max: 1, step: .01, fmt: pct },
+  iShadows: { label: 'Sombras', min: 0, max: 1, step: .01, fmt: pct },
+  iFolds: { label: 'Pliegues', min: 1, max: 10, step: .1, fmt: v => v.toFixed(1) },
   contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
   threshold: { label: 'Umbral', min: 0, max: .99, step: .01, fmt: pct },
   bulbs: { label: 'Ondas', min: 1, max: 8, step: 1, fmt: String },
@@ -1214,6 +1451,10 @@ function sync() {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   const shape = S.source === 'shape';
+  $('#murm-section').hidden = S.source !== 'murm';
+  $('#cloud-section').hidden = S.source !== 'cloud';
+  $('#waves-section').hidden = S.source !== 'waves';
+  $('#seed-row').hidden = S.source === 'image';
   $('#shape-section').hidden = !shape;
   $('#image-controls').hidden = shape;
   $('#sl-pitch').hidden = !S.grid;
