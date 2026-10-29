@@ -234,9 +234,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-dof"></div>
         <div id="sl-focus"></div>
         <div id="sl-focusBand"></div>
-        <div class="seg" data-key="dofStyle" aria-label="Desenfoque">
-          <button data-v="pixel">Píxel</button><button data-v="soft">Suave</button>
-        </div>
       </section>
 
       <section>
@@ -286,7 +283,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
-  dof: 0, focus: .35, focusBand: .25, dofStyle: 'pixel',
+  dof: 0, focus: 0, focusBand: .2,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -656,7 +653,7 @@ function groupsOf(st) {
 }
 // Profundidad de campo: each cube's distance from the focus (beyond the sharp band) sets its blur, in DOF_L
 // steps on each side of the focus. Far blur is drawn first, the sharp cubes over it, near blur over all.
-// Píxel draws a blurred cube as a larger, fainter square (it stays a vector); Suave blurs it for real.
+// A blurred cube keeps its size and opacity; it is only softened (a real blur).
 const DOF_L = 5;
 function dofLevels(st) {
   if (!st.dof || !gen.dep) return null;
@@ -713,10 +710,10 @@ let blurLayer = null;
 function draw(ctx, st) {
   const D = dofLevels(st);
   if (!D) return fill(ctx, st);
-  const soft = st.dofStyle === 'soft' && canBlur, T = ctx.getTransform(), scale = Math.hypot(T.a, T.b);
+  const soft = canBlur, T = ctx.getTransform(), scale = Math.hypot(T.a, T.b);
   for (const k of D.order) {
     const lev = { lv: D.lv, k }, rad = D.rad(k);
-    if (!k || !soft) { fill(ctx, st, lev, soft ? 0 : rad); continue; }
+    if (!k || !soft) { fill(ctx, st, lev, 0); continue; }
     // Suave: the level on a layer of its own, then laid down blurred.
     const c = ctx.canvas;
     if (!blurLayer || blurLayer.width !== c.width || blurLayer.height !== c.height) { blurLayer = document.createElement('canvas'); blurLayer.width = c.width; blurLayer.height = c.height; }
@@ -727,7 +724,7 @@ function draw(ctx, st) {
   }
 }
 function toSvg(st) {
-  const r = v => Math.round(v * 10) / 10, out = [], v = viewBox(), c = gen.W / v.w, D = dofLevels(st), soft = st.dofStyle === 'soft';
+  const r = v => Math.round(v * 10) / 10, out = [], v = viewBox(), c = gen.W / v.w, D = dofLevels(st), soft = true;
   // Cubes outside the recorte are left out of the file.
   const inView = p => p[4] + panX >= v.x && p[0] + panX <= v.x + v.w && p[5] + panY >= v.y && p[1] + panY <= v.y + v.h;
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${gen.W}" height="${gen.H}" viewBox="0 0 ${gen.W} ${gen.H}">`);
@@ -740,7 +737,7 @@ function toSvg(st) {
   if (!D) paths();
   else for (const k of D.order) {
     const rad = D.rad(k);
-    if (!k || !soft) { paths({ lv: D.lv, k }, soft ? 0 : rad); continue; }
+    if (!k) { paths({ lv: D.lv, k }, 0); continue; }
     out.push(`<filter id="b${k + DOF_L}" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="${r(rad * .6)}"/></filter><g filter="url(#b${k + DOF_L})">`);
     paths({ lv: D.lv, k }, 0); out.push('</g>');
   }
