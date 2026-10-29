@@ -9,6 +9,7 @@
     { name: 'Photo Preset', path: 'photo-preset/' },
     { name: 'Text Dissolve', path: 'text-dissolve/' },
     { name: 'Neural Pixel', path: 'neural-pixel/' },
+    { name: 'Optical Shapes', path: 'optical-shapes/' },
   ];
 
   const script = document.currentScript;
