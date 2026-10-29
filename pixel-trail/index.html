@@ -205,6 +205,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <label class="check" id="vpDepth-row"><input type="checkbox" data-check="vpDepth"> Perspectiva (el tamaño crece hacia el frente)</label>
         <label class="check"><input type="checkbox" data-check="parallel"> Paralelo (todos en la dirección del primero, sin perspectiva)</label>
         <div id="sl-vpCount"></div>
+        <div id="sl-angle"></div>
         <div id="sl-vpGap"></div>
         <div class="btns"><button class="btn" id="vp-all">Llevar al punto</button><button class="btn" id="vp-gen">Generar</button></div>
         <div class="row">
@@ -288,7 +289,7 @@ const DEFAULTS = {
   style: 'mono', size: 16, variation: .3, speedSize: 0,
   life: 2.5, permanent: true,
   colorMode: 'image', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF'],
-  depth: false, depthBlur: 14, vp: false, vpDepth: false, vpCount: 16, vpGap: 0, parallel: false, genSeed: 1, animDur: 6, animScale: 2.5, animBlur: 14, animFocus: .45, animFade: .8, animLoops: 1, animParallax: true, vidFps: '30', palCount: '5',
+  depth: false, depthBlur: 14, vp: false, vpDepth: false, vpCount: 16, vpGap: 0, angle: 0, parallel: false, genSeed: 1, animDur: 6, animScale: 2.5, animBlur: 14, animFocus: .45, animFade: .8, animLoops: 1, animParallax: true, vidFps: '30', palCount: '5',
   ink: '#272727', grain: .05, paper: '#F6F6F6', svgColor: 'palette', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -848,6 +849,7 @@ const SLIDERS = {
   life: { label: 'Duración', min: .2, max: 15, step: .1, fmt: v => v.toFixed(1) + ' s' },
   grain: { label: 'Variación de tono', min: 0, max: .2, step: .005, fmt: pct },
   vpCount: { label: 'Trails', min: 1, max: 80, step: 1, fmt: v => v, on: () => syncGen() },
+  angle: { label: 'Ángulo', min: 0, max: 345, step: 15, fmt: v => v + '°', on: () => turnTo(S.angle) },
   vpGap: { label: 'Alejar del centro', min: 0, max: 700, step: 5, fmt: v => v + ' px', on: () => { gen.forEach(sp => layGen(sp)); updateSel(); wake(); } },
   depthBlur: { label: 'Desenfoque máximo', min: 1, max: 60, step: 1, fmt: v => v + ' px' },
 };
@@ -1158,7 +1160,7 @@ function selectMove(e) {
   if (!d.saved) { snapshot(); d.saved = true; }
   if (d.mode === 'tip') {
     d.count = relay(d.o, d.i0, d.count, e.shiftKey ? snap15([d.o[0].x, d.o[0].y], p) : p);
-    if (S.parallel) { const a = cubes[d.i0], z = cubes[d.i0 + d.count - 1]; parA = Math.atan2(z.y - a.y, z.x - a.x); parAll(a.g); }
+    if (S.parallel) { const a = cubes[d.i0], z = cubes[d.i0 + d.count - 1]; setAngle(Math.atan2(z.y - a.y, z.x - a.x)); parAll(); }
   }
   else if (d.mode === 'move') {
     const dx = p[0] - d.from[0], dy = p[1] - d.from[1];
@@ -1349,7 +1351,20 @@ $('#vp-all').addEventListener('click', vpAll);
 $('[data-check="vp"]').addEventListener('change', () => { if (S.vp) { S.parallel = false; sync(); } if (S.vp && cubes.length) vpAll(); });
 // Paralelo: every row straightened along one direction (the first row's), each keeping its first cube, length and
 // cube count, all at full size. Drawn rows join it on release; redirecting any row's tip turns them all.
-let parA = 0;
+let parA = 0, angNow = 0;
+// Ángulo (15° steps): in Paralelo, the direction every trail runs; otherwise it turns the whole layout (and the
+// generated trails' recipes) about the vanishing point.
+const snapDeg = rad => ((Math.round(rad * 180 / Math.PI / 15) * 15) % 360 + 360) % 360;
+function turnTo(deg) {
+  const d = (deg - angNow) * Math.PI / 180; angNow = deg;
+  if (S.parallel) { parA = deg * Math.PI / 180; if (gen.length) gen.forEach(sp => layGen(sp)); parAll(); return; }
+  if (!d) return;
+  const [cx, cy] = vpPos, c = Math.cos(d), s2 = Math.sin(d);
+  for (const q of cubes) { const x = q.x - cx, y = q.y - cy; q.x = cx + x * c - y * s2; q.y = cy + x * s2 + y * c; }
+  for (const sp of gen) sp.a += d;
+  genTurn += d; updateSel(); wake();
+}
+const setAngle = rad => { S.angle = snapDeg(rad); angNow = S.angle; parA = S.angle * Math.PI / 180; sync(); };
 function rowList() { const rows = []; cubes.forEach((c, i) => { const r = rows[rows.length - 1]; if (r && r.g === c.g) r.count++; else rows.push({ g: c.g, i0: i, count: 1 }); }); return rows; }
 function parAll(skip) {
   for (const r of rowList()) {
@@ -1361,8 +1376,8 @@ function parAll(skip) {
 }
 function parallelOn() {
   const first = rowList().find(r => r.count > 1);
-  if (first) { const a = cubes[first.i0], z = cubes[first.i0 + first.count - 1]; parA = Math.atan2(z.y - a.y, z.x - a.x); }
-  if (gen.length) parA = gen[0].a;
+  if (first) { const a = cubes[first.i0], z = cubes[first.i0 + first.count - 1]; setAngle(Math.atan2(z.y - a.y, z.x - a.x)); }
+  if (gen.length) setAngle(gen[0].a);
   snapshot(); parAll();
 }
 $('[data-check="parallel"]').addEventListener('change', () => { if (S.parallel) { S.vp = false; sync(); parallelOn(); } });
@@ -1387,7 +1402,7 @@ function layGen(sp, add) {
   else if (!add) return;
   else { i0 = cubes.findIndex(c => (genScale.get(c.g) ?? -1) > sp.k); if (i0 < 0) i0 = cubes.length; }
   if (S.parallel) {
-    const A = parA = gen[0]?.a ?? sp.a, ux = Math.cos(A), uy = Math.sin(A), R = Math.min(AW, AH) * .5, side = (sp.side ??= Math.random() * 2 - 1);
+    const A = parA, ux = Math.cos(A), uy = Math.sin(A), R = Math.min(AW, AH) * .5, side = (sp.side ??= Math.random() * 2 - 1);
     const len = sp.f * R * 1.6, back = (sp.d - .5) * R, cx = vpPos[0] - uy * side * R * 1.4 + ux * back, cy = vpPos[1] + ux * side * R * 1.4 + uy * back;
     const m = Math.max(1, Math.round(len / sp.gp)), t = performance.now(), row = [];
     for (let i = 0; i <= m; i++) { const u = i / m - .5; row.push({ s: S.size, k: MONO_SHADE, n: sp.n + i, g: sp.g, t, gp: sp.gp, x: cx + ux * len * u, y: cy + uy * len * u }); }
@@ -1414,6 +1429,7 @@ function generate() {
   S.depth = S.permanent = true; vpPos = [AW / 2, AH / 2]; sync(); // trails aim at the centre; Punto de fuga stays as set
   cubes = []; rowScale.clear(); genScale.clear(); select(null);
   gen = []; genTurn = rng(S.genSeed)() * Math.PI * 2;
+  if (S.parallel) setAngle(genTurn); else { S.angle = 0; angNow = 0; }
   syncGen();
 }
 $('#vp-gen').addEventListener('click', () => { snapshot(); S.genSeed = Math.floor(Math.random() * 1e6); generate(); });
