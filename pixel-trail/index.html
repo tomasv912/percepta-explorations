@@ -143,6 +143,13 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .tip { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #fff; border: 2px solid #0d99ff; z-index: 2; cursor: grab; }
 .vp { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; z-index: 2; pointer-events: none; color: #0d99ff; }
 .frame.select .vp { pointer-events: auto; cursor: move; }
+.anim { position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 4px 16px rgb(0 0 0 / .06); width: max-content; max-width: calc(100% - 24px); z-index: 4; }
+.anim .slider { width: 112px; gap: 0 6px; } .anim .slider label, .anim .slider output { font-size: 11px; }
+.anim .seg button { flex: none; padding: 0 8px; }
+.anim-play { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: var(--fill); color: var(--text); font: 500 12px var(--font); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); }
+.anim-play[aria-pressed="true"] { background: var(--text); color: var(--surface); box-shadow: none; }
+.anim-play .i-stop, .anim-play[aria-pressed="true"] .i-play { display: none; } .anim-play[aria-pressed="true"] .i-stop { display: block; }
+.anim-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); cursor: pointer; } .anim-check input { accent-color: var(--text); margin: 0; }
 .marquee { position: absolute; border: 1px solid #0d99ff; background: rgb(13 153 255 / .08); pointer-events: none; z-index: 2; }
 .tools button:disabled { opacity: .35; cursor: default; }
 .sel b { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 6px); background: #0d99ff; color: #fff; font: 500 10px var(--mono); padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
@@ -150,6 +157,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 </head>
 <body>
 <script src="../toolbar.js"></script>
+<script src="../vendor/mp4-muxer.js"></script>
 <div class="app">
   <main id="stage">
     <div class="tools" role="toolbar" aria-label="Herramientas">
@@ -170,6 +178,22 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <i class="tip" id="tip" hidden title="Arrastrá para redireccionar el trazo"></i>
       <div class="vp" id="vp" hidden title="Punto de fuga: arrastralo con el cursor, doble clic para centrarlo"><svg viewBox="0 0 26 26" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="13" cy="13" r="6"/><path d="M13 1v7M13 18v7M1 13h7M18 13h7"/></svg></div>
     </div>
+    <div class="anim" role="toolbar" aria-label="Animación">
+      <button class="anim-play" id="anim-play" aria-pressed="false" title="Animar en loop">
+        <svg class="i-play" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>
+        <svg class="i-stop" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7" rx="1" fill="currentColor"/></svg>
+        <span id="anim-kind">Animar</span>
+      </button>
+      <div id="sl-animDur"></div>
+      <div id="sl-animLoops"></div>
+      <div id="sl-animScale" data-radial></div>
+      <div id="sl-animBlur"></div>
+      <div id="sl-animFocus" data-radial></div>
+      <div id="sl-animFade" data-radial></div>
+      <label class="anim-check" data-parallel><input type="checkbox" data-check="animParallax"> Paralaje</label>
+      <div class="seg" data-key="vidFps" aria-label="Cuadros por segundo del video"><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button></div>
+      <button class="btn primary" id="anim-video" title="MP4 4K del loop, con el fondo">Exportar video</button>
+    </div>
     <div class="hud"><span id="stats">Hacé clic y arrastrá sobre la mesa</span><span class="dim"><kbd>B</kbd> pincel · <kbd>V</kbd> cursor (arrastrá en vacío para elegir varias, el último cubo para redireccionar) · <kbd>⌘C</kbd> <kbd>⌘V</kbd> copiar y pegar · <kbd>⌘Z</kbd> deshacer · <kbd>Shift</kbd> línea</span></div>
   </main>
 
@@ -183,6 +207,11 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-vpCount"></div>
         <div id="sl-vpGap"></div>
         <div class="btns"><button class="btn" id="vp-all">Llevar al punto</button><button class="btn" id="vp-gen">Generar</button></div>
+        <div class="row">
+          <span>Semilla</span>
+          <input class="text" id="gen-seed" inputmode="numeric" aria-label="Semilla de la composición">
+          <button class="btn icon" id="gen-reseed" title="Nueva composición con los mismos parámetros" aria-label="Nueva composición"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg></button>
+        </div>
       </section>
 
       <section>
@@ -258,8 +287,8 @@ const DEFAULTS = {
   response: .5, gap: .7, maxGap: 220, scatter: .25, lineGap: 2, snap: false,
   style: 'mono', size: 16, variation: .3, speedSize: 0,
   life: 2.5, permanent: true,
-  colorMode: 'palette', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF'],
-  depth: false, depthBlur: 14, vp: false, vpDepth: false, vpCount: 16, vpGap: 0, parallel: false, palCount: '5',
+  colorMode: 'image', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF'],
+  depth: false, depthBlur: 14, vp: false, vpDepth: false, vpCount: 16, vpGap: 0, parallel: false, genSeed: 1, animDur: 6, animScale: 2.5, animBlur: 14, animFocus: .45, animFade: .8, animLoops: 1, animParallax: true, vidFps: '30', palCount: '5',
   ink: '#272727', grain: .05, paper: '#F6F6F6', svgColor: 'palette', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -649,6 +678,111 @@ function draw(ctx, now, st, lut) {
     ctx.restore();
   }
 }
+// ---------- Animation ----------
+// The layout as it is, in motion, looping over Duración (Vueltas times round). Radial (no Paralelo): a camera flying
+// into the vanishing point: every cube moves out from the centre along its own ray, born at scale 0 and blurred,
+// sharp at Foco of the way out, and growing (to Escala al borde) as it nears the edge, where it blurs again and
+// turns to the background's colour; what leaves the frame is reborn at the centre, so the loop closes. Each cube
+// starts the loop where the layout has it. Paralelo: every cube travels the trails' direction and comes back in
+// from the other side of the frame; with Paralaje the larger (nearer) trails cross faster, a whole number of
+// times, so it still loops. Blur in Paralelo is the layout's depth blur.
+let anim = null;
+function animItems(ph, st, lut) {
+  const rows = rowsOf(performance.now(), st, lut), maxSize = Math.max(0, ...rows.map(r => r.size)), out = [];
+  if (!st.parallel) {
+    const [cx, cy] = vpPos, Rm = Math.max(...[[0, 0], [AW, 0], [0, AH], [AW, AH]].map(([x, y]) => Math.hypot(x - cx, y - cy))) * 1.05;
+    const ease = q => Math.pow(q, 1.7); // slow by the centre, quick at the edge: depth
+    for (const row of rows) for (const [x, y, s, col, img] of row.items) {
+      const dx = x - cx, dy = y - cy, rho = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
+      const q0 = Math.pow(Math.min(.999, rho / Rm), 1 / 1.7), q = (q0 + ph * st.animLoops) % 1, r2 = Rm * ease(q);
+      const f = st.animFocus, b = q < f ? Math.pow(1 - q / f, 1.4) : Math.pow((q - f) / (1 - f), 1.6);
+      out.push({ x: cx + Math.cos(a) * r2, y: cy + Math.sin(a) * r2, s: s * st.animScale * Math.pow(q, .9), col, img, blur: st.animBlur * b, fade: st.animFade * smoothstep(.62, 1, q), z: q });
+    }
+    out.sort((p, q) => p.z - q.z);
+  } else {
+    const ux = Math.cos(parA), uy = Math.sin(parA), ex = (Math.abs(ux) * AW + Math.abs(uy) * AH) / 2, m = maxSize * 4 + 40, L = 2 * (ex + m);
+    rows.forEach((row, ri) => {
+      const k = st.animParallax ? Math.max(1, Math.round(st.animLoops * (.5 + 1.5 * row.size / (maxSize || 1)))) : st.animLoops, blur = blurOf(row, maxSize, st);
+      for (const [x, y, s, col, img] of row.items) {
+        const sx = (x - AW / 2) * ux + (y - AH / 2) * uy, w = ((sx + L / 2 + ph * k * L) % L + L) % L - L / 2;
+        out.push({ x: x + (w - sx) * ux, y: y + (w - sx) * uy, s, col, img, blur, fade: 0, z: ri });
+      }
+    });
+  }
+  return out;
+}
+const smoothstep = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const animLayer = document.createElement('canvas');
+function drawAnim(ctx, ph, st, lut) {
+  const items = animItems(ph, st, lut), t = ctx.getTransform(), ppu = t.a, cw = ctx.canvas.width, ch = ctx.canvas.height;
+  const paint = (c, list) => {
+    for (const it of list) {
+      if (it.s < .2) continue;
+      const x = it.x - it.s / 2, y = it.y - it.s / 2;
+      if (it.img >= 0) c.drawImage(images[it.img].canvas, x, y, it.s, it.s); else { c.fillStyle = it.col; c.fillRect(x, y, it.s, it.s); }
+      if (it.fade > .005) { c.globalAlpha = it.fade; c.fillStyle = st.paper; c.fillRect(x, y, it.s, it.s); c.globalAlpha = 1; }
+    }
+  };
+  // Back to front, in runs of about the same blur; each blurred run on a layer of its own, laid down blurred.
+  const level = b => Math.round(b * ppu / 1.5);
+  for (let i = 0; i < items.length;) {
+    let j = i; const lv = level(items[i].blur);
+    while (j < items.length && level(items[j].blur) === lv) j++;
+    const run = items.slice(i, j); i = j;
+    if (!lv || !('filter' in ctx)) { paint(ctx, run); continue; }
+    if (animLayer.width !== cw || animLayer.height !== ch) { animLayer.width = cw; animLayer.height = ch; }
+    const lx = animLayer.getContext('2d'); lx.setTransform(1, 0, 0, 1, 0, 0); lx.clearRect(0, 0, cw, ch); lx.setTransform(t); paint(lx, run);
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.filter = `blur(${(lv * 1.5).toFixed(1)}px)`; ctx.drawImage(animLayer, 0, 0); ctx.restore();
+  }
+}
+function setAnim(on) {
+  anim = on ? { t0: performance.now() } : null;
+  if (on) { select(null); if (!S.permanent) { S.permanent = true; sync(); } }
+  $('#anim-play').setAttribute('aria-pressed', !!anim);
+  cancelAnimationFrame(raf); raf = 0; sync(); wake();
+}
+// Wired once the page's helpers ($, toast, download) exist.
+function wireAnim() {
+$('#anim-play').addEventListener('click', () => setAnim(!anim));
+// The loop as an MP4 at 4K (the artboard at 2×), background included, at a high constant bitrate.
+$('#anim-video').addEventListener('click', async () => {
+  if (!('VideoEncoder' in window) || !window.Mp4Muxer) return toast('Este navegador no puede exportar video: probá con Chrome, Edge o Safari.');
+  const btn = $('#anim-video'), label = btn.textContent, fps = +S.vidFps, N = Math.max(2, Math.round(S.animDur * fps)), W = AW * RES, H = AH * RES;
+  const was = anim; anim = null; btn.disabled = true;
+  try {
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const ctx = c.getContext('2d');
+    let config = null, kind = '';
+    search: for (const br of [120e6, 80e6, 50e6])
+      for (const [codec, k2] of [['avc1.640034', 'avc'], ['avc1.640033', 'avc'], ['avc1.4d0033', 'avc'], ['vp09.00.51.08', 'vp9'], ['vp09.00.10.08', 'vp9']]) {
+        const cfg = { codec, width: W, height: H, bitrate: br, bitrateMode: 'constant', latencyMode: 'quality', framerate: fps };
+        if ((await VideoEncoder.isConfigSupported(cfg)).supported) { config = cfg; kind = k2; break search; }
+      }
+    if (!config) throw new Error('codec');
+    const muxer = new Mp4Muxer.Muxer({ target: new Mp4Muxer.ArrayBufferTarget(), video: { codec: kind, width: W, height: H, frameRate: fps }, fastStart: 'in-memory' });
+    let failed = null;
+    const tag = meta => meta?.decoderConfig ? { ...meta, decoderConfig: { ...meta.decoderConfig, colorSpace: { matrix: 'bt709', fullRange: false, ...meta.decoderConfig.colorSpace, primaries: 'bt709', transfer: 'iec61966-2-1' } } } : meta;
+    const enc = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, tag(meta)), error: e => failed = e });
+    enc.configure(config);
+    for (let i = 0; i < N; i++) {
+      if (failed) throw failed;
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = S.paper; ctx.fillRect(0, 0, W, H);
+      ctx.setTransform(RES, 0, 0, RES, 0, 0); drawAnim(ctx, i / N, S, lut);
+      const f = new VideoFrame(c, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) });
+      enc.encode(f, { keyFrame: i % fps === 0 }); f.close();
+      btn.textContent = `Renderizando ${i + 1} / ${N}`;
+      while (enc.encodeQueueSize > 4) await new Promise(r => setTimeout(r, 5));
+      await new Promise(r => setTimeout(r, 0));
+    }
+    await enc.flush(); enc.close();
+    if (failed) throw failed;
+    muxer.finalize();
+    download(`pixel-trail-${S.parallel ? 'paralelo' : 'radial'}-${stamp()}.mp4`, new Blob([muxer.target.buffer], { type: 'video/mp4' }));
+  } catch (err) { console.error(err); toast('No se pudo exportar el video.'); }
+  finally { btn.disabled = false; btn.textContent = label; if (was) setAnim(true); else wake(); }
+});
+}
+
 function toSvg(now, st, lut) {
   // Written in export pixels (1:1 with the 2x PNG), so a blur means the same thing in every app.
   const r = v => Math.round(v * RES * 100) / 100, out = [], defs = [];
@@ -701,6 +835,12 @@ let lut = null, raf = 0, size = { w: 0, h: 0 };
 
 const pct = v => Math.round(v * 100) + '%';
 const SLIDERS = {
+  animDur: { label: 'Duración', min: 1, max: 30, step: .5, fmt: v => v + ' s', emph: true },
+  animLoops: { label: 'Vueltas', min: 1, max: 4, step: 1, fmt: String },
+  animScale: { label: 'Escala al borde', min: 1, max: 6, step: .1, fmt: v => '×' + v.toFixed(1) },
+  animBlur: { label: 'Desenfoque', min: 0, max: 40, step: .5, fmt: v => v + ' px' },
+  animFocus: { label: 'Foco', min: .1, max: .9, step: .01, fmt: pct },
+  animFade: { label: 'Al color del fondo', min: 0, max: 1, step: .01, fmt: pct },
   size: { label: 'Tamaño', min: 2, max: 80, step: 1, fmt: v => v + ' px' },
   variation: { label: 'Variación', min: 0, max: 1, step: .01, fmt: pct },
   speedSize: { label: 'Tamaño según velocidad', min: -1, max: 1, step: .01, fmt: v => (v > 0 ? '+' : '') + Math.round(v * 100) + '%' },
@@ -784,6 +924,9 @@ function sync() {
   $('#sl-life').hidden = S.permanent;
   $('#sl-depthBlur').hidden = !S.depth;
   $('#img-box').hidden = S.colorMode !== 'image';
+  document.querySelectorAll('[data-radial]').forEach(el => el.hidden = S.parallel); document.querySelectorAll('[data-parallel]').forEach(el => el.hidden = !S.parallel);
+  $('#anim-kind').textContent = anim ? 'Detener' : S.parallel ? 'Animar paralelo' : 'Animar radial';
+  const gs = $('#gen-seed'); if (document.activeElement !== gs && gs.value !== String(S.genSeed)) gs.value = S.genSeed;
   if (svgs.length && svgKey !== svgKeyNow()) { clearTimeout(svgTimer); svgTimer = setTimeout(() => svgKey !== svgKeyNow() && refreshImages(), 120); } // palette, ink or background changed
   $('#svg-row').hidden = $('#svg-sub').hidden = !svgs.length; document.querySelectorAll('[data-svgc]').forEach(b => b.setAttribute('aria-pressed', b.dataset.svgc === S.svgColor)); $('#svg-recolor').hidden = S.svgColor !== 'mix';
   $('#img-hint').hidden = images.length > 0; $('#img-seed-row').hidden = !images.length; $('#img-clear').hidden = !images.length;
@@ -824,6 +967,7 @@ function render(now) {
   const ctx = cv.getContext('2d');
   ctx.setTransform(pw / AW, 0, 0, ph / AH, 0, 0);
   ctx.clearRect(0, 0, AW, AH);
+  if (anim) { drawAnim(ctx, ((now - anim.t0) / 1000 / S.animDur) % 1, S, lut); raf = requestAnimationFrame(render); return; }
   draw(ctx, now, S, lut);
   $('#stats').textContent = cubes.length ? `${cubes.length.toLocaleString('es')} cubos · ${AW} × ${AH} · exporta a ${AW * RES} × ${AH * RES} px` : 'Hacé clic y arrastrá sobre la mesa';
   if (!S.permanent && cubes.length) raf = requestAnimationFrame(render);
@@ -865,6 +1009,10 @@ function layLine(to, t) {
 function snap15(o, p) {
   const dx = p[0] - o[0], dy = p[1] - o[1], d = Math.hypot(dx, dy), a = Math.round(Math.atan2(dy, dx) / (Math.PI / 12)) * (Math.PI / 12);
   return [o[0] + Math.cos(a) * d, o[1] + Math.sin(a) * d];
+}
+function rng(seed) {
+  let a = seed >>> 0 || 1;
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 }
 // Stable shade per position in the line, so it doesn't flicker while dragging.
 const hashUnit = i => { let t = Math.imul(i ^ 0x9E3779B9, 0x85EBCA6B); t ^= t >>> 15; t = Math.imul(t, 0x2C1B3C6D); t ^= t >>> 12; return (t >>> 0) / 4294967296; };
@@ -1210,9 +1358,9 @@ $('[data-check="vpDepth"]').addEventListener('change', () => { if (S.vp && cubes
 let gen = [], genTurn = 0;
 const genScale = new Map(); // g → size, for draw order
 function genSpec(i) {
-  const R = Math.random, k = .25 + R() ** 1.5 * 1.75;
+  const R = rng(S.genSeed * 7919 + i * 131 + 1), k = .25 + R() ** 1.5 * 1.75;
   return { g: ++strokes, a: genTurn + i * 2.39996 + (R() - .5) * .3, d: .5 + R() * .5, f: .25 + R() * .6, k,
-    gp: S.size * k * (1 + R() * .8), n: Math.floor(R() * 5) };
+    gp: S.size * k * (1 + R() * .8), n: Math.floor(R() * 5), side: R() * 2 - 1 };
 }
 // Straight from its outer start toward the point; `vpGap` pushes the whole trail away from the centre.
 // Paralelos: every trail takes the first one's direction, set side by side across it (each at its own offset,
@@ -1249,10 +1397,13 @@ function syncGen() {
 function generate() {
   S.depth = S.permanent = true; vpPos = [AW / 2, AH / 2]; sync(); // trails aim at the centre; Punto de fuga stays as set
   cubes = []; rowScale.clear(); genScale.clear(); select(null);
-  gen = []; genTurn = Math.random() * Math.PI * 2;
+  gen = []; genTurn = rng(S.genSeed)() * Math.PI * 2;
   syncGen();
 }
-$('#vp-gen').addEventListener('click', () => { snapshot(); generate(); });
+$('#vp-gen').addEventListener('click', () => { snapshot(); S.genSeed = Math.floor(Math.random() * 1e6); generate(); });
+// A new composition with the parameters as they are (count, distance, Paralelo…), or a given seed's.
+$('#gen-reseed').addEventListener('click', () => { snapshot(); S.genSeed = Math.floor(Math.random() * 1e6); generate(); });
+$('#gen-seed').addEventListener('change', e => { snapshot(); S.genSeed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); generate(); });
 function vpAll() {
   const rows = [];
   cubes.forEach((c, i) => { const r = rows[rows.length - 1]; if (r && r.g === c.g) r.count++; else rows.push({ g: c.g, i0: i, count: 1 }); });
@@ -1286,6 +1437,7 @@ $('#png').addEventListener('click', () => {
 });
 $('#svg').addEventListener('click', () => download(`pixel-trail-${stamp()}.svg`, new Blob([toSvg(performance.now(), S, lut)], { type: 'image/svg+xml' })));
 
+wireAnim();
 sync();
 setTool('draw');
 generate();
