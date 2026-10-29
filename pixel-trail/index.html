@@ -725,7 +725,7 @@ function animItems(ph, st, lut) {
   return out;
 }
 const smoothstep = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
-const blurA = document.createElement('canvas'), blurB = document.createElement('canvas'), blurCtx = blurA.getContext('2d'), blurCtx2 = blurB.getContext('2d');
+const blurA = document.createElement('canvas'), blurCtx = blurA.getContext('2d');
 function drawAnim(ctx, ph, st, lut) {
   const items = animItems(ph, st, lut), t = ctx.getTransform(), ppu = t.a, cw = ctx.canvas.width, ch = ctx.canvas.height;
   const paint = (c, list) => {
@@ -736,25 +736,41 @@ function drawAnim(ctx, ph, st, lut) {
       if (it.fade > .005) { c.globalAlpha = it.fade; c.fillStyle = st.paper; c.fillRect(x, y, it.s, it.s); c.globalAlpha = 1; }
     }
   };
-  // Back to front, each cube with its own blur, continuous, so it eases in and out over the frames without steps:
-  // the cube is drawn small on a scratch canvas (smaller the more blurred, with room around it) and laid back at
-  // full size with smoothing, twice over for a softer falloff, in the canvas's own pixels.
-  for (const it of items) {
-    const b = it.blur * ppu;
-    if (b < .4 || it.s < .2) { paint(ctx, [it]); continue; }
-    const w = it.s * ppu, pad = b * 1.6, full = w + 2 * pad, d = 1 + b * .55, sw = Math.max(2, Math.ceil(full / d));
-    if (blurA.width < sw || blurA.height < sw) { blurA.width = blurA.height = Math.max(sw, blurA.width); }
-    const a = blurCtx; a.setTransform(1, 0, 0, 1, 0, 0); a.clearRect(0, 0, sw + 1, sw + 1);
-    const k = sw / full; a.setTransform(k * ppu, 0, 0, k * ppu, (pad - (it.x - it.s / 2) * ppu) * k, (pad - (it.y - it.s / 2) * ppu) * k);
-    paint(a, [it]);
-    // a second, half-size pass softens the edge the bilinear upscale leaves
-    const s2 = Math.max(2, Math.ceil(sw / 2)), b2 = blurCtx2;
-    if (blurB.width < s2) blurB.width = blurB.height = Math.max(s2, blurB.width);
-    b2.setTransform(1, 0, 0, 1, 0, 0); b2.clearRect(0, 0, s2 + 1, s2 + 1); b2.imageSmoothingQuality = 'high'; b2.drawImage(blurA, 0, 0, sw, sw, 0, 0, s2, s2);
-    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(blurB, 0, 0, s2, s2, (it.x - it.s / 2) * ppu + t.e - pad, (it.y - it.s / 2) * ppu + t.f - pad, full, full);
-    ctx.restore();
+  // Blur is laid in levels (a layer per level, blurred once), as that is quick. So a cube's blur doesn't jump from one
+  // level to the next, it is shared between its two nearest levels by how close it is to each (drawn faded into both),
+  // and slides across as it changes. Order: blurred levels behind the focus (most blurred first), then those in front
+  // of it (least blurred first), each level back to front; Paralelo's blur is fixed per trail, so its levels are runs.
+  const STEP = 1.6, canBlur = 'filter' in ctx;
+  const layerPass = (list, lv) => {
+    if (!list.length) return;
+    if (!lv || !canBlur) { for (const [it, w] of list) { ctx.globalAlpha = w; paint(ctx, [it]); } ctx.globalAlpha = 1; return; }
+    if (blurA.width !== cw || blurA.height !== ch) { blurA.width = cw; blurA.height = ch; }
+    // Only the box the level's cubes cover (plus the blur's reach) is cleared, blurred and laid down.
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [it] of list) { x0 = Math.min(x0, it.x - it.s / 2); y0 = Math.min(y0, it.y - it.s / 2); x1 = Math.max(x1, it.x + it.s / 2); y1 = Math.max(y1, it.y + it.s / 2); }
+    const r = lv * STEP * 3, bx = Math.max(0, Math.floor(x0 * ppu + t.e - r)), by = Math.max(0, Math.floor(y0 * ppu + t.f - r));
+    const bw = Math.min(cw, Math.ceil(x1 * ppu + t.e + r)) - bx, bh = Math.min(ch, Math.ceil(y1 * ppu + t.f + r)) - by;
+    if (bw <= 0 || bh <= 0) return;
+    const lx = blurCtx; lx.setTransform(1, 0, 0, 1, 0, 0); lx.clearRect(bx, by, bw, bh); lx.setTransform(t);
+    for (const [it, w] of list) { lx.globalAlpha = w; paint(lx, [it]); } lx.globalAlpha = 1;
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.filter = `blur(${(lv * STEP).toFixed(2)}px)`; ctx.drawImage(blurA, bx, by, bw, bh, bx, by, bw, bh); ctx.restore();
+  };
+  if (st.parallel) {
+    for (let i = 0; i < items.length;) {
+      let j = i; const lv = Math.round(items[i].blur * ppu / STEP);
+      while (j < items.length && Math.round(items[j].blur * ppu / STEP) === lv) j++;
+      layerPass(items.slice(i, j).map(it => [it, 1]), lv); i = j;
+    }
+    return;
   }
+  const behind = new Map(), front = new Map(), put = (m, lv, e) => { let l = m.get(lv); if (!l) m.set(lv, l = []); l.push(e); };
+  for (const it of items) {
+    const x = it.blur * ppu / STEP, k = Math.floor(x), f = x - k, m = it.z < st.animFocus ? behind : front;
+    if (1 - f > .01) put(m, k, [it, 1 - f]);
+    if (f > .01) put(m, k + 1, [it, f]);
+  }
+  for (const lv of [...behind.keys()].sort((a, b) => b - a)) layerPass(behind.get(lv), lv);
+  for (const lv of [...front.keys()].sort((a, b) => a - b)) layerPass(front.get(lv), lv);
 }
 function setAnim(on) {
   anim = on ? { t0: performance.now() } : null;
