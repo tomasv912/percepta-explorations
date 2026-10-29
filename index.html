@@ -217,13 +217,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <button data-v="single">Un color</button><button data-v="random">Al azar</button><button data-v="image" id="cm-image">Imagen</button>
         </div>
         <div class="inks" id="inks" aria-label="Color"></div>
-        <div class="row" id="ink-row" style="grid-template-columns:56px 1fr">
-          <span>Color</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="ink" aria-label="Color de los cubos"></label>
-        </div>
         <div id="palsets"></div>
         <div id="palette-box">
           <div class="palette" id="palette"></div>
-          <button class="btn" id="shuffle">Restablecer paleta</button>
         </div>
         <div class="row" style="grid-template-columns:56px 1fr auto">
           <span>Fondo</span>
@@ -839,7 +835,6 @@ $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-in
 $('#blModel').innerHTML = Flora3D.NAMES.map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
 $('#blModel').addEventListener('change', e => { S.blModel = e.target.value; sync(); });
 const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => S.palette, () => S.bg, v => { S.bg = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
-$('#shuffle').addEventListener('click', () => { S.palette = DEFAULTS.palette.slice(); renderPalette(); sync(); });
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('#reseed').addEventListener('click', reseed); $('#bl-reseed').addEventListener('click', reseed);
@@ -876,7 +871,7 @@ function sync() {
   $('#source-hint').textContent = image ? 'Más cubos en las zonas oscuras, menos en las claras.' : 'También podés arrastrar o pegar una imagen: más cubos en lo oscuro, menos en lo claro.';
   $('#cm-image').hidden = !image;
   $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = mono;
-  $('#ink-row').hidden = $('#inks').hidden = S.colorMode !== 'single';
+  $('#inks').hidden = S.colorMode !== 'single';
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase())); $('#palette-box').hidden = S.colorMode !== 'random';
   $('#blModel').value = S.blModel; $('#sl-blFlorets').hidden = S.blModel !== 'hortensia';
   updateBg(S.bgFlip);

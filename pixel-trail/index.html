@@ -234,9 +234,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div class="seg" data-key="palCount" id="palcount" aria-label="Cantidad de colores"><button data-v="5">5 colores</button><button data-v="4">4</button><button data-v="3">3</button></div>
         <div class="palette" id="palette-row" aria-label="Paleta, en orden"></div>
         <div class="inks" id="inks" aria-label="Tinta"></div>
-        <div class="row" id="ink-row" style="grid-template-columns:56px 1fr">
-          <span>Tinta</span><label class="swatch"><i></i><b data-hex></b><input type="color" data-color="ink" aria-label="Tinta"></label>
-        </div>
         <div id="sl-grain"></div>
         <div class="row" style="grid-template-columns:56px 1fr auto">
           <span>Fondo</span><label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label><button class="btn icon bg-flip" id="bg-flip" hidden aria-label="Blanco o negro para el color del fondo"><i></i></button>
@@ -751,7 +748,7 @@ function sync() {
   $('#sl-variation').hidden = $('#sl-speedSize').hidden = $('#sl-grain').hidden = S.style === 'mono';
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   const pal = S.colorMode === 'palette';
-  $('#palette-row').hidden = $('#pal-sub').hidden = $('#palcount').hidden = !(pal || (S.colorMode === 'image' && svgs.length)); $('#ink-row').hidden = $('#inks').hidden = pal || S.colorMode === 'image';
+  $('#palette-row').hidden = $('#pal-sub').hidden = $('#palcount').hidden = !(pal || (S.colorMode === 'image' && svgs.length)); $('#inks').hidden = pal || S.colorMode === 'image';
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   updateBg(S.bgFlip);
   markPalette(); $('#palcount').querySelectorAll('[data-v]').forEach(b => b.hidden = +b.dataset.v > S.palette.length); $('#palcount').style.display = S.palette.length <= 3 ? 'none' : '';

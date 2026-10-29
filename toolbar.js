@@ -155,6 +155,34 @@
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fold); else fold();
 
+  // One palette for every tool: a colour input in a side panel is replaced by the palette's swatches (its colours,
+  // black and white); choosing one sets the input and tells the tool as if picked. A value outside the palette
+  // (an old default) moves to the nearest palette colour. Inputs that edited the palette itself are switched off.
+  style.textContent += `
+.pc-inks { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; min-width: 0; }
+.pc-inks button { appearance: none; border: 0; height: 24px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .14); cursor: pointer; }
+.pc-inks button[aria-pressed="true"] { box-shadow: inset 0 0 0 1px rgb(0 0 0 / .14), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text); }
+[data-pal] { pointer-events: none; }
+`;
+  const lockColors = () => {
+    const all = [...PALETTES[0].colors, INK, WHITE], hex = h => parseInt(h.slice(1), 16), rgb = h => [hex(h) >> 16 & 255, hex(h) >> 8 & 255, hex(h) & 255];
+    const nearest = v => { const [r, g, b] = rgb(v); return all.reduce((best, c) => { const [r2, g2, b2] = rgb(c), d = (r - r2) ** 2 + (g - g2) ** 2 + (b - b2) ** 2; return d < best[1] ? [c, d] : best; }, [all[0], Infinity])[0]; };
+    for (const inp of document.querySelectorAll('aside input[type=color]')) {
+      if (inp.dataset.pal != null) { inp.disabled = true; continue; }
+      const row = document.createElement('div'); row.className = 'pc-inks'; row.setAttribute('aria-label', inp.getAttribute('aria-label') || 'Color');
+      row.innerHTML = all.map(c => `<button type="button" data-c="${c}" style="background:${c}" title="${c}" aria-label="${c}"></button>`).join('');
+      const holder = inp.closest('label.swatch') || inp;
+      holder.after(row); holder.hidden = true;
+      const mark = () => row.querySelectorAll('[data-c]').forEach(b => b.setAttribute('aria-pressed', b.dataset.c.toLowerCase() === inp.value.toLowerCase()));
+      const put = c => { inp.value = c.toLowerCase(); inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); mark(); };
+      row.addEventListener('click', e => { const b = e.target.closest('[data-c]'); if (b) put(b.dataset.c); });
+      // The tool may set the value later (defaults, reset): follow it, and pull anything else onto the palette.
+      const check = () => { if (!all.some(c => c.toLowerCase() === inp.value.toLowerCase())) put(nearest(inp.value)); else mark(); };
+      setInterval(check, 500); check();
+    }
+  };
+  addEventListener('load', lockColors);
+
   // Every image a tool downloads (PNG, JPG, SVG) is cropped to its pixels: whatever around them holds nothing is
   // cut away. Without a background that is what is transparent; with one, what is the background's colour (the
   // colour of all four corners). Tools hand their file to a link and click it; the click is caught here, the file
