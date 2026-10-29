@@ -725,7 +725,7 @@ function animItems(ph, st, lut) {
   return out;
 }
 const smoothstep = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
-const animLayer = document.createElement('canvas');
+const blurA = document.createElement('canvas'), blurB = document.createElement('canvas'), blurCtx = blurA.getContext('2d'), blurCtx2 = blurB.getContext('2d');
 function drawAnim(ctx, ph, st, lut) {
   const items = animItems(ph, st, lut), t = ctx.getTransform(), ppu = t.a, cw = ctx.canvas.width, ch = ctx.canvas.height;
   const paint = (c, list) => {
@@ -736,16 +736,24 @@ function drawAnim(ctx, ph, st, lut) {
       if (it.fade > .005) { c.globalAlpha = it.fade; c.fillStyle = st.paper; c.fillRect(x, y, it.s, it.s); c.globalAlpha = 1; }
     }
   };
-  // Back to front, in runs of about the same blur; each blurred run on a layer of its own, laid down blurred.
-  const level = b => Math.round(b * ppu / 1.5);
-  for (let i = 0; i < items.length;) {
-    let j = i; const lv = level(items[i].blur);
-    while (j < items.length && level(items[j].blur) === lv) j++;
-    const run = items.slice(i, j); i = j;
-    if (!lv || !('filter' in ctx)) { paint(ctx, run); continue; }
-    if (animLayer.width !== cw || animLayer.height !== ch) { animLayer.width = cw; animLayer.height = ch; }
-    const lx = animLayer.getContext('2d'); lx.setTransform(1, 0, 0, 1, 0, 0); lx.clearRect(0, 0, cw, ch); lx.setTransform(t); paint(lx, run);
-    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.filter = `blur(${(lv * 1.5).toFixed(1)}px)`; ctx.drawImage(animLayer, 0, 0); ctx.restore();
+  // Back to front, each cube with its own blur, continuous, so it eases in and out over the frames without steps:
+  // the cube is drawn small on a scratch canvas (smaller the more blurred, with room around it) and laid back at
+  // full size with smoothing, twice over for a softer falloff, in the canvas's own pixels.
+  for (const it of items) {
+    const b = it.blur * ppu;
+    if (b < .4 || it.s < .2) { paint(ctx, [it]); continue; }
+    const w = it.s * ppu, pad = b * 1.6, full = w + 2 * pad, d = 1 + b * .55, sw = Math.max(2, Math.ceil(full / d));
+    if (blurA.width < sw || blurA.height < sw) { blurA.width = blurA.height = Math.max(sw, blurA.width); }
+    const a = blurCtx; a.setTransform(1, 0, 0, 1, 0, 0); a.clearRect(0, 0, sw + 1, sw + 1);
+    const k = sw / full; a.setTransform(k * ppu, 0, 0, k * ppu, (pad - (it.x - it.s / 2) * ppu) * k, (pad - (it.y - it.s / 2) * ppu) * k);
+    paint(a, [it]);
+    // a second, half-size pass softens the edge the bilinear upscale leaves
+    const s2 = Math.max(2, Math.ceil(sw / 2)), b2 = blurCtx2;
+    if (blurB.width < s2) blurB.width = blurB.height = Math.max(s2, blurB.width);
+    b2.setTransform(1, 0, 0, 1, 0, 0); b2.clearRect(0, 0, s2 + 1, s2 + 1); b2.imageSmoothingQuality = 'high'; b2.drawImage(blurA, 0, 0, sw, sw, 0, 0, s2, s2);
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(blurB, 0, 0, s2, s2, (it.x - it.s / 2) * ppu + t.e - pad, (it.y - it.s / 2) * ppu + t.f - pad, full, full);
+    ctx.restore();
   }
 }
 function setAnim(on) {
@@ -1161,6 +1169,7 @@ function selectDown(e) {
     drag = { mode: 'scale', idx, orig, anchor: [ax, ay], corner: [hx, hy], scale0: new Map([...sel].map(g => [g, scaleOf(g)])) };
   } else {
     // Alt: the selection is copied in place and the copy is what moves.
+    // With the vanishing point on, each moved row keeps aiming at it as it moves (see selectMove).
     if (e.altKey) {
       snapshot(); select(duplicateRows(sel, 0));
       const idx2 = cubes.reduce((a, c, i) => (sel.has(c.g) && a.push(i), a), []);
@@ -1179,6 +1188,18 @@ function selectMove(e) {
   }
   else if (d.mode === 'move') {
     const dx = p[0] - d.from[0], dy = p[1] - d.from[1];
+    if (S.vp) {
+      // Each row moved from where it began and laid again toward the point, keeping its length.
+      d.rows ??= [...sel].map(g => ({ g, o: cubes.filter(c => c.g === g).map(c => ({ ...c })) }));
+      for (const { g, o } of d.rows) {
+        const i0 = cubes.findIndex(c => c.g === g); if (i0 < 0 || o.length < 2) continue;
+        let count = 0; while (cubes[i0 + count]?.g === g) count++;
+        const m = o.map(c => ({ ...c, x: c.x + dx, y: c.y + dy })), a = m[0], z = m[m.length - 1];
+        const len = Math.hypot(z.x - a.x, z.y - a.y), wx = vpPos[0] - a.x, wy = vpPos[1] - a.y, D = Math.hypot(wx, wy) || 1, t = Math.min(len, D * .9) / D;
+        relay(m, i0, count, [a.x + wx * t, a.y + wy * t]);
+      }
+      updateSel(); wake(); return;
+    }
     d.idx.forEach((i, j) => { cubes[i].x = d.orig[j][0] + dx; cubes[i].y = d.orig[j][1] + dy; });
   } else {
     // Projection of the pointer on the anchor→corner diagonal gives one uniform factor.
