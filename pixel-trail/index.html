@@ -1056,9 +1056,18 @@ const hashUnit = i => { let t = Math.imul(i ^ 0x9E3779B9, 0x85EBCA6B); t ^= t >>
 
 // Cubes only drop while the button is held: a click lays one, dragging lays the trail.
 let pressed = false;
+// Túnel: the pointer moves the vanishing point (nothing is drawn); every trail follows it live. With Shift it
+// moves along one axis only, the one it has gone furthest on from where the drag began.
+function moveVp(p) {
+  vpPos = [clamp(p[0], 0, AW), clamp(p[1], 0, AH)]; placeVp();
+  gen.forEach(sp => layGen(sp));
+  vpAll(true, new Set(gen.map(sp => sp.g)));
+  updateSel(); wake();
+}
 frame.addEventListener('pointerdown', e => {
   if (e.button !== 0) return;
   frame.setPointerCapture(e.pointerId);
+  if (S.mode === 'tunnel' && tool !== 'select') { snapshot(); drag = { mode: 'tunnelVp', from: toArt(e), vp0: vpPos.slice() }; frame.style.cursor = 'move'; return; }
   if (tool === 'select') return selectDown(e);
   snapshot(); pressed = true; speed = 0; strokes++;
   const p = toArt(e);
@@ -1074,7 +1083,7 @@ frame.addEventListener('pointermove', e => {
   const evs = e.getCoalescedEvents?.() || [];
   for (const ev of evs.length ? evs : [e]) addPoint(toArt(ev), ev.timeStamp);
 });
-const release = () => { if (drag?.mode === 'box') showMarquee(null); if (pressed && S.parallel && !line) parAll(); pressed = false; last = line = null; speed = 0; drag = null; };
+const release = () => { if (drag?.mode === 'tunnelVp') frame.style.cursor = ''; if (drag?.mode === 'box') showMarquee(null); if (pressed && S.parallel && !line) parAll(); pressed = false; last = line = null; speed = 0; drag = null; };
 addEventListener('wheel', e => {
   if (!line) return;
   e.preventDefault();
@@ -1188,6 +1197,11 @@ function selectDown(e) {
 function selectMove(e) {
   const p = toArt(e), d = drag;
   if (d.mode === 'vp') { vpPos = [clamp(p[0], 0, AW), clamp(p[1], 0, AH)]; placeVp(); return; }
+  if (d.mode === 'tunnelVp') {
+    let dx = p[0] - d.from[0], dy = p[1] - d.from[1];
+    if (e.shiftKey) { if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0; }
+    moveVp([d.vp0[0] + dx, d.vp0[1] + dy]); return;
+  }
   if (d.mode === 'box') { showMarquee(d.from, p); const s2 = new Set(d.add); rowsIn(d.from, p).forEach(g => s2.add(g)); select(s2); return; }
   if (!d.saved) { snapshot(); d.saved = true; }
   if (d.mode === 'tip') {
@@ -1383,7 +1397,7 @@ function relay(o, i0, count, p) {
 const MODE_HINT = {
   vp: 'Todos apuntan al punto de fuga, del mismo tamaño.',
   par: 'Todos en la misma dirección, sin perspectiva.',
-  tunnel: 'Todos fugados al mismo punto con perspectiva: chicos y desenfocados al fondo, grandes al frente. Animado, van hacia el centro o hacia afuera.',
+  tunnel: 'Todos fugados al mismo punto con perspectiva: chicos y desenfocados al fondo, grandes al frente. Arrastrá sobre la mesa para mover el punto de fuga (con Shift, sobre un eje). Animado, van hacia el centro o hacia afuera.',
   wave: 'Paralelos que ondulan; animados, la onda corre a lo largo de ellos.',
 };
 function setMode(m) {
@@ -1483,13 +1497,13 @@ $('#vp-gen').addEventListener('click', () => { snapshot(); S.genSeed = Math.floo
 // A new composition with the parameters as they are (count, distance, Paralelo…), or a given seed's.
 $('#gen-reseed').addEventListener('click', () => { snapshot(); S.genSeed = Math.floor(Math.random() * 1e6); generate(); });
 $('#gen-seed').addEventListener('change', e => { snapshot(); S.genSeed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); generate(); });
-function vpAll() {
+function vpAll(live, skip) {
   const rows = [];
   cubes.forEach((c, i) => { const r = rows[rows.length - 1]; if (r && r.g === c.g) r.count++; else rows.push({ g: c.g, i0: i, count: 1 }); });
-  if (!rows.some(r => r.count > 1)) return toast('No hay trazos para llevar al punto.');
-  snapshot();
+  if (!rows.some(r => r.count > 1)) return live === true || toast('No hay trazos para llevar al punto.');
+  if (live !== true) snapshot();
   for (const r of rows.reverse()) {
-    if (r.count < 2) continue;
+    if (r.count < 2 || skip?.has(r.g)) continue;
     const o = cubes.slice(r.i0, r.i0 + r.count).map(c => ({ ...c })), a = o[0], z = o[o.length - 1];
     const len = Math.hypot(z.x - a.x, z.y - a.y), wx = vpPos[0] - a.x, wy = vpPos[1] - a.y, D = Math.hypot(wx, wy) || 1;
     const t = Math.min(len, D * .9) / D;
