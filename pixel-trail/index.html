@@ -38,7 +38,7 @@ html, body { height: 100%; margin: 0; }
 body { display: flex; flex-direction: column; background: var(--page); color: var(--text); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
 
 .app { display: grid; flex: 1; min-height: 0; grid-template-columns: 1fr 280px; }
-main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding-bottom: 32px; }
+main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding-bottom: 32px; padding-left: 250px; }
 .frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); touch-action: none; cursor: none; }
 .frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity .15s ease-out; }
 .frame.busy #cv { opacity: .6; }
@@ -150,6 +150,12 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .anim-play[aria-pressed="true"] { background: var(--text); color: var(--surface); box-shadow: none; }
 .anim-play .i-stop, .anim-play[aria-pressed="true"] .i-play { display: none; } .anim-play[aria-pressed="true"] .i-stop { display: block; }
 .anim-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); cursor: pointer; } .anim-check input { accent-color: var(--text); margin: 0; }
+.modes { position: absolute; left: 14px; top: 14px; width: 232px; max-height: calc(100% - 28px); overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 4px 16px rgb(0 0 0 / .06); z-index: 5; }
+.mode { text-align: left; height: 30px; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: var(--text-2); font: 500 12px var(--font); cursor: pointer; }
+.mode:hover { background: var(--fill); }
+.mode[aria-checked="true"] { background: var(--text); color: var(--surface); }
+.mode-body { display: flex; flex-direction: column; gap: 10px; padding: 8px 4px 4px; }
+.mode-body .hint { font-size: 11px; }
 .marquee { position: absolute; border: 1px solid #0d99ff; background: rgb(13 153 255 / .08); pointer-events: none; z-index: 2; }
 .tools button:disabled { opacity: .35; cursor: default; }
 .sel b { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 6px); background: #0d99ff; color: #fff; font: 500 10px var(--mono); padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
@@ -160,6 +166,30 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <script src="../vendor/mp4-muxer.js"></script>
 <div class="app">
   <main id="stage">
+    <div class="modes" id="modes" role="radiogroup" aria-label="Modo">
+      <button class="mode" data-mode="vp" role="radio">Punto de fuga</button>
+      <button class="mode" data-mode="par" role="radio">Paralelos</button>
+      <button class="mode" data-mode="tunnel" role="radio">Túnel</button>
+      <button class="mode" data-mode="wave" role="radio">Paralelos en onda</button>
+      <div class="mode-body" id="mode-body">
+        <p class="hint" id="mode-hint"></p>
+        <div class="seg" data-key="tunnelDir" aria-label="Dirección" data-modes="tunnel"><button data-v="in">Hacia el centro</button><button data-v="out">Hacia afuera</button></div>
+        <div id="sl-vpCount"></div>
+        <div id="sl-angle" data-modes="par wave vp"></div>
+        <div id="sl-vpGap" data-modes="vp tunnel"></div>
+        <div id="sl-depthBlur2" data-modes="tunnel"></div>
+        <div id="sl-waveAmp" data-modes="wave"></div>
+        <div id="sl-waveLen" data-modes="wave"></div>
+        <div id="sl-waveShift" data-modes="wave"></div>
+        <div class="btns"><button class="btn" id="vp-all" data-modes="vp tunnel">Llevar al punto</button><button class="btn" id="vp-gen">Generar</button></div>
+        <div class="row">
+          <span>Semilla</span>
+          <input class="text" id="gen-seed" inputmode="numeric" aria-label="Semilla de la composición">
+          <button class="btn icon" id="gen-reseed" title="Nueva composición con los mismos parámetros" aria-label="Nueva composición"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg></button>
+        </div>
+      </div>
+      <div hidden><input type="checkbox" data-check="vp"><input type="checkbox" data-check="vpDepth"><input type="checkbox" data-check="parallel"></div>
+    </div>
     <div class="tools" role="toolbar" aria-label="Herramientas">
       <button id="tool-draw" title="Pincel (B)" aria-label="Pincel"><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.5 3.5l-8.6 8.6"/><path d="M12.4 9.6l1.9 1.9"/><path d="M9.6 12.3a2.8 2.8 0 0 0-3.9 0c-1.2 1.2-.7 3.3-2.2 4.7 2.6 1 5.6.6 6.9-.8a2.8 2.8 0 0 0-.8-3.9z"/></svg></button>
       <button id="tool-select" title="Cursor (V): seleccionar, mover y escalar filas" aria-label="Cursor"><svg viewBox="0 0 22 22" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M5 3.5l12 7-5.2 1.3L9.6 17z"/></svg></button>
@@ -199,21 +229,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
   <aside>
     <div class="controls">
-      <section>
-        <h2>Punto de fuga</h2>
-        <label class="check"><input type="checkbox" data-check="vp"> Punto de fuga</label>
-        <label class="check" id="vpDepth-row"><input type="checkbox" data-check="vpDepth"> Perspectiva (el tamaño crece hacia el frente)</label>
-        <label class="check"><input type="checkbox" data-check="parallel"> Paralelo (todos en la dirección del primero, sin perspectiva)</label>
-        <div id="sl-vpCount"></div>
-        <div id="sl-angle"></div>
-        <div id="sl-vpGap"></div>
-        <div class="btns"><button class="btn" id="vp-all">Llevar al punto</button><button class="btn" id="vp-gen">Generar</button></div>
-        <div class="row">
-          <span>Semilla</span>
-          <input class="text" id="gen-seed" inputmode="numeric" aria-label="Semilla de la composición">
-          <button class="btn icon" id="gen-reseed" title="Nueva composición con los mismos parámetros" aria-label="Nueva composición"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg></button>
-        </div>
-      </section>
 
       <section>
         <h2>Cubos</h2>
@@ -289,7 +304,7 @@ const DEFAULTS = {
   style: 'mono', size: 16, variation: .3, speedSize: 0,
   life: 2.5, permanent: true,
   colorMode: 'image', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF'],
-  depth: false, depthBlur: 14, vp: false, vpDepth: false, vpCount: 16, vpGap: 0, angle: 0, parallel: false, genSeed: 1, animDur: 6, animScale: 2.5, animBlur: 14, animFocus: .45, animFade: .8, animLoops: 1, animParallax: true, vidFps: '30', palCount: '5',
+  depth: false, depthBlur: 14, vp: false, vpDepth: false, vpCount: 16, vpGap: 0, angle: 0, parallel: false, mode: 'vp', tunnelDir: 'in', waveAmp: 60, waveLen: 600, waveShift: .25, genSeed: 1, animDur: 6, animScale: 2.5, animBlur: 14, animFocus: .45, animFade: .8, animLoops: 1, animParallax: true, vidFps: '30', palCount: '5',
   ink: '#272727', grain: .05, paper: '#F6F6F6', svgColor: 'palette', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -592,7 +607,7 @@ async function addImages(files, quiet) {
 function squareOf(x, y, s) { const h = s / 2; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }
 function poly(ctx, p) { ctx.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]); ctx.closePath(); }
 // Rows in drop order, each with its squares (also in drop order) and its average cube size.
-function rowsOf(now, st, lut) {
+function rowsOf(now, st, lut, raw = false) {
   const rows = [];
   let row = null;
   for (const c of cubes) {
@@ -603,7 +618,15 @@ function rowsOf(now, st, lut) {
     row.sum += s;
   }
   for (const r of rows) r.size = r.sum / r.items.length;
+  if (st.mode === 'wave' && !raw) rows.forEach((r, ri) => { for (const it of r.items) { const [x, y] = waveAt(it[0], it[1], ri, 0, st); it[0] = x; it[1] = y; } });
   return rows;
+}
+// Paralelos en onda: each cube moved across the trails' direction by a sine of its place along it; row by row the
+// wave is shifted (Desfase), and over the loop it runs along the trails a whole number of times.
+function waveAt(x, y, ri, ph, st, along) {
+  const ux = Math.cos(parA), uy = Math.sin(parA), sx = along ?? (x - AW / 2) * ux + (y - AH / 2) * uy;
+  const o = st.waveAmp * Math.sin(2 * Math.PI * (sx / st.waveLen - ph * st.animLoops + ri * st.waveShift));
+  return [x - uy * o, y + ux * o];
 }
 // Depth: a row is blurred by how much smaller it is than the largest row.
 function blurOf(row, maxSize, st) { return st.depth ? st.depthBlur * (1 - row.size / maxSize) : 0; }
@@ -646,7 +669,7 @@ function draw(ctx, now, st, lut) {
 // times, so it still loops. Blur in Paralelo is the layout's depth blur.
 let anim = null;
 function animItems(ph, st, lut) {
-  const rows = rowsOf(performance.now(), st, lut), maxSize = Math.max(0, ...rows.map(r => r.size)), out = [];
+  const rows = rowsOf(performance.now(), st, lut, true), maxSize = Math.max(0, ...rows.map(r => r.size)), out = [];
   if (!st.parallel) {
     // Each trail is a stream of cubes along its ray, as long as the layout's trail. Its cubes are spaced so each
     // covers the one behind it by 20–70% (the trail's own share, from its seed) wherever it is, whatever its size
@@ -663,7 +686,7 @@ function animItems(ph, st, lut) {
       const wa = wOf(Math.hypot(hx - cx, hy - cy)), wb = wOf(Math.hypot(tx - cx, ty - cy)), w1 = Math.max(wa, wb), w0 = Math.min(w1 - c, Math.min(wa, wb));
       const n = Math.max(2, Math.min(600, Math.round((w1 - w0) / c) + 1)), k = st.animLoops * (1 + Math.floor(h(2) * 3));
       for (let j = 0; j < n; j++) {
-        const w = ((w0 - w1 + stagger + j * c + ph * k) % 1 + 1) % 1, q = Math.pow(w, 1 / .8), r2 = Rm * Math.pow(q, 1.7), it = row.items[j % row.items.length];
+        const w = ((w0 - w1 + stagger + j * c + ph * k * (st.mode === 'tunnel' && st.tunnelDir === 'in' ? -1 : 1)) % 1 + 1) % 1, q = Math.pow(w, 1 / .8), r2 = Rm * Math.pow(q, 1.7), it = row.items[j % row.items.length];
         const bl = q < f ? Math.pow(1 - q / f, 1.4) : Math.pow((q - f) / (1 - f), 1.6);
         out.push({ x: cx + Math.cos(a) * r2, y: cy + Math.sin(a) * r2, s: row.size * st.animScale * Math.pow(q, .9), col: it[3], img: it[4], blur: st.animBlur * bl, fade: st.animFade * smoothstep(.62, 1, q), z: q });
       }
@@ -676,7 +699,9 @@ function animItems(ph, st, lut) {
       const vary = 1 + Math.floor(hashUnit(row.g * 7919 + st.genSeed) * 3), k = Math.max(1, Math.round(st.animLoops * vary * (st.animParallax ? .5 + row.size / (maxSize || 1) : 1))), blur = blurOf(row, maxSize, st);
       for (const [x, y, s, col, img] of row.items) {
         const sx = (x - AW / 2) * ux + (y - AH / 2) * uy, w = ((sx + L / 2 + ph * k * L) % L + L) % L - L / 2;
-        out.push({ x: x + (w - sx) * ux, y: y + (w - sx) * uy, s, col, img, blur, fade: 0, z: ri });
+        let px = x + (w - sx) * ux, py = y + (w - sx) * uy;
+        if (st.mode === 'wave') [px, py] = waveAt(px, py, ri, ph, st, w);
+        out.push({ x: px, y: py, s, col, img, blur, fade: 0, z: ri });
       }
     });
   }
@@ -772,7 +797,7 @@ $('#anim-video').addEventListener('click', async () => {
     await enc.flush(); enc.close();
     if (failed) throw failed;
     muxer.finalize();
-    download(`pixel-trail-${S.parallel ? 'paralelo' : 'radial'}-${stamp()}.mp4`, new Blob([muxer.target.buffer], { type: 'video/mp4' }));
+    download(`pixel-trail-${{ vp: 'punto-de-fuga', par: 'paralelos', tunnel: 'tunel', wave: 'onda' }[S.mode]}-${stamp()}.mp4`, new Blob([muxer.target.buffer], { type: 'video/mp4' }));
   } catch (err) { console.error(err); toast('No se pudo exportar el video.'); }
   finally { btn.disabled = false; btn.textContent = label; if (was) setAnim(true); else wake(); }
 });
@@ -849,6 +874,10 @@ const SLIDERS = {
   life: { label: 'Duración', min: .2, max: 15, step: .1, fmt: v => v.toFixed(1) + ' s' },
   grain: { label: 'Variación de tono', min: 0, max: .2, step: .005, fmt: pct },
   vpCount: { label: 'Trails', min: 1, max: 80, step: 1, fmt: v => v, on: () => syncGen() },
+  depthBlur2: { label: 'Desenfoque por profundidad', min: 0, max: 30, step: .5, fmt: v => v + ' px', get: () => S.depthBlur, set: v => S.depthBlur = v },
+  waveAmp: { label: 'Amplitud', min: 0, max: 300, step: 5, fmt: v => v + ' px', emph: true },
+  waveLen: { label: 'Largo de onda', min: 100, max: 2000, step: 20, fmt: v => v + ' px' },
+  waveShift: { label: 'Desfase entre trails', min: 0, max: 1, step: .01, fmt: pct },
   angle: { label: 'Ángulo', min: 0, max: 345, step: 15, fmt: v => v + '°', on: () => turnTo(S.angle) },
   vpGap: { label: 'Alejar del centro', min: 0, max: 700, step: 5, fmt: v => v + ' px', on: () => { gen.forEach(sp => layGen(sp)); updateSel(); wake(); } },
   depthBlur: { label: 'Desenfoque máximo', min: 1, max: 60, step: 1, fmt: v => v + ' px' },
@@ -859,7 +888,7 @@ for (const [key, d] of Object.entries(SLIDERS)) {
   if (d.values) Object.assign(d, { min: 0, max: d.values.length - 1, step: 1 }); // a slider over a list of stops
   host.innerHTML = `<label for="in-${key}">${d.label}</label><output id="out-${key}"></output><input type="range" id="in-${key}" min="${d.min}" max="${d.max}" step="${d.step}" title="Doble clic para restablecer">`;
   const input = host.querySelector('input');
-  input.addEventListener('input', () => { if (d.on && !d.busy) { snapshot(); d.busy = true; } S[key] = d.values ? d.values[+input.value] : +input.value; sync(); d.on?.(); });
+  input.addEventListener('input', () => { if (d.on && !d.busy) { snapshot(); d.busy = true; } const v = d.values ? d.values[+input.value] : +input.value; d.set ? d.set(v) : S[key] = v; sync(); d.on?.(); });
   input.addEventListener('change', () => d.busy = false);
   input.addEventListener('dblclick', () => { if (d.on) snapshot(); S[key] = DEFAULTS[key]; sync(); d.on?.(); });
 }
@@ -919,10 +948,10 @@ function paintSwatch(el, hex) {
 function sync() {
   for (const key of Object.keys(SLIDERS)) {
     const input = $('#in-' + key), d = SLIDERS[key];
-    const at = d.values ? stopOf(d, S[key]) : S[key];
+    const cur = d.get ? d.get() : S[key], at = d.values ? stopOf(d, cur) : cur;
     if (+input.value !== at) input.value = at;
     input.style.setProperty('--p', ((at - d.min) / (d.max - d.min) * 100) + '%');
-    $('#out-' + key).textContent = d.fmt(S[key]);
+    $('#out-' + key).textContent = d.fmt(cur);
   }
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
@@ -930,7 +959,7 @@ function sync() {
   $('#sl-depthBlur').hidden = !S.depth;
   $('#img-box').hidden = S.colorMode !== 'image';
   document.querySelectorAll('[data-radial]').forEach(el => el.hidden = S.parallel); document.querySelectorAll('[data-parallel]').forEach(el => el.hidden = !S.parallel);
-  $('#anim-kind').textContent = anim ? 'Detener' : S.parallel ? 'Animar paralelo' : 'Animar radial';
+  $('#anim-kind').textContent = anim ? 'Detener' : 'Animar';
   const gs = $('#gen-seed'); if (document.activeElement !== gs && gs.value !== String(S.genSeed)) gs.value = S.genSeed;
   if (svgs.length && svgKey !== svgKeyNow()) { clearTimeout(svgTimer); svgTimer = setTimeout(() => svgKey !== svgKeyNow() && refreshImages(), 120); } // palette, ink or background changed
   $('#svg-row').hidden = $('#svg-sub').hidden = !svgs.length; document.querySelectorAll('[data-svgc]').forEach(b => b.setAttribute('aria-pressed', b.dataset.svgc === S.svgColor)); $('#svg-recolor').hidden = S.svgColor !== 'mix';
@@ -938,7 +967,10 @@ function sync() {
   const is = $('#img-seed'); if (document.activeElement !== is && is.value !== String(imgSeed)) is.value = imgSeed;
   const th = $('#thumbs');
   if (th.dataset.v !== String(imgVersion)) th.dataset.v = imgVersion, th.replaceChildren(...images.slice(0, 16).map(im => { const c = document.createElement('canvas'); c.width = c.height = 48; c.getContext('2d').drawImage(im.canvas, 0, 0, 48, 48); return c; }));
-  $('#vp-all').hidden = $('#vpDepth-row').hidden = !S.vp;
+  document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-checked', b.dataset.mode === S.mode));
+  $('#modes').insertBefore($('#mode-body'), $(`[data-mode="${S.mode}"]`).nextSibling); // the chosen mode's parameters open under it
+  document.querySelectorAll('[data-modes]').forEach(el => el.hidden = !el.dataset.modes.split(' ').includes(S.mode));
+  $('#mode-hint').textContent = MODE_HINT[S.mode];
   placeVp();
   $('#sl-variation').hidden = $('#sl-speedSize').hidden = $('#sl-grain').hidden = S.style === 'mono';
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
@@ -956,7 +988,7 @@ function sync() {
 
 function fit() {
   const r = stage.getBoundingClientRect();
-  const k = Math.max(0, Math.min((r.width - 64) / AW, (r.height - 96) / AH));
+  const k = Math.max(0, Math.min((r.width - 64 - 250) / AW, (r.height - 96) / AH));
   return { w: Math.round(AW * k), h: Math.round(AH * k) };
 }
 // Animates while cubes are aging; otherwise draws once and sleeps.
@@ -1347,6 +1379,20 @@ function relay(o, i0, count, p) {
 }
 // Every row toward the vanishing point, each keeping its length (up to most of the way there). Turning the
 // point on does this right away, so the trails snap to it.
+// Modes: four ways of seeing the same trails (the waves seen from elsewhere).
+const MODE_HINT = {
+  vp: 'Todos apuntan al punto de fuga, del mismo tamaño.',
+  par: 'Todos en la misma dirección, sin perspectiva.',
+  tunnel: 'Todos fugados al mismo punto con perspectiva: chicos y desenfocados al fondo, grandes al frente. Animado, van hacia el centro o hacia afuera.',
+  wave: 'Paralelos que ondulan; animados, la onda corre a lo largo de ellos.',
+};
+function setMode(m) {
+  snapshot(); S.mode = m;
+  if (m === 'vp' || m === 'tunnel') { S.vp = true; S.parallel = false; S.vpDepth = m === 'tunnel'; if (m === 'tunnel') S.depth = true; sync(); if (cubes.length) vpAll(); }
+  else { S.vp = false; S.parallel = true; sync(); parallelOn(); }
+  wake();
+}
+document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
 $('#vp-all').addEventListener('click', vpAll);
 $('[data-check="vp"]').addEventListener('change', () => { if (S.vp) { S.parallel = false; sync(); } if (S.vp && cubes.length) vpAll(); });
 // Paralelo: every row straightened along one direction (the first row's), each keeping its first cube, length and
@@ -1426,6 +1472,7 @@ function syncGen() {
   updateSel(); wake();
 }
 function generate() {
+  if (S.mode === 'tunnel') S.vpDepth = true;
   S.depth = S.permanent = true; vpPos = [AW / 2, AH / 2]; sync(); // trails aim at the centre; Punto de fuga stays as set
   cubes = []; rowScale.clear(); genScale.clear(); select(null);
   gen = []; genTurn = rng(S.genSeed)() * Math.PI * 2;
