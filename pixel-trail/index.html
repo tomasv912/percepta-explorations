@@ -366,6 +366,19 @@ let images = [], photos = [], svgs = [], imgSeed = 0, svgSeed = 1, imgVersion = 
 // two white… in a row). Rules give way, the last first, only when the set is too small to keep them. Worked out
 // in order and kept, until the seed or the set changes.
 let picks = new Int32Array(0), picksKey = '';
+// How often each tile colour comes up among an SVG's colourings: violet-ish (lila and violeta) about a quarter,
+// celeste and white most, black now and then. The two violets are the palette's first two colours.
+const TILE_MIX = { 0: .125, 1: .125, 2: .36, white: .3, black: .09 };
+function tileWeight(c) {
+  if (!c) return 1;
+  const ap = activePal(S).map(x => x.toLowerCase()), i = ap.indexOf(c);
+  return i >= 0 ? TILE_MIX[i] ?? .2 : sameC(c, WHITE) ? TILE_MIX.white : TILE_MIX.black;
+}
+function weighted(opts, u) {
+  const w = opts.map(j => tileWeight(images[j].color)), tot = w.reduce((a, b) => a + b, 0);
+  let x = u * tot; for (let k = 0; k < opts.length; k++) if ((x -= w[k]) <= 0) return opts[k];
+  return opts[opts.length - 1];
+}
 function imageOf(n) {
   const L = images.length, key = imgSeed + ':' + imgVersion;
   if (L < 2) return 0;
@@ -384,7 +397,7 @@ function imageOf(n) {
       search: for (let level = 0; level <= 3; level++) for (let k = 0, g = start; k < G; k++, g = (g + step) % G) {
         if (level === 0 && recent.has(srcs[g])) continue;
         const opts = groups.get(srcs[g]).filter(j => fits(j, level));
-        if (opts.length) { pick = opts[Math.floor(h(2) * opts.length)]; break search; }
+        if (opts.length) { pick = weighted(opts, h(2)); break search; }
       }
       picks[i] = pick;
     }
@@ -494,7 +507,6 @@ async function buildSvgImages() {
         // drawing's background takes that colour and whatever had that colour takes the old background's (they swap).
         const base = svgMap(src), bg = sv.bg ??= tileColor((await svgImage(sv, base)).canvas) || base[src[src.length - 1]];
         for (const b of [...activePal(S), WHITE, INK]) {
-          if (sameC(b, S.paper)) continue; // a tile the page's colour would vanish into it
           const map = Object.fromEntries(src.map(c => { const m = base[c]; return [c, sameC(m, bg) ? b : sameC(m, b) ? bg : m]; }));
           out.push({ ...await svgImage(sv, map), src: 's' + si, color: b.toLowerCase() });
         }
