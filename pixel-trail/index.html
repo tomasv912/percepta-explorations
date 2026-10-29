@@ -361,18 +361,32 @@ function lifeScale(c, now) {
 // file with the palette dealt at random (darkest stays darkest), Recolorear deals again. Original: as drawn.
 const IMG = 256, SVG_VARIANTS = 4, SLOTS = ['#E4DEFC', '#A8A5EC', '#A0C2FF'];
 let images = [], photos = [], svgs = [], imgSeed = 0, svgSeed = 1, imgVersion = 0;
-// Each cube's photo, chosen at random but never the one the cube before it took: cube n picks among the others,
-// stepping on from cube n−1's. Worked out in order and kept, until the seed or the set changes.
+// Each cube's image, chosen at random for variety, by rules: never the same image (photo or SVG, in any colouring)
+// as either of the 4 cubes before it, and never a tile of the same colour as the cube just before it (two violet,
+// two white… in a row). Rules give way, the last first, only when the set is too small to keep them. Worked out
+// in order and kept, until the seed or the set changes.
 let picks = new Int32Array(0), picksKey = '';
 function imageOf(n) {
-  const L = images.length, key = imgSeed + ':' + L;
+  const L = images.length, key = imgSeed + ':' + imgVersion;
   if (L < 2) return 0;
   if (key !== picksKey) { picksKey = key; picks = new Int32Array(0); }
   if (n >= picks.length) {
     const from = picks.length, next = new Int32Array(Math.max(n + 1, from * 2, 1024)).fill(-1); next.set(picks); picks = next;
+    // Images first (each photo or SVG equally often), then one of that SVG's colourings.
+    const groups = new Map(); images.forEach((im, j) => { const g = groups.get(im.src); if (g) g.push(j); else groups.set(im.src, [j]); });
+    const srcs = [...groups.keys()], G = srcs.length;
     for (let i = from; i < picks.length; i++) {
-      const h = hashUnit(i * 7919 + imgSeed * 104729);
-      picks[i] = i === 0 ? Math.floor(h * L) : (picks[i - 1] + 1 + Math.floor(h * (L - 1))) % L;
+      const h = k => hashUnit(i * 7919 + imgSeed * 104729 + k * 613), start = Math.floor(h(0) * G), step = 1 + Math.floor(h(1) * Math.max(1, G - 1));
+      const prev = i ? images[picks[i - 1]] : null, recent = new Set();
+      for (let k = 1; k <= 4 && i - k >= 0; k++) recent.add(images[picks[i - k]].src);
+      const fits = (j, level) => { const im = images[j]; return (level > 1 || !prev || !im.color || im.color !== prev.color) && (level > 2 || !prev || im.src !== prev.src); };
+      let pick = groups.get(srcs[start])[0];
+      search: for (let level = 0; level <= 3; level++) for (let k = 0, g = start; k < G; k++, g = (g + step) % G) {
+        if (level === 0 && recent.has(srcs[g])) continue;
+        const opts = groups.get(srcs[g]).filter(j => fits(j, level));
+        if (opts.length) { pick = opts[Math.floor(h(2) * opts.length)]; break search; }
+      }
+      picks[i] = pick;
     }
   }
   return picks[n];
@@ -458,17 +472,38 @@ async function svgImage(sv, map) {
   const c = sv.cache.get(key);
   return { canvas: c.canvas, vec: c.vec, url: null, png: true };
 }
+const sameC = (a, b) => a.toLowerCase() === b.toLowerCase();
+// A tile's colour: the palette colour (white and black included) most of its border is, or null.
+function tileColor(canvas) {
+  const x = canvas.getContext('2d'), all = [...activePal(S), WHITE, INK], votes = new Map();
+  for (const [u, v] of [[.06, .06], [.94, .06], [.06, .94], [.94, .94], [.5, .06], [.5, .94], [.06, .5], [.94, .5]]) {
+    const d = x.getImageData(Math.floor(u * IMG), Math.floor(v * IMG), 1, 1).data; if (d[3] < 128) continue;
+    const best = all.reduce((m, c) => { const [r, g, b] = rgbOf(c), e = (r - d[0]) ** 2 + (g - d[1]) ** 2 + (b - d[2]) ** 2; return e < m[1] ? [c, e] : m; }, [all[0], Infinity])[0];
+    votes.set(best, (votes.get(best) || 0) + 1);
+  }
+  return votes.size ? [...votes].sort((a, b) => b[1] - a[1])[0][0].toLowerCase() : null;
+}
 async function buildSvgImages() {
   const out = [];
   for (const [si, sv] of svgs.entries()) {
     try {
-      if (S.svgColor === 'original') { out.push(await svgImage(sv, null)); continue; }
+      if (S.svgColor === 'original') { const im = await svgImage(sv, null); out.push({ ...im, src: 's' + si, color: tileColor(im.canvas) }); continue; }
       const pal = activePal(S).map(h => onBg(h, S.paper)), src = [...sv.colors].sort((a, b) => lum(a) - lum(b));
-      if (S.svgColor === 'palette') { out.push(await svgImage(sv, svgMap(src))); continue; }
+      if (S.svgColor === 'palette') {
+        // Its colours on the palette, then one version per background colour (the palette's, white, black): the
+        // drawing's background takes that colour and whatever had that colour takes the old background's (they swap).
+        const base = svgMap(src), bg = sv.bg ??= tileColor((await svgImage(sv, base)).canvas) || base[src[src.length - 1]];
+        for (const b of [...activePal(S), WHITE, INK]) {
+          if (sameC(b, S.paper)) continue; // a tile the page's colour would vanish into it
+          const map = Object.fromEntries(src.map(c => { const m = base[c]; return [c, sameC(m, bg) ? b : sameC(m, b) ? bg : m]; }));
+          out.push({ ...await svgImage(sv, map), src: 's' + si, color: b.toLowerCase() });
+        }
+        continue;
+      }
       for (let v = 0; v < SVG_VARIANTS; v++) {
         let ri = 0; const base = svgSeed * 7919 + si * 131 + v * 17, r = () => hashUnit(base * 31 + ri++), order = [...pal].sort(() => r() - .5);
         const picked = src.map((_, i) => order[i % order.length]).sort((a, b) => lum(a) - lum(b)); // keep light and dark apart
-        out.push(await svgImage(sv, Object.fromEntries(src.map((c, i) => [c, picked[i]]))));
+        const im = await svgImage(sv, Object.fromEntries(src.map((c, i) => [c, picked[i]]))); out.push({ ...im, src: 's' + si, color: tileColor(im.canvas) });
       }
     } catch { /* unreadable */ }
   }
@@ -543,7 +578,7 @@ async function addImages(files, quiet) {
       const c = document.createElement('canvas'); c.width = c.height = IMG;
       const x = c.getContext('2d'); x.imageSmoothingQuality = 'high';
       x.drawImage(bm, (bm.width - m) / 2, (bm.height - m) / 2, m, m, 0, 0, IMG, IMG);
-      bm.close?.(); photos.push({ canvas: c, url: null }); added++;
+      bm.close?.(); photos.push({ canvas: c, url: null, src: 'p' + photos.length, color: null }); added++;
     } catch { /* not a readable image */ }
   }
   if (!added) return quiet || toast('No encontré imágenes.');
