@@ -690,19 +690,32 @@ let anim = null;
 function animItems(ph, st, lut) {
   const rows = rowsOf(performance.now(), st, lut), maxSize = Math.max(0, ...rows.map(r => r.size)), out = [];
   if (!st.parallel) {
+    // Each trail is a stream of cubes along its ray, as long as the layout's trail. Its cubes are spaced so each
+    // covers the one behind it by 20–70% (the trail's own share, from its seed) wherever it is, whatever its size
+    // there: in w = q^0.8 the spacing is even. Every cube wraps on its own (out at the edge, in at the centre), so
+    // the centre never empties; trails run 1–3 times round per loop, so they move at different speeds and still loop.
     const [cx, cy] = vpPos, Rm = Math.max(...[[0, 0], [AW, 0], [0, AH], [AW, AH]].map(([x, y]) => Math.hypot(x - cx, y - cy))) * 1.05;
-    const ease = q => Math.pow(q, 1.7); // slow by the centre, quick at the edge: depth
-    for (const row of rows) for (const [x, y, s, col, img] of row.items) {
-      const dx = x - cx, dy = y - cy, rho = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
-      const q0 = Math.pow(Math.min(.999, rho / Rm), 1 / 1.7), q = (q0 + ph * st.animLoops) % 1, r2 = Rm * ease(q);
-      const f = st.animFocus, b = q < f ? Math.pow(1 - q / f, 1.4) : Math.pow((q - f) / (1 - f), 1.6);
-      out.push({ x: cx + Math.cos(a) * r2, y: cy + Math.sin(a) * r2, s: s * st.animScale * Math.pow(q, .9), col, img, blur: st.animBlur * b, fade: st.animFade * smoothstep(.62, 1, q), z: q });
-    }
+    const wOf = r => Math.pow(Math.min(.999, r / Rm), .8 / 1.7), f = st.animFocus;
+    // Trails are staggered along the radius (golden-ratio steps), so at every moment some are leaving the centre.
+    rows.forEach((row, ri) => {
+      if (!row.items.length) return;
+      const stagger = (ri * .618034) % 1, h = k => hashUnit(row.g * 7919 + k * 104729 + st.genSeed);
+      const [tx, ty] = row.items[0], [hx, hy] = row.items[row.items.length - 1], a = Math.atan2(hy - cy, hx - cx);
+      const ov = .2 + .5 * h(1), c = .8 * (1 - ov) * row.size * st.animScale / (1.7 * Rm);
+      const wa = wOf(Math.hypot(hx - cx, hy - cy)), wb = wOf(Math.hypot(tx - cx, ty - cy)), w1 = Math.max(wa, wb), w0 = Math.min(w1 - c, Math.min(wa, wb));
+      const n = Math.max(2, Math.min(600, Math.round((w1 - w0) / c) + 1)), k = st.animLoops * (1 + Math.floor(h(2) * 3));
+      for (let j = 0; j < n; j++) {
+        const w = ((w0 - w1 + stagger + j * c + ph * k) % 1 + 1) % 1, q = Math.pow(w, 1 / .8), r2 = Rm * Math.pow(q, 1.7), it = row.items[j % row.items.length];
+        const bl = q < f ? Math.pow(1 - q / f, 1.4) : Math.pow((q - f) / (1 - f), 1.6);
+        out.push({ x: cx + Math.cos(a) * r2, y: cy + Math.sin(a) * r2, s: row.size * st.animScale * Math.pow(q, .9), col: it[3], img: it[4], blur: st.animBlur * bl, fade: st.animFade * smoothstep(.62, 1, q), z: q });
+      }
+    });
     out.sort((p, q) => p.z - q.z);
   } else {
     const ux = Math.cos(parA), uy = Math.sin(parA), ex = (Math.abs(ux) * AW + Math.abs(uy) * AH) / 2, m = maxSize * 4 + 40, L = 2 * (ex + m);
     rows.forEach((row, ri) => {
-      const k = st.animParallax ? Math.max(1, Math.round(st.animLoops * (.5 + 1.5 * row.size / (maxSize || 1)))) : st.animLoops, blur = blurOf(row, maxSize, st);
+      // Each trail its own speed (1 to 3 crossings per loop, from its seed), faster for the larger ones with Paralaje.
+      const vary = 1 + Math.floor(hashUnit(row.g * 7919 + st.genSeed) * 3), k = Math.max(1, Math.round(st.animLoops * vary * (st.animParallax ? .5 + row.size / (maxSize || 1) : 1))), blur = blurOf(row, maxSize, st);
       for (const [x, y, s, col, img] of row.items) {
         const sx = (x - AW / 2) * ux + (y - AH / 2) * uy, w = ((sx + L / 2 + ph * k * L) % L + L) % L - L / 2;
         out.push({ x: x + (w - sx) * ux, y: y + (w - sx) * uy, s, col, img, blur, fade: 0, z: ri });
@@ -834,8 +847,14 @@ const cv = $('#cv'), frame = $('#frame'), stage = $('#stage');
 let lut = null, raf = 0, size = { w: 0, h: 0 };
 
 const pct = v => Math.round(v * 100) + '%';
+// Loop lengths: every 2 s up to 30, every 5 up to a minute, every 10 up to two.
+const DUR_STOPS = [];
+for (let v = 2; v <= 30; v += 2) DUR_STOPS.push(v);
+for (let v = 35; v <= 60; v += 5) DUR_STOPS.push(v);
+for (let v = 70; v <= 120; v += 10) DUR_STOPS.push(v);
+const stopOf = (d, x) => d.values.reduce((b, v, i) => Math.abs(v - x) < Math.abs(d.values[b] - x) ? i : b, 0);
 const SLIDERS = {
-  animDur: { label: 'Duración', min: 1, max: 30, step: .5, fmt: v => v + ' s', emph: true },
+  animDur: { label: 'Duración', values: DUR_STOPS, fmt: v => v < 60 ? v + ' s' : Math.floor(v / 60) + ':' + String(v % 60).padStart(2, '0'), emph: true },
   animLoops: { label: 'Vueltas', min: 1, max: 4, step: 1, fmt: String },
   animScale: { label: 'Escala al borde', min: 1, max: 6, step: .1, fmt: v => '×' + v.toFixed(1) },
   animBlur: { label: 'Desenfoque', min: 0, max: 40, step: .5, fmt: v => v + ' px' },
@@ -853,9 +872,10 @@ const SLIDERS = {
 for (const [key, d] of Object.entries(SLIDERS)) {
   const host = $('#sl-' + key);
   host.className = 'slider' + (d.emph ? ' emph' : '');
+  if (d.values) Object.assign(d, { min: 0, max: d.values.length - 1, step: 1 }); // a slider over a list of stops
   host.innerHTML = `<label for="in-${key}">${d.label}</label><output id="out-${key}"></output><input type="range" id="in-${key}" min="${d.min}" max="${d.max}" step="${d.step}" title="Doble clic para restablecer">`;
   const input = host.querySelector('input');
-  input.addEventListener('input', () => { if (d.on && !d.busy) { snapshot(); d.busy = true; } S[key] = +input.value; sync(); d.on?.(); });
+  input.addEventListener('input', () => { if (d.on && !d.busy) { snapshot(); d.busy = true; } S[key] = d.values ? d.values[+input.value] : +input.value; sync(); d.on?.(); });
   input.addEventListener('change', () => d.busy = false);
   input.addEventListener('dblclick', () => { if (d.on) snapshot(); S[key] = DEFAULTS[key]; sync(); d.on?.(); });
 }
@@ -915,8 +935,9 @@ function paintSwatch(el, hex) {
 function sync() {
   for (const key of Object.keys(SLIDERS)) {
     const input = $('#in-' + key), d = SLIDERS[key];
-    if (+input.value !== S[key]) input.value = S[key];
-    input.style.setProperty('--p', ((S[key] - d.min) / (d.max - d.min) * 100) + '%');
+    const at = d.values ? stopOf(d, S[key]) : S[key];
+    if (+input.value !== at) input.value = at;
+    input.style.setProperty('--p', ((at - d.min) / (d.max - d.min) * 100) + '%');
     $('#out-' + key).textContent = d.fmt(S[key]);
   }
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
