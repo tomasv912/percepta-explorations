@@ -106,6 +106,14 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
 .file{display:flex;gap:8px;align-items:center}
 .file span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--content-secondary)}
 .lyr{display:flex;align-items:center;gap:4px}
+.lys{display:flex;flex-direction:column;gap:2px;max-height:240px;overflow-y:auto}
+.lrow{display:flex;align-items:center;gap:6px;height:32px;padding:0 6px 0 4px;border-radius:8px}
+.lrow[aria-selected="true"]{background:var(--fill-strong)}
+.lrow .eye{margin-left:0}
+.lsw{width:16px;height:16px;border-radius:4px;flex-shrink:0;box-shadow:inset 0 0 0 1px rgb(0 0 0 / .08)}
+.lname{appearance:none;border:0;background:none;font:inherit;color:var(--content-primary);flex:1;min-width:0;text-align:left;cursor:pointer;height:100%;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0}
+.lrow:not([aria-selected="true"]) .lname{color:var(--content-secondary)}
 .eye{appearance:none;border:0;background:none;color:var(--content-primary);padding:0;border-radius:6px;display:grid;place-items:center;cursor:pointer;width:24px;height:24px;margin-left:-4px;transition:background-color .15s,color .15s}
 .eye:hover{background:var(--fill-strong)}
 .eye .ec{display:none}
@@ -395,11 +403,23 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
       <button class="gnode" id="pA" aria-label="Inicio del gradiente"></button>
       <button class="gnode" id="pB" aria-label="Fin del gradiente" style="background:var(--content-accent)"></button></div></div>
     <div class="meta"><span id="pMeta"></span></div>
+    <input type="file" id="pFile" accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp" hidden>
   </main>
   <aside class="rail">
     <div class="brand"><h1>Grain Gradients</h1><span id="pSeedTag">#0</span></div>
     <div class="group">
-      <div class="lbl">Gradiente</div>
+      <div class="lbl">Fuente</div>
+      <div class="seg" id="pSrc" style="grid-template-columns:1fr 1fr"></div>
+    </div>
+    <div class="group" id="pSvgGroup" hidden>
+      <div class="lbl">Capas</div>
+      <div class="file"><span id="pFileName"></span><button class="btn sm" id="pChange">Cambiar</button></div>
+      <div class="lys" id="pLayers"></div>
+      <div class="row"><span>Suavizado</span><span class="v" id="p_softV"></span><input type="range" id="p_soft" min="0" max="1" step="0.01"></div>
+      <label class="tg" for="p_invert"><span>Invertir</span><input type="checkbox" id="p_invert"></label>
+    </div>
+    <div class="group">
+      <div class="lbl" id="pGradLbl">Gradiente</div>
       <div class="seg" id="pType" style="grid-template-columns:1fr 1fr"></div>
       <div class="seg" id="pCount" style="grid-template-columns:repeat(3,1fr)"></div>
     </div>
@@ -1484,7 +1504,7 @@ return{show(mode){if(mode&&mode!==gs.render){gs.render=mode;levels=[];}syncDz();
 
 /* every titled section in the rails folds open and closed */
 for(const g of document.querySelectorAll(".rail .group")){const l=g.firstElementChild;if(!l||!l.classList.contains("lbl"))continue;
-  const b=document.createElement("button");b.type="button";b.className="lbl fold";b.textContent=l.textContent;b.setAttribute("aria-expanded","true");
+  const b=document.createElement("button");b.type="button";b.className="lbl fold";b.textContent=l.textContent;if(l.id)b.id=l.id;b.setAttribute("aria-expanded","true");
   b.onclick=()=>{const c=g.classList.toggle("closed");b.setAttribute("aria-expanded",String(!c));};l.replaceWith(b);}
 /* tabs */
 /* ---------- Grain Gradients ----------
@@ -1494,47 +1514,55 @@ for(const g of document.querySelectorAll(".rail .group")){const l=g.firstElement
 const GG=(()=>{
 const COLORS=[["#ffffff","Blanco"],["#ffeaa4","Amarillo"],["#ffc291","Durazno"],["#8ebbff","Celeste"],["#8678ff","Violeta"],["#151515","Negro"]];
 const RATIOS={"16:9":[3200,1800],"3:2":[3000,2000],"4:3":[3000,2250],"1:1":[3000,3000],"4:5":[2400,3000],"2:3":[2000,3000]};
-const ps={type:"linear",count:3,colors:["#ffc291","#8ebbff","#8678ff"],bg:"#ffffff",reach:0.5,fade:1,blend:1,warp:0,dens:1,size:2,var:0.5,base:1,cvar:0.15,pop:1,bfrac:0.5,bmax:16,
-  ratio:"16:9",A:[0.05,0.05],B:[0.85,0.95],seed:Math.floor(Math.random()*1e6)};
+const ps={src:"grad",bg:"#ffffff",reach:0.5,fade:1,blend:1,warp:0,dens:1,size:2,var:0.5,base:1,cvar:0.15,pop:1,bfrac:0.5,bmax:16,
+  ratio:"16:9",seed:Math.floor(Math.random()*1e6),soft:0.15,invert:false,
+  main:{type:"linear",count:3,colors:["#ffc291","#8ebbff","#8678ff"],A:[0.05,0.05],B:[0.85,0.95]}};
+// SVG source: one layer per element of the frame, each with its own gradient
+const svg={name:"",doc:null,layers:[],sel:0,mw:0,mh:0,ratio:""};
+const cur=()=>ps.src==="svg"&&svg.layers[svg.sel]?svg.layers[svg.sel].spec:ps.main;
 const hx=c=>[1,3,5].map(i=>parseInt(c.slice(i,i+2),16));
 const sm=(a,b,x)=>{const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t);};
 function rngP(seed){let t=seed>>>0;return()=>{t=t+1831565813>>>0;let e=t;e=Math.imul(e^e>>>15,e|1);e^=e+Math.imul(e^e>>>7,e|61);return((e^e>>>14)>>>0)/4294967296;};}
-function valueNoise(seed,cells){const r=rngP(seed),G=new Float32Array((cells+1)*(cells+1));for(let i=0;i<G.length;i++)G[i]=r();
-  return(x,y)=>{x*=cells;y*=cells;const i=Math.min(cells-1,Math.max(0,Math.floor(x))),j=Math.min(cells-1,Math.max(0,Math.floor(y))),fx=x-i,fy=y-j,
-    u=fx*fx*(3-2*fx),v=fy*fy*(3-2*fy),a=G[j*(cells+1)+i],b=G[j*(cells+1)+i+1],c=G[(j+1)*(cells+1)+i],d=G[(j+1)*(cells+1)+i+1];
-    return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v;};}
-// draw at w×h; k = output px per canvas px (so particle size is set in final-image pixels)
-function draw(ctx,w,h,k){
-  const im=ctx.createImageData(w,h),D=im.data,bg=hx(ps.bg),cols=ps.colors.slice(0,ps.count).map(hx),n=cols.length;
-  const r=rngP(ps.seed),n1=valueNoise(ps.seed^0x9e37,4),n2=valueNoise(ps.seed^0x85eb,11);
-  const ax=ps.A[0]*w,ay=ps.A[1]*h,vx=ps.B[0]*w-ax,vy=ps.B[1]*h-ay,L2=vx*vx+vy*vy||1,R=Math.sqrt(L2);
+function blurF(src,w,h,rad){if(rad<1)return src;const a=new Float32Array(src),b=new Float32Array(src.length),n=2*rad+1;
+  const pass=(s,d,len,stride,lines,ls)=>{for(let l=0;l<lines;l++){const o=l*ls;let acc=0;for(let k=-rad;k<=rad;k++)acc+=s[o+Math.min(len-1,Math.max(0,k))*stride];
+    for(let i=0;i<len;i++){d[o+i*stride]=acc/n;acc+=s[o+Math.min(len-1,i+rad+1)*stride]-s[o+Math.max(0,i-rad)*stride];}}};
+  for(let it=0;it<2;it++){pass(a,b,w,1,h,w);pass(b,a,h,w,w,1);}return a;}
+// one gradient (spec) painted into D, optionally shaped by a mask(u,v) in 0..1; everything composites "over"
+function paintLayer(D,LY,w,h,k,spec,mask,seed){
+  const cols=spec.colors.slice(0,spec.count).map(hx),n=cols.length,r=rngP(seed);
+  const ax=spec.A[0]*w,ay=spec.A[1]*h,vx=spec.B[0]*w-ax,vy=spec.B[1]*h-ay,L2=vx*vx+vy*vy||1,R=Math.sqrt(L2);
   const reach=ps.reach,fade=ps.fade,bw=ps.blend*0.5/(n-1||1);
-  const tAt=(px,py)=>{const u=px/w,v=py/h;let t=ps.type==="linear"?((px-ax)*vx+(py-ay)*vy)/L2:Math.hypot(px-ax,py-ay)/R;
-    t+=(n1(u,v)-0.5)*0.5*ps.warp+(n2(u,v)-0.5)*0.12*ps.warp;return t<0?0:t;};
-  // soft base: the same gradient as a smooth wash under the particles, so the field reads even
+  const tAt=(px,py)=>{const t=spec.type==="linear"?((px-ax)*vx+(py-ay)*vy)/L2:Math.hypot(px-ax,py-ay)/R;return t<0?0:t;};
   const colAt=t=>{if(n<2)return cols[0];const q=Math.min(1,t/reach)*(n-1),i0=Math.min(n-2,Math.floor(q)),f=sm(0.5-bw,0.5+bw,q-i0);return[0,1,2].map(c=>cols[i0][c]+(cols[i0+1][c]-cols[i0][c])*f);};
-  // transparent always: the background is only shown behind the canvas
-  if(ps.base>0)for(let y=0,o=0;y<h;y++)for(let x=0;x<w;x++,o+=4){const t=tAt(x+0.5,y+0.5),a=ps.base*ps.dens*(1-sm(reach,reach+fade,t));
-    if(a>0.001){const c=colAt(t);D[o]=c[0];D[o+1]=c[1];D[o+2]=c[2];D[o+3]=255*a;}}
+  const over=(o,c,a)=>{const da=D[o+3]/255,oa=a+da*(1-a);if(oa<=0)return;for(let ch=0;ch<3;ch++)D[o+ch]=(c[ch]*a+D[o+ch]*da*(1-a))/oa;D[o+3]=255*oa;};
+  for(let y=0,o=0;y<h;y++)for(let x=0;x<w;x++,o+=4){const m=mask?mask((x+0.5)/w,(y+0.5)/h):1;if(m<=0.001)continue;
+    const t=tAt(x+0.5,y+0.5),a=ps.base*ps.dens*(1-sm(reach,reach+fade,t))*m;if(a>0.001)over(o,colAt(t),a);}
   const cell=Math.max(1,ps.size/k),step=Math.max(1,Math.round(cell)),rad=cell/2;
-  // some particles go to blur layers: light, medium or full blur, picked at random
-  const LY=ps.bfrac>0?[1,2,3].map(()=>new Uint8ClampedArray(w*h*4)):null;
   for(let y=0;y<h;y+=step)for(let x=0;x<w;x+=step){
-    const px=x+r()*step,py=y+r()*step,t=tAt(px,py);
-    const cov=ps.dens*(1-sm(reach,reach+fade,t));if(cov<=0.002||r()>cov)continue;
-    // color: position along the colored part, dithered between neighbouring stops
+    const px=x+r()*step,py=y+r()*step,m=mask?mask(px/w,py/h):1,t=tAt(px,py);
+    const cov=ps.dens*(1-sm(reach,reach+fade,t))*m;if(cov<=0.002||r()>cov)continue;
     const q=Math.min(1,t/reach)*(n-1),i0=Math.min(n-2,Math.floor(q)),f=q-i0;
     const mix=n<2?0:sm(0.5-bw,0.5+bw,f),c=n<2?cols[0]:(r()<mix?cols[i0+1]:cols[i0]);
-    const lv=1+(r()*2-1)*ps.cvar,al=Math.min(1,0.55+0.45*cov+(r()-0.5)*0.5*ps.var);
+    const lv=1+(r()*2-1)*ps.cvar,al=Math.min(1,0.55+0.45*cov+(r()-0.5)*0.5*ps.var),cc=c.map(v=>Math.min(255,v*lv));
     // a round dot centred at a sub-pixel position, with an anti-aliased edge (coverage per pixel)
     const rr=Math.max(0.5,rad*(1+(r()-0.5)*0.6*ps.var)),a0=al*ps.pop;
     const L=LY&&r()<ps.bfrac?LY[Math.floor(r()*3)]:null;
     const x0=Math.floor(px-rr-0.5),x1=Math.ceil(px+rr+0.5),y0=Math.floor(py-rr-0.5),y1=Math.ceil(py+rr+0.5);
     for(let Y=y0;Y<y1;Y++)for(let X=x0;X<x1;X++){if(X<0||Y<0||X>=w||Y>=h)continue;
-      const cov=Math.min(1,Math.max(0,rr+0.5-Math.hypot(X+0.5-px,Y+0.5-py)));if(cov<=0)continue;const a2=a0*cov,o=(Y*w+X)*4;
-      if(L){for(let ch=0;ch<3;ch++)L[o+ch]=c[ch]*lv;L[o+3]=Math.max(L[o+3],255*a2);continue;}
-      const da=D[o+3]/255,oa=a2+da*(1-a2);for(let ch=0;ch<3;ch++){const val=Math.min(255,c[ch]*lv);D[o+ch]=(val*a2+D[o+ch]*da*(1-a2))/oa;}D[o+3]=255*oa;}
+      const cv=Math.min(1,Math.max(0,rr+0.5-Math.hypot(X+0.5-px,Y+0.5-py)));if(cv<=0)continue;const a2=a0*cv,o=(Y*w+X)*4;
+      if(L){for(let ch=0;ch<3;ch++)L[o+ch]=cc[ch];L[o+3]=Math.max(L[o+3],255*a2);continue;}
+      over(o,cc,a2);}
   }
+}
+function sampler(Lr){const M=Lr.proc,mw=svg.mw,mh=svg.mh;
+  return(u,v)=>{const x=u*mw-0.5,y=v*mh-0.5,ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy;
+    const at=(i,j)=>i<0||j<0||i>=mw||j>=mh?0:M[j*mw+i];
+    return at(ix,iy)*(1-fx)*(1-fy)+at(ix+1,iy)*fx*(1-fy)+at(ix,iy+1)*(1-fx)*fy+at(ix+1,iy+1)*fx*fy;};}
+// draw at w×h; k = output px per canvas px (so particle size is set in final-image pixels). Always transparent.
+function draw(ctx,w,h,k){
+  const im=ctx.createImageData(w,h),D=im.data,LY=ps.bfrac>0?[1,2,3].map(()=>new Uint8ClampedArray(w*h*4)):null;
+  if(ps.src==="svg"&&svg.layers.length)svg.layers.forEach((Lr,i)=>{if(Lr.visible)paintLayer(D,LY,w,h,k,Lr.spec,sampler(Lr),ps.seed+i*7919);});
+  else if(ps.src!=="svg")paintLayer(D,LY,w,h,k,ps.main,null,ps.seed);
   ctx.putImageData(im,0,0);
   if(LY){const tmp=document.createElement("canvas");tmp.width=w;tmp.height=h;const tx=tmp.getContext("2d");
     [0.2,0.55,1].forEach((m,i)=>{tx.putImageData(new ImageData(LY[i],w,h),0,0);ctx.save();ctx.filter=`blur(${Math.max(0.3,ps.bmax*m/k).toFixed(2)}px)`;ctx.drawImage(tmp,0,0);ctx.restore();});}
@@ -1542,39 +1570,119 @@ function draw(ctx,w,h,k){
 function render(){
   const[W,H]=RATIOS[ps.ratio],plate=$("pPlate"),cv=$("pCanvas");plate.style.setProperty("--ar",`${W}/${H}`);plate.style.background=ps.bg;
   const rc=plate.getBoundingClientRect(),dpr=devicePixelRatio||1;if(!rc.width)return;
+  if(ps.src==="svg"&&svg.doc&&svg.ratio!==ps.ratio){rasterize().then(()=>{procAll();update();});return;}
   cv.width=Math.round(rc.width*dpr);cv.height=Math.round(rc.height*dpr);
   draw(cv.getContext("2d"),cv.width,cv.height,W/cv.width);
-  $("pSeedTag").textContent="#"+ps.seed;$("pMeta").textContent=`PNG ${W} × ${H} px`;syncNodes();
+  $("pSeedTag").textContent="#"+ps.seed;
+  $("pMeta").textContent=ps.src==="svg"&&!svg.doc?"Subí o pegá un SVG":`PNG ${W} × ${H} px`;syncNodes();
 }
 let raf=0;const update=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(render);};
+
+/* --- SVG import: each drawable child (descending through lone wrapper groups) is a layer;
+   each layer is rasterised on its own, with the others hidden, so transforms, clips and defs still apply --- */
+const DRAWABLE=new Set(["path","rect","circle","ellipse","polygon","polyline","line","g","use","text","image"]);
+function layerEls(root){let box=root;
+  for(;;){const kids=[...box.children].filter(e=>DRAWABLE.has(e.localName));if(kids.length===1&&kids[0].localName==="g")box=kids[0];else return kids;}}
+async function rasterOne(str){const url=URL.createObjectURL(new Blob([str],{type:"image/svg+xml"}));
+  try{const im=new Image();im.src=url;await im.decode();const c=document.createElement("canvas");c.width=svg.mw;c.height=svg.mh;
+    const x=c.getContext("2d",{willReadFrequently:true});x.drawImage(im,0,0,svg.mw,svg.mh);const d=x.getImageData(0,0,svg.mw,svg.mh).data,M=new Float32Array(svg.mw*svg.mh);
+    M.alpha=new Float32Array(M.length);
+    for(let i=0;i<M.length;i++){const a=d[i*4+3]/255;M.alpha[i]=a;M[i]=a*(0.2126*d[i*4]+0.7152*d[i*4+1]+0.0722*d[i*4+2])/255;}
+    return M;}finally{URL.revokeObjectURL(url);}}
+async function rasterize(){
+  const[W,H]=RATIOS[ps.ratio],s=1000/Math.max(W,H);svg.mw=Math.round(W*s);svg.mh=Math.round(H*s);svg.ratio=ps.ratio;
+  const root=svg.doc.documentElement,els=svg.els;
+  root.setAttribute("width",svg.mw);root.setAttribute("height",svg.mh);root.setAttribute("preserveAspectRatio","xMidYMid meet");
+  if(!root.getAttribute("viewBox"))root.setAttribute("viewBox",`0 0 ${svg.vw} ${svg.vh}`);
+  const ser=new XMLSerializer();
+  for(let i=0;i<els.length;i++){els.forEach((e,j)=>{if(j!==i)e.setAttribute("display","none");else e.removeAttribute("display");});
+    svg.layers[i].raw=await rasterOne(ser.serializeToString(root));}
+  els.forEach(e=>e.removeAttribute("display"));
+}
+function procAll(){for(const Lr of svg.layers){const raw=Lr.raw,A=raw.alpha,n=raw.length;let M=new Float32Array(n);
+  for(let i=0;i<n;i++)M[i]=svg.invert?A[i]-raw[i]:raw[i];
+  M=blurF(M,svg.mw,svg.mh,Math.round(ps.soft*svg.mw*0.04));let mx=0;for(const v of M)mx=Math.max(mx,v);if(mx>0)for(let i=0;i<n;i++)M[i]/=mx;Lr.proc=M;}}
+function bbox(M){let x0=1e9,y0=1e9,x1=-1,y1=-1;for(let j=0;j<svg.mh;j++)for(let i=0;i<svg.mw;i++)if(M[j*svg.mw+i]>0.05){x0=Math.min(x0,i);x1=Math.max(x1,i);y0=Math.min(y0,j);y1=Math.max(y1,j);}
+  return x1<0?[0,0,1,1]:[x0/svg.mw,y0/svg.mh,(x1+1)/svg.mw,(y1+1)/svg.mh];}
+async function loadSvgText(text,name){
+  const doc=new DOMParser().parseFromString(text,"image/svg+xml"),root=doc.documentElement;
+  if(root.localName!=="svg"||doc.querySelector("parsererror")){toast("No se pudo leer el SVG.");return;}
+  const vb=(root.getAttribute("viewBox")||"").split(/[\s,]+/).map(Number);
+  svg.vw=vb.length===4?vb[2]:parseFloat(root.getAttribute("width"))||1000;svg.vh=vb.length===4?vb[3]:parseFloat(root.getAttribute("height"))||1000;
+  const els=layerEls(root);if(!els.length){toast("El SVG no tiene capas para pintar.");return;}
+  svg.doc=doc;svg.els=els;svg.name=name;svg.sel=0;
+  const palette=COLORS.map(c=>c[0]).filter(c=>c!==ps.bg);
+  svg.layers=els.map((e,i)=>({name:(e.getAttribute("id")||e.getAttribute("data-name")||`${e.localName} ${i+1}`).replace(/_/g," "),visible:true,
+    spec:{type:"radial",count:1,colors:[palette[i%palette.length],palette[(i+1)%palette.length],palette[(i+2)%palette.length]],A:[0.5,0.5],B:[0.7,0.5]}}));
+  await rasterize();procAll();
+  svg.layers.forEach(Lr=>{const[x0,y0,x1,y1]=bbox(Lr.proc),cx=(x0+x1)/2,cy=(y0+y1)/2;Lr.spec.A=[cx,cy];Lr.spec.B=[x1,cy];
+    let s=0;for(const v of Lr.raw)s+=v;if(s/Lr.raw.length>0.95)Lr.visible=false;}); // a full-frame background rect starts hidden
+  svg.sel=Math.max(0,svg.layers.findIndex(Lr=>Lr.visible));
+  ps.src="svg";syncAll();update();
+}
+async function loadFile(f){if(!f)return;
+  if(f.type==="image/svg+xml"||/\.svg$/i.test(f.name))return loadSvgText(await f.text(),f.name);
+  if(f.type.startsWith("image/")){const url=URL.createObjectURL(f);const dataUrl=await new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.readAsDataURL(f);});
+    const im=new Image();im.src=url;await im.decode();URL.revokeObjectURL(url);
+    return loadSvgText(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${im.naturalWidth} ${im.naturalHeight}"><image id="Imagen" width="${im.naturalWidth}" height="${im.naturalHeight}" href="${dataUrl}"/></svg>`,f.name);}
+  toast("Subí un SVG o una imagen.");}
+
 // controls
-const pct=v=>Math.round(v*100)+"%",fmt={pop:pct,bfrac:pct,bmax:v=>v+" px",dens:pct,size:v=>v+" px",var:pct};
-for(const k in fmt){const el=$("p_"+k);el.value=ps[k];$("p_"+k+"V").textContent=fmt[k](ps[k]);el.addEventListener("input",()=>{ps[k]=+el.value;$("p_"+k+"V").textContent=fmt[k](ps[k]);update();});}
-function seg(el,items,get,set){el.innerHTML="";for(const[v,l]of items){const b=document.createElement("button");b.className="chip";b.textContent=l;b.setAttribute("aria-pressed",String(get()===v));
-  b.onclick=()=>{set(v);[...el.children].forEach(c=>c.setAttribute("aria-pressed",String(c===b)));update();};el.appendChild(b);}}
-seg($("pType"),[["linear","Lineal"],["radial","Radial"]],()=>ps.type,v=>ps.type=v);
-seg($("pCount"),[[1,"1 color"],[2,"2 colores"],[3,"3 colores"]],()=>ps.count,v=>{ps.count=v;rows();});
-seg($("pBg"),[["#ffffff","Blanco"],["#151515","Negro"]],()=>ps.bg,v=>{ps.bg=v;rows();});
-seg($("pRatio"),Object.keys(RATIOS).map(k=>[k,k]),()=>ps.ratio,v=>ps.ratio=v);
-function rows(){const box=$("pSwRows");box.innerHTML="";
-  for(let i=0;i<ps.count;i++){if(ps.colors[i]===ps.bg)ps.colors[i]=COLORS.map(c=>c[0]).find(c=>c!==ps.bg&&!ps.colors.slice(0,ps.count).includes(c));
+const pct=v=>Math.round(v*100)+"%",fmt={pop:pct,bfrac:pct,bmax:v=>v+" px",dens:pct,size:v=>v+" px",var:pct,soft:pct};
+for(const k in fmt){const el=$("p_"+k);el.value=ps[k];$("p_"+k+"V").textContent=fmt[k](ps[k]);el.addEventListener("input",()=>{ps[k]=+el.value;$("p_"+k+"V").textContent=fmt[k](ps[k]);if(k==="soft"&&svg.doc)procAll();update();});}
+const segs=[];
+function seg(el,items,get,set){el.innerHTML="";for(const[v,l]of items){const b=document.createElement("button");b.className="chip";b.textContent=l;b.dataset.v=v;
+  b.onclick=()=>{if(set(v)===false)return;syncAll();update();};el.appendChild(b);}
+  segs.push(()=>[...el.children].forEach(b=>b.setAttribute("aria-pressed",String(String(get())===b.dataset.v))));}
+seg($("pSrc"),[["grad","Gradiente"],["svg","SVG"]],()=>ps.src,v=>{if(v==="svg"&&!svg.doc){$("pFile").click();return false;}ps.src=v;});
+seg($("pType"),[["linear","Lineal"],["radial","Radial"]],()=>cur().type,v=>{cur().type=v;});
+seg($("pCount"),[[1,"1 color"],[2,"2 colores"],[3,"3 colores"]],()=>cur().count,v=>{cur().count=v;});
+seg($("pBg"),[["#ffffff","Blanco"],["#151515","Negro"]],()=>ps.bg,v=>{ps.bg=v;});
+seg($("pRatio"),Object.keys(RATIOS).map(k=>[k,k]),()=>ps.ratio,v=>{ps.ratio=v;});
+$("p_invert").addEventListener("change",e=>{svg.invert=e.target.checked;if(svg.doc)procAll();update();});
+function rows(){const box=$("pSwRows"),sp=cur();box.innerHTML="";
+  for(let i=0;i<sp.count;i++){if(sp.colors[i]===ps.bg)sp.colors[i]=COLORS.map(c=>c[0]).find(c=>c!==ps.bg&&!sp.colors.slice(0,sp.count).includes(c));
     const lab=document.createElement("span");lab.textContent="Color "+(i+1);const sw=document.createElement("div");sw.className="sw";sw.style.gridTemplateColumns="repeat(6,1fr)";
-    for(const[c,nm]of COLORS){const b=document.createElement("button");b.style.background=c;b.title=nm;b.setAttribute("aria-label",nm);b.setAttribute("aria-checked",String(ps.colors[i]===c));
-      const off=c===ps.bg;b.disabled=off;b.style.opacity=off?0.25:"";b.onclick=()=>{ps.colors[i]=c;rows();update();};sw.appendChild(b);}
+    for(const[c,nm]of COLORS){const b=document.createElement("button");b.style.background=c;b.title=nm;b.setAttribute("aria-label",nm);b.setAttribute("aria-checked",String(sp.colors[i]===c));
+      const off=c===ps.bg;b.disabled=off;b.style.opacity=off?0.25:"";b.onclick=()=>{sp.colors[i]=c;rows();update();};sw.appendChild(b);}
     box.append(lab,sw);}}
-rows();
-// handles
+const EYE='<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="eo"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></g><path class="ec" d="M6.2 3.8A6.6 6.6 0 0 1 8 3.5C12 3.5 14.5 8 14.5 8a11 11 0 0 1-1.7 2.2M10.4 11.9A6 6 0 0 1 8 12.5C4 12.5 1.5 8 1.5 8a11 11 0 0 1 2.6-3M6.6 6.6a2 2 0 0 0 2.8 2.8M2.5 2.5l11 11"/></svg>';
+function layerList(){const box=$("pLayers");box.innerHTML="";
+  svg.layers.forEach((Lr,i)=>{const row=document.createElement("div");row.className="lrow";row.setAttribute("aria-selected",String(i===svg.sel));
+    const eye=document.createElement("button");eye.className="eye";eye.innerHTML=EYE;eye.setAttribute("aria-pressed",String(Lr.visible));eye.setAttribute("aria-label","Ver u ocultar "+Lr.name);
+    eye.onclick=()=>{Lr.visible=!Lr.visible;layerList();update();};
+    const sw=document.createElement("span");sw.className="lsw";const sp=Lr.spec;
+    sw.style.background=sp.count>1?`linear-gradient(90deg,${sp.colors.slice(0,sp.count).join(",")})`:sp.colors[0];
+    const nm=document.createElement("button");nm.className="lname";nm.textContent=Lr.name;nm.title=Lr.name;nm.onclick=()=>{svg.sel=i;syncAll();};
+    row.append(eye,sw,nm);box.appendChild(row);});}
+function syncAll(){segs.forEach(f=>f());rows();const isSvg=ps.src==="svg";$("pSvgGroup").hidden=!isSvg;
+  $("pFileName").textContent=svg.name;$("p_invert").checked=svg.invert;
+  $("pGradLbl").textContent=isSvg&&svg.layers[svg.sel]?"Gradiente · "+svg.layers[svg.sel].name:"Gradiente";
+  if(isSvg)layerList();syncNodes();}
+// handles edit the selected layer's gradient
 const snap=(p,o,rc)=>{const dx=(p[0]-o[0])*rc.width,dy=(p[1]-o[1])*rc.height,L=Math.hypot(dx,dy),st=Math.PI/12,a=Math.round(Math.atan2(dy,dx)/st)*st;
   return[o[0]+Math.cos(a)*L/rc.width,o[1]+Math.sin(a)*L/rc.height];};
-function syncNodes(){for(const k of["A","B"]){const e=$("p"+k);e.style.left=ps[k][0]*100+"%";e.style.top=ps[k][1]*100+"%";}
-  for(const id of["pL1","pL2"]){const l=$(id);l.setAttribute("x1",ps.A[0]*100);l.setAttribute("y1",ps.A[1]*100);l.setAttribute("x2",ps.B[0]*100);l.setAttribute("y2",ps.B[1]*100);}}
+function syncNodes(){const sp=cur(),show=!(ps.src==="svg"&&!svg.doc);
+  for(const k of["A","B"]){const e=$("p"+k);e.hidden=!show;e.style.left=sp[k][0]*100+"%";e.style.top=sp[k][1]*100+"%";}
+  $("pLine").style.display=show?"":"none";
+  for(const id of["pL1","pL2"]){const l=$(id);l.setAttribute("x1",sp.A[0]*100);l.setAttribute("y1",sp.A[1]*100);l.setAttribute("x2",sp.B[0]*100);l.setAttribute("y2",sp.B[1]*100);}}
 for(const k of["A","B"]){const el=$("p"+k);let on=false;
   el.addEventListener("pointerdown",e=>{on=true;el.setPointerCapture(e.pointerId);e.preventDefault();});
-  el.addEventListener("pointermove",e=>{if(!on)return;const rc=$("pPlate").getBoundingClientRect();let p=[Math.min(2,Math.max(-1,(e.clientX-rc.left)/rc.width)),Math.min(2,Math.max(-1,(e.clientY-rc.top)/rc.height))];
-    if(e.shiftKey)p=snap(p,ps[k==="A"?"B":"A"],rc);ps[k]=p;syncNodes();update();});
+  el.addEventListener("pointermove",e=>{if(!on)return;const rc=$("pPlate").getBoundingClientRect(),sp=cur();let p=[Math.min(2,Math.max(-1,(e.clientX-rc.left)/rc.width)),Math.min(2,Math.max(-1,(e.clientY-rc.top)/rc.height))];
+    if(e.shiftKey)p=snap(p,sp[k==="A"?"B":"A"],rc);sp[k]=p;syncNodes();update();});
   const end=()=>{on=false;};el.addEventListener("pointerup",end);el.addEventListener("pointercancel",end);
-  el.addEventListener("keydown",e=>{const d={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];if(!d)return;e.preventDefault();
-    ps[k]=[Math.min(2,Math.max(-1,ps[k][0]+d[0]*0.02)),Math.min(2,Math.max(-1,ps[k][1]+d[1]*0.02))];syncNodes();update();});}
+  el.addEventListener("keydown",e=>{const d={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];if(!d)return;e.preventDefault();const sp=cur();
+    sp[k]=[Math.min(2,Math.max(-1,sp[k][0]+d[0]*0.02)),Math.min(2,Math.max(-1,sp[k][1]+d[1]*0.02))];syncNodes();update();});}
+// SVG in: file, drop, paste (file or SVG text)
+$("pFile").addEventListener("change",e=>{loadFile(e.target.files?.[0]);e.target.value="";});
+$("pChange").onclick=()=>$("pFile").click();
+const st=$("pStage");
+st.addEventListener("dragover",e=>{e.preventDefault();st.classList.add("drop");});
+st.addEventListener("dragleave",e=>{if(e.target===st)st.classList.remove("drop");});
+st.addEventListener("drop",e=>{e.preventDefault();st.classList.remove("drop");loadFile(e.dataTransfer.files[0]);});
+addEventListener("paste",e=>{if($("view-grain").hidden)return;const items=[...(e.clipboardData?.items||[])],f=items.find(i=>i.kind==="file"&&i.type.startsWith("image/"));
+  if(f){e.preventDefault();loadFile(f.getAsFile());return;}
+  const t=e.clipboardData?.getData("text/plain")||"";if(/^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(t)){e.preventDefault();loadSvgText(t,"svg-pegado.svg");}});
 const reseed=()=>{ps.seed=Math.floor(Math.random()*1e6);update();};
 $("pGen").onclick=reseed;
 addEventListener("keydown",e=>{if($("view-grain").hidden||e.metaKey||e.ctrlKey||e.altKey||e.target.closest("input,textarea"))return;if(e.key==="r"||e.key==="R")reseed();});
@@ -1582,11 +1690,12 @@ $("pDl").onclick=async()=>{const[W,H]=RATIOS[ps.ratio],c=document.createElement(
   const blob=await new Promise(res=>c.toBlob(res,"image/png"));if(!blob){toast("No se pudo generar el PNG");return;}
   if(!dlCap){try{if(window.claude?.use)dlCap=await window.claude.use("downloads");}catch(e){}}
   if(!dlCap){toast("La descarga no está disponible en esta vista.");return;}
-  const name=`grain-gradient-${ps.seed}.png`;
+  const name=(ps.src==="svg"&&svg.name?svg.name.replace(/\.[^.]+$/,"")+"-grain":`grain-gradient-${ps.seed}`)+".png";
   try{await dlCap.save({filename:name,data:new Uint8Array(await blob.arrayBuffer())});toast(name+" guardado");}
   catch(e){if(e?.code!=="declined")toast("No se pudo descargar");}};
 new ResizeObserver(()=>{if(!$("view-grain").hidden)update();}).observe($("pStage"));
-return{show(){update();}};
+syncAll();
+return{show(){update();},loadSvgText};
 })();
 
 function showView(v){
