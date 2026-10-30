@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixel Depth</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --page: #f4f2ee;
+  --stage: #e9e6e0;
+  --surface: #fbfaf8;
+  --fill: #efece7;
+  --line: #dcd7cf;
+  --text: #1a1714;
+  --text-2: #5e5850;
+  --text-3: #8f887e;
+  --accent: #1a1714;
+  --accent-text: #fbfaf8;
+  --font: Inter, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+    --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+  --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; background: var(--page); color: var(--text); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
+[hidden] { display: none !important; }
+
+.app { display: grid; flex: 1; min-height: 0; grid-template-columns: 1fr 280px; }
+main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding: 24px 24px 52px; }
+.frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); }
+.frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
+.drop { position: absolute; inset: 12px; display: grid; place-items: center; border-radius: 12px; border: 1.5px dashed var(--text-2); background: color-mix(in srgb, var(--stage) 85%, transparent); color: var(--text); font-weight: 500; pointer-events: none; z-index: 2; }
+
+aside { display: flex; flex-direction: column; min-height: 0; background: var(--surface); border-left: 1px solid var(--line); }
+.controls { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 24px; }
+section { display: flex; flex-direction: column; gap: 10px; }
+h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.seg { display: flex; background: var(--fill); border-radius: 8px; padding: 2px; gap: 2px; }
+.seg button { flex: 1; border: 0; background: transparent; color: var(--text-2); font: 500 12px var(--font); height: 26px; border-radius: 6px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .08), 0 0 0 1px var(--line); }
+.seg button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.slider { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; }
+.slider label { color: var(--text-2); font-size: 12px; }
+.slider output { font: 12px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.slider input { grid-column: 1 / -1; }
+.slider.emph label { color: var(--text); font-weight: 500; }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; margin: 0; cursor: pointer; }
+input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(var(--text), var(--text)) 0 / var(--p, 50%) 100% no-repeat, var(--line); }
+input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line); }
+input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--text); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text); }
+input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 1.5px solid var(--text); }
+.row { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; align-items: center; }
+.row > span { color: var(--text-2); font-size: 12px; }
+.text { font: 12px var(--mono); height: 28px; min-width: 0; border-radius: 8px; border: 0; background: var(--fill); color: var(--text); padding: 0 8px; box-shadow: inset 0 0 0 1px var(--line); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 0; background: var(--fill);
+  color: var(--text); font: 500 12px var(--font); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); }
+.btn:hover { background: var(--line); }
+.btn.icon { width: 28px; padding: 0; }
+.btn.primary { background: var(--accent); color: var(--accent-text); box-shadow: none; }
+.btn.primary:hover { opacity: .9; }
+.btn.big { height: 40px; width: 100%; border-radius: 12px; }
+.check { display: flex; gap: 8px; align-items: center; color: var(--text-2); font-size: 12px; cursor: pointer; }
+.check input { accent-color: var(--text); margin: 0; }
+.swatch { position: relative; display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 8px 0 4px; border-radius: 8px; background: var(--fill); box-shadow: inset 0 0 0 1px var(--line); font: 12px var(--mono); min-width: 0; }
+.swatch i { width: 20px; height: 20px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); flex: none; }
+.bg-pick select { flex: 1; min-width: 0; height: 100%; border: 0; background: none; color: var(--text); font: 12px var(--font); cursor: pointer; padding: 0; }
+.bg-pick select:focus-visible { outline: none; }
+.bg-pick:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.levels { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.levels button { appearance: none; border: 0; height: 26px; border-radius: 0; cursor: pointer; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .14); position: relative; }
+.levels button[aria-pressed="false"] { opacity: .25; }
+.levels button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--surface); color: var(--text); padding: 6px 12px; border-radius: 8px; box-shadow: 0 0 0 1px var(--line); font-size: 12px; z-index: 5; }
+@media (max-width: 767px) {
+  html, body { height: auto; min-height: 100%; }
+  .app { flex: none; grid-template-columns: 1fr; grid-template-rows: minmax(300px, 55vh) auto; }
+  aside { border-left: 0; border-top: 1px solid var(--line); }
+  .controls { overflow: visible; }
+}
+.inks { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.inks button { appearance: none; border: 0; height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); cursor: pointer; }
+.inks button[aria-pressed="true"] { box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text); }
+.btns { display: flex; gap: 6px; } .btns .btn { flex: 1; }
+.btn:disabled { opacity: .5; cursor: default; }
+.frame { cursor: grab; touch-action: none; } .frame:active { cursor: grabbing; }
+.hint { margin: 0; color: var(--text-3); font-size: 12px; }
+</style>
+</head>
+<body>
+<script src="../toolbar.js"></script>
+<div class="app">
+  <main id="stage">
+    <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Una imagen hecha de píxeles sobre un plano en 3D"></canvas></div>
+    <div class="hud" id="stats">—</div>
+  </main>
+
+  <aside>
+    <div class="controls">
+      <section>
+        <h2>Imagen</h2>
+        <button class="btn" id="upload">Subir imagen</button>
+        <input type="file" id="file" accept="image/*" hidden>
+        <p class="hint">También podés arrastrarla o pegarla (Ctrl+V). Arrastrá sobre el lienzo para girar el plano; con Shift, gira en el plano.</p>
+        <div id="sl-contrast"></div>
+        <div id="sl-threshold"></div>
+        <label class="check"><input type="checkbox" data-check="invert"> Invertir luces y sombras</label>
+      </section>
+
+      <section>
+        <h2>Plano</h2>
+        <div id="sl-rotX"></div>
+        <div id="sl-rotY"></div>
+        <div id="sl-rotZ"></div>
+        <div id="sl-persp"></div>
+        <div id="sl-zoom"></div>
+      </section>
+
+      <section>
+        <h2>Altura</h2>
+        <div id="sl-height"></div>
+        <div class="seg" data-key="heightBy" aria-label="Qué sube">
+          <button data-v="dark">Lo oscuro</button><button data-v="light">Lo claro</button>
+        </div>
+        <div id="sl-smooth"></div>
+        <div id="sl-heightNoise"></div>
+      </section>
+
+      <section>
+        <h2>Desvanecimiento</h2>
+        <p class="hint">Los píxeles van del caos al orden: dispersos por un lado del plano, en su lugar del otro.</p>
+        <div class="seg" data-key="fadeFrom" aria-label="Desde dónde">
+          <button data-v="left">Izq.</button><button data-v="right">Der.</button><button data-v="top">Arriba</button><button data-v="bottom">Abajo</button><button data-v="edges">Bordes</button>
+        </div>
+        <div id="sl-fade"></div>
+        <div id="sl-fadeSoft"></div>
+        <div id="sl-chaos"></div>
+        <div id="sl-thin"></div>
+      </section>
+
+      <section>
+        <h2>Píxeles</h2>
+        <div id="sl-count"></div>
+        <div id="sl-size"></div>
+        <div id="sl-depthSize"></div>
+        <label class="check"><input type="checkbox" data-check="grid"> En grilla (uno por celda)</label>
+        <div class="row">
+          <span>Semilla</span>
+          <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
+          <button class="btn icon" id="reseed" title="Nueva semilla (R)" aria-label="Nueva semilla">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg>
+          </button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Color</h2>
+        <div id="palsets"></div>
+        <div class="seg" data-key="colorMode" aria-label="Color">
+          <button data-v="ink">Un color</button><button data-v="tone">Por tono</button><button data-v="random">Al azar</button><button data-v="image">Imagen</button>
+        </div>
+        <div class="inks" id="inks" aria-label="Color"></div>
+        <div class="row" style="grid-template-columns:56px 1fr auto">
+          <span>Fondo</span>
+          <label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label><button class="btn icon bg-flip" id="bg-flip" hidden aria-label="Blanco o negro para el color del fondo"><i></i></button>
+        </div>
+        <label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label>
+      </section>
+    </div>
+    <footer>
+      <button class="btn primary big" id="png">Exportar PNG</button>
+      <button class="btn big" id="svg">Exportar SVG</button>
+    </footer>
+  </aside>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+// ---------- State ----------
+// An image drawn with square pixels laid on a plane in 3D: more pixels where it is dark (or a grid), the plane turned
+// and seen in perspective, each pixel lifted off it by the image's tone (Altura), and, with Desvanecimiento, the
+// plane emerging from a scatter: pixels far off their place on one side, settling into it towards the other.
+const WHITE = '#F6F6F6', INK = '#272727';
+const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
+const AW = 1920, AH = 1080, RES = 2;
+const DEFAULTS = {
+  contrast: 1.2, threshold: .08, invert: false,
+  rotX: 55, rotY: -20, rotZ: 0, persp: .5, zoom: 1,
+  height: .25, heightBy: 'dark', smooth: .3, heightNoise: 0,
+  fadeFrom: 'left', fade: .35, fadeSoft: .6, chaos: .5, thin: .3,
+  count: 30000, size: 3, depthSize: .6, grid: false, seed: 1,
+  palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'tone', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
+};
+const S = structuredClone(DEFAULTS);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
+function rng(seed) {
+  let a = seed >>> 0 || 1;
+  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+const gauss = r => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
+
+// ---------- Image ----------
+// Read once into a tone grid (and its colours); a blurred copy gives the height its smoothness.
+const GRID = 360;
+let img = null;
+function loadImage(el) {
+  const iw = el.naturalWidth || el.width, ih = el.naturalHeight || el.height;
+  const gw = Math.max(2, Math.round(iw >= ih ? GRID : GRID * iw / ih)), gh = Math.max(2, Math.round(iw >= ih ? GRID * ih / iw : GRID));
+  const c = document.createElement('canvas'); c.width = gw; c.height = gh;
+  const x = c.getContext('2d', { willReadFrequently: true }); x.fillStyle = '#fff'; x.fillRect(0, 0, gw, gh); x.imageSmoothingQuality = 'high'; x.drawImage(el, 0, 0, gw, gh);
+  const d = x.getImageData(0, 0, gw, gh).data, lum = new Float32Array(gw * gh), rgb = new Uint32Array(gw * gh);
+  for (let k = 0; k < gw * gh; k++) { const r = d[k * 4], g = d[k * 4 + 1], b = d[k * 4 + 2]; lum[k] = (.2126 * r + .7152 * g + .0722 * b) / 255; rgb[k] = r << 16 | g << 8 | b; }
+  img = { gw, gh, lum, rgb, ar: iw / ih, blurKey: -1, blur: null };
+}
+// The starting image: a few soft shapes, so the tool shows something before an upload.
+function sampleImage() {
+  const c = document.createElement('canvas'); c.width = 900; c.height = 600;
+  const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 900, 600);
+  for (const [cx, cy, r, a] of [[300, 300, 230, .95], [600, 260, 170, .7], [520, 420, 120, .85]]) {
+    const g = x.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, `rgba(0,0,0,${a})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 900, 600);
+  }
+  loadImage(c);
+}
+function blurred() {
+  // Box blurs of the tone (three passes ≈ gaussian), radius from Suavizado.
+  const rad = Math.round(S.smooth * 14);
+  if (img.blurKey === rad) return img.blur;
+  const { gw, gh } = img; let a = Float32Array.from(img.lum), b = new Float32Array(a.length);
+  for (let pass = 0; pass < 3 && rad > 0; pass++) {
+    for (let y = 0; y < gh; y++) { let s = 0, n = 0; for (let x = -rad; x < gw; x++) { if (x + rad < gw) { s += a[y * gw + x + rad]; n++; } if (x - rad - 1 >= 0) { s -= a[y * gw + x - rad - 1]; n--; } if (x >= 0) b[y * gw + x] = s / n; } }
+    for (let x = 0; x < gw; x++) { let s = 0, n = 0; for (let y = -rad; y < gh; y++) { if (y + rad < gh) { s += b[(y + rad) * gw + x]; n++; } if (y - rad - 1 >= 0) { s -= b[(y - rad - 1) * gw + x]; n--; } if (y >= 0) a[y * gw + x] = s / n; } }
+  }
+  img.blurKey = rad; img.blur = a; return a;
+}
+
+// ---------- Points ----------
+// On the flat plane (u, v in [-ar/2, ar/2] × [-1/2, 1/2]): placed by darkness (or one per grid cell), each with its
+// tone, colour, a random direction and amount for the scatter, and a pick for the colour.
+let pts = [], ptsKey = '';
+function buildPoints() {
+  const key = JSON.stringify([S.count, S.grid, S.contrast, S.threshold, S.invert, S.seed, img.gw, img.gh, img.lum.length, img.ar]);
+  if (key === ptsKey) return; ptsKey = key;
+  const { gw, gh, lum, rgb, ar } = img, r = rng(S.seed), w = new Float32Array(gw * gh), cdf = new Float64Array(gw * gh);
+  let sum = 0;
+  for (let k = 0; k < w.length; k++) { const v = clamp(((S.invert ? lum[k] : 1 - lum[k]) - .5) * S.contrast + .5); w[k] = v <= S.threshold ? 0 : (v - S.threshold) / (1 - S.threshold); cdf[k] = sum += w[k] ** 1.2; }
+  pts = [];
+  const mk = (i, j, fx, fy) => {
+    const k = j * gw + i, u = ((i + fx) / gw - .5) * ar, v = (j + fy) / gh - .5, dir = [gauss(r), gauss(r), gauss(r)], m = Math.hypot(...dir) || 1;
+    pts.push({ u, v, k, tone: w[k], dx: dir[0] / m, dy: dir[1] / m, dz: dir[2] / m, amt: .3 + r() * .7, pick: r(), hn: gauss(r) });
+  };
+  if (S.grid) {
+    const cols = Math.round(Math.sqrt(S.count * ar)), rows = Math.round(cols / ar);
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { const gi = Math.min(gw - 1, Math.floor((i + .5) / cols * gw)), gj = Math.min(gh - 1, Math.floor((j + .5) / rows * gh)); if (w[gj * gw + gi] > 0) { mk(gi, gj, .5, .5); pts[pts.length - 1].u = ((i + .5) / cols - .5) * ar; pts[pts.length - 1].v = (j + .5) / rows - .5; } }
+  } else if (sum > 0) for (let n = 0; n < S.count; n++) {
+    const q = r() * sum; let lo = 0, hi = cdf.length - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < q) lo = mid + 1; else hi = mid; }
+    const i = lo % gw, j = (lo - i) / gw; mk(i, j, r(), r());
+  }
+}
+// Each point in 3D, turned and projected: [x, y, size, colour, depth], back to front.
+function project() {
+  const bl = blurred(), { ar } = img, rad = Math.PI / 180;
+  const ca = Math.cos(S.rotX * rad), sa = Math.sin(S.rotX * rad), cb = Math.cos(S.rotY * rad), sb = Math.sin(S.rotY * rad), cc = Math.cos(S.rotZ * rad), sc = Math.sin(S.rotZ * rad);
+  const cam = 1.2 + (1 - S.persp) * 6, k = Math.min(AW / (ar * 1.15), AH / 1.15) * S.zoom * (1 + (1 - S.persp) * .0), out = [];
+  for (const p of pts) {
+    // Desvanecimiento: t = 0 where the plane is in order, 1 where it is at its most scattered.
+    const fu = p.u / ar + .5, fv = p.v + .5, along = { left: 1 - fu, right: fu, top: 1 - fv, bottom: fv, edges: 1 - 2 * Math.min(fu, 1 - fu, fv, 1 - fv) }[S.fadeFrom];
+    const t = S.fade > 0 ? smooth(1 - S.fade * (1 + S.fadeSoft), 1 - S.fade * (1 - S.fadeSoft) + 1e-3, along) : 0;
+    if (t > 0 && p.pick < t * S.thin) continue; // thinned out as it scatters
+    const tone = bl[p.k], h = S.height * ((S.heightBy === 'dark' ? 1 - tone : tone) - .5 + S.heightNoise * p.hn * .3);
+    const spread = S.chaos * t * t * p.amt * 1.2;
+    let x = p.u + p.dx * spread, y = p.v + p.dy * spread, z = h + p.dz * spread;
+    // turn: in-plane (Z), then tilt back (X), then sideways (Y); the plane lies in x-y, height along z.
+    const x1 = x * cc - y * sc, y1 = x * sc + y * cc;
+    const y2 = y1 * ca - z * sa, z2 = y1 * sa + z * ca;
+    const x3 = x1 * cb + z2 * sb, z3 = -x1 * sb + z2 * cb;
+    const f = cam / (cam - z3); if (f <= 0) continue;
+    const s = S.size * ((1 - S.depthSize) + S.depthSize * f);
+    out.push([AW / 2 + x3 * f * k, AH / 2 + y2 * f * k, Math.max(.5, s), p, z3]);
+  }
+  out.sort((a, b) => a[4] - b[4]);
+  return out;
+}
+function colorOf(p) {
+  const P = S.palette;
+  if (S.colorMode === 'image') { const c = img.rgb[p.k]; return '#' + c.toString(16).padStart(6, '0'); }
+  const c = S.colorMode === 'tone' ? P[clamp(Math.floor(p.tone * P.length), 0, P.length - 1)] : S.colorMode === 'random' ? P[Math.floor(p.pick * P.length)] : S.ink;
+  return onBg(c, S.bg);
+}
+function draw(ctx, list, ox = 0, oy = 0) {
+  for (const [x, y, s, p] of list) { ctx.fillStyle = colorOf(p); ctx.fillRect(x - s / 2 - ox, y - s / 2 - oy, s, s); }
+}
+
+// ---------- UI ----------
+const $ = s => document.querySelector(s);
+const cv = $('#cv'), frame = $('#frame'), stage = $('#stage');
+const pct = v => Math.round(v * 100) + '%', deg = v => Math.round(v) + '°';
+const SLIDERS = {
+  contrast: { label: 'Contraste', min: .5, max: 3, step: .01, fmt: v => v.toFixed(2) },
+  threshold: { label: 'Umbral', min: 0, max: .9, step: .01, fmt: pct },
+  rotX: { label: 'Inclinación', min: -89, max: 89, step: 1, fmt: deg, emph: true },
+  rotY: { label: 'Giro', min: -180, max: 180, step: 1, fmt: deg },
+  rotZ: { label: 'Rotación en el plano', min: -180, max: 180, step: 1, fmt: deg },
+  persp: { label: 'Perspectiva', min: 0, max: 1, step: .01, fmt: pct },
+  zoom: { label: 'Escala', min: .3, max: 3, step: .01, fmt: v => '×' + v.toFixed(2) },
+  height: { label: 'Altura', min: -1, max: 1, step: .01, fmt: pct, emph: true },
+  smooth: { label: 'Suavizado', min: 0, max: 1, step: .01, fmt: pct },
+  heightNoise: { label: 'Rugosidad', min: 0, max: 1, step: .01, fmt: pct },
+  fade: { label: 'Desvanecimiento', min: 0, max: 1, step: .01, fmt: pct, emph: true },
+  fadeSoft: { label: 'Suavidad del pasaje', min: .05, max: 1, step: .01, fmt: pct },
+  chaos: { label: 'Dispersión', min: 0, max: 1.5, step: .01, fmt: pct },
+  thin: { label: 'Se ralea al dispersarse', min: 0, max: 1, step: .01, fmt: pct },
+  count: { label: 'Cantidad', min: 1000, max: 120000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
+  size: { label: 'Tamaño del píxel', min: 1, max: 20, step: .5, fmt: v => v + ' px', emph: true },
+  depthSize: { label: 'Más chicos al fondo', min: 0, max: 1, step: .01, fmt: pct },
+};
+for (const [key, d] of Object.entries(SLIDERS)) {
+  const host = $('#sl-' + key);
+  host.className = 'slider' + (d.emph ? ' emph' : '');
+  host.innerHTML = `<label for="in-${key}">${d.label}</label><output id="out-${key}"></output><input type="range" id="in-${key}" min="${d.min}" max="${d.max}" step="${d.step}" title="Doble clic para restablecer">`;
+  const input = host.querySelector('input');
+  input.addEventListener('input', () => { S[key] = +input.value; sync(); });
+  input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
+}
+const renderInks = () => { $('#inks').innerHTML = [...S.palette, INK, WHITE].map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join(''); };
+renderInks();
+$('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
+const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.palette = colors; renderInks(); sync(); });
+const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => S.palette, () => S.bg, v => { S.bg = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
+document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = b.dataset.v; sync(); } }));
+document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
+$('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
+const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
+$('#reseed').addEventListener('click', reseed);
+addEventListener('keydown', e => { if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.target.closest('input, textarea, select') && e.key.toLowerCase() === 'r') reseed(); });
+
+let raf = 0, list = [];
+function sync() {
+  for (const k of Object.keys(SLIDERS)) {
+    const input = $('#in-' + k), d = SLIDERS[k];
+    if (+input.value !== S[k]) input.value = S[k];
+    input.style.setProperty('--p', ((S[k] - d.min) / (d.max - d.min) * 100) + '%');
+    $('#out-' + k).textContent = d.fmt(S[k]);
+  }
+  document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === String(S[seg.dataset.key]))));
+  document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
+  document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
+  $('#inks').hidden = S.colorMode !== 'ink';
+  markPalette(); updateBg(S.bgFlip);
+  const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
+  cancelAnimationFrame(raf); raf = requestAnimationFrame(render);
+}
+function render() {
+  buildPoints(); list = project();
+  const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 48) / AW, (r.height - 84) / AH));
+  const w = Math.round(AW * k), h = Math.round(AH * k), dpr = devicePixelRatio || 1;
+  frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
+  const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
+  if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+  const ctx = cv.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, pw, ph);
+  ctx.setTransform(pw / AW, 0, 0, ph / AH, 0, 0);
+  draw(ctx, list);
+  $('#stats').textContent = `${list.length.toLocaleString('es')} píxeles · arrastrá para girar el plano`;
+}
+new ResizeObserver(() => img && sync()).observe(stage);
+
+// Drag turns the plane: sideways turns it (Giro), up and down tilts it (Inclinación); with Shift it spins in its plane.
+let turn = null;
+frame.addEventListener('pointerdown', e => { frame.setPointerCapture(e.pointerId); turn = { x: e.clientX, y: e.clientY, rx: S.rotX, ry: S.rotY, rz: S.rotZ }; });
+frame.addEventListener('pointermove', e => {
+  if (!turn) return;
+  const dx = e.clientX - turn.x, dy = e.clientY - turn.y;
+  if (e.shiftKey) S.rotZ = ((turn.rz + dx * .5 + 540) % 360) - 180;
+  else { S.rotY = ((turn.ry + dx * .4 + 540) % 360) - 180; S.rotX = clamp(turn.rx + dy * .4, -89, 89); }
+  sync();
+});
+const endTurn = () => { turn = null; };
+frame.addEventListener('pointerup', endTurn); frame.addEventListener('pointercancel', endTurn);
+frame.addEventListener('wheel', e => { e.preventDefault(); S.zoom = clamp(S.zoom * Math.exp(-e.deltaY * .0015), .3, 3); sync(); }, { passive: false });
+
+// ---------- Input ----------
+function openFile(file) {
+  if (!file || !file.type.startsWith('image/')) return toast('Eso no parece una imagen.');
+  const el = new Image(), url = URL.createObjectURL(file);
+  el.onload = () => { URL.revokeObjectURL(url); loadImage(el); ptsKey = ''; sync(); toast('Imagen cargada.'); };
+  el.onerror = () => { URL.revokeObjectURL(url); toast('No se pudo leer la imagen.'); };
+  el.src = url;
+}
+$('#upload').addEventListener('click', () => $('#file').click());
+$('#file').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
+stage.addEventListener('dragover', e => e.preventDefault());
+stage.addEventListener('drop', e => { e.preventDefault(); openFile(e.dataTransfer.files[0]); });
+addEventListener('paste', e => {
+  if (e.target.closest?.('textarea, input:not([type=range]):not([type=checkbox])')) return;
+  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+  if (item) openFile(item.getAsFile());
+});
+
+// ---------- Export ----------
+let toastT = 0;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2400); }
+function download(name, blob) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  toast(name + ' descargado');
+}
+// The whole artboard at 2× (cropped to the pixels on download), background only when asked.
+$('#png').addEventListener('click', () => {
+  const c = document.createElement('canvas'); c.width = AW * RES; c.height = AH * RES;
+  const ctx = c.getContext('2d'); ctx.setTransform(RES, 0, 0, RES, 0, 0);
+  if (S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, AW, AH); }
+  draw(ctx, list);
+  c.toBlob(b => b ? download(`pixel-depth-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
+});
+$('#svg').addEventListener('click', () => {
+  const n = v => Math.round(v * RES * 100) / 100, out = [`<svg xmlns="http://www.w3.org/2000/svg" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW * RES} ${AH * RES}">`];
+  if (S.bgExport) out.push(`<rect width="${AW * RES}" height="${AH * RES}" fill="${S.bg}"/>`);
+  const groups = new Map();
+  for (const [x, y, s, p] of list) { const c = colorOf(p); groups.set(c, (groups.get(c) || '') + `M${n(x - s / 2)} ${n(y - s / 2)}h${n(s)}v${n(s)}h${-n(s)}z`); }
+  for (const [c, d] of groups) out.push(`<path fill="${c}" d="${d}"/>`);
+  out.push('</svg>');
+  download(`pixel-depth-${S.seed}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));
+});
+
+sampleImage();
+sync();
+</script>
+</body>
+</html>
