@@ -1,6 +1,6 @@
 # Optical Shapes
 
-Láminas Ópticas, Gradient Shapes, Dot Shapes y Mix Shapes en un solo archivo (`index.html`, sin build).
+Láminas Ópticas, Gradient Shapes, Dot Shapes, Mix Shapes y Grain Gradients en un solo archivo (`index.html`, sin build).
 Es la misma página publicada como artifact en claude.ai: https://claude.ai/artifact/LFni9jikP5hasdNXCUrwyo
 
 - Abrilo directo en el navegador o con cualquier server estático.
