@@ -1526,10 +1526,12 @@ function draw(ctx,w,h,k){
     const q=Math.min(1,t/reach)*(n-1),i0=Math.min(n-2,Math.floor(q)),f=q-i0;
     const mix=n<2?0:sm(0.5-bw,0.5+bw,f),c=n<2?cols[0]:(r()<mix?cols[i0+1]:cols[i0]);
     const lv=1+(r()*2-1)*ps.cvar,al=Math.min(1,0.55+0.45*cov+(r()-0.5)*0.5*ps.var);
-    const cx=Math.round(px),cy=Math.round(py),rr=Math.max(0.5,rad*(1+(r()-0.5)*0.6*ps.var)),R2=Math.ceil(rr),a2=al*ps.pop;
+    // a round dot centred at a sub-pixel position, with an anti-aliased edge (coverage per pixel)
+    const rr=Math.max(0.5,rad*(1+(r()-0.5)*0.6*ps.var)),a0=al*ps.pop;
     const L=LY&&r()<ps.bfrac?LY[Math.floor(r()*3)]:null;
-    for(let dy=-R2+1;dy<R2;dy++)for(let dx=-R2+1;dx<R2;dx++){if(rr>1&&dx*dx+dy*dy>rr*rr)continue;const X=cx+dx,Y=cy+dy;if(X<0||Y<0||X>=w||Y>=h)continue;
-      const o=(Y*w+X)*4;
+    const x0=Math.floor(px-rr-0.5),x1=Math.ceil(px+rr+0.5),y0=Math.floor(py-rr-0.5),y1=Math.ceil(py+rr+0.5);
+    for(let Y=y0;Y<y1;Y++)for(let X=x0;X<x1;X++){if(X<0||Y<0||X>=w||Y>=h)continue;
+      const cov=Math.min(1,Math.max(0,rr+0.5-Math.hypot(X+0.5-px,Y+0.5-py)));if(cov<=0)continue;const a2=a0*cov,o=(Y*w+X)*4;
       if(L){for(let ch=0;ch<3;ch++)L[o+ch]=c[ch]*lv;L[o+3]=Math.max(L[o+3],255*a2);continue;}
       const da=D[o+3]/255,oa=a2+da*(1-a2);for(let ch=0;ch<3;ch++){const val=Math.min(255,c[ch]*lv);D[o+ch]=(val*a2+D[o+ch]*da*(1-a2))/oa;}D[o+3]=255*oa;}
   }
