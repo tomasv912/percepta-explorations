@@ -1522,9 +1522,9 @@ function draw(ctx,w,h,k){
     t+=(n1(u,v)-0.5)*0.5*ps.warp+(n2(u,v)-0.5)*0.12*ps.warp;return t<0?0:t;};
   // soft base: the same gradient as a smooth wash under the particles, so the field reads even
   const colAt=t=>{if(n<2)return cols[0];const q=Math.min(1,t/reach)*(n-1),i0=Math.min(n-2,Math.floor(q)),f=sm(0.5-bw,0.5+bw,q-i0);return[0,1,2].map(c=>cols[i0][c]+(cols[i0+1][c]-cols[i0][c])*f);};
-  for(let y=0,o=0;y<h;y++)for(let x=0;x<w;x++,o+=4){let a=0,c=bg;
-    if(ps.base>0){const t=tAt(x+0.5,y+0.5);a=ps.base*ps.dens*(1-sm(reach,reach+fade,t));if(a>0.001)c=colAt(t);}
-    D[o]=bg[0]+(c[0]-bg[0])*a;D[o+1]=bg[1]+(c[1]-bg[1])*a;D[o+2]=bg[2]+(c[2]-bg[2])*a;D[o+3]=255;}
+  // transparent always: the background is only shown behind the canvas
+  if(ps.base>0)for(let y=0,o=0;y<h;y++)for(let x=0;x<w;x++,o+=4){const t=tAt(x+0.5,y+0.5),a=ps.base*ps.dens*(1-sm(reach,reach+fade,t));
+    if(a>0.001){const c=colAt(t);D[o]=c[0];D[o+1]=c[1];D[o+2]=c[2];D[o+3]=255*a;}}
   const cell=Math.max(1,ps.size/k),step=Math.max(1,Math.round(cell)),rad=cell/2;
   // some particles go to blur layers: light, medium or full blur, picked at random
   const LY=ps.bfrac>0?[1,2,3].map(()=>new Uint8ClampedArray(w*h*4)):null;
@@ -1540,14 +1540,14 @@ function draw(ctx,w,h,k){
     for(let dy=-R2+1;dy<R2;dy++)for(let dx=-R2+1;dx<R2;dx++){if(rr>1&&dx*dx+dy*dy>rr*rr)continue;const X=cx+dx,Y=cy+dy;if(X<0||Y<0||X>=w||Y>=h)continue;
       const o=(Y*w+X)*4;
       if(L){for(let ch=0;ch<3;ch++)L[o+ch]=c[ch]*lv;L[o+3]=Math.max(L[o+3],255*a2);continue;}
-      for(let ch=0;ch<3;ch++){const val=Math.min(255,c[ch]*lv);D[o+ch]=D[o+ch]+(val-D[o+ch])*a2;}}
+      const da=D[o+3]/255,oa=a2+da*(1-a2);for(let ch=0;ch<3;ch++){const val=Math.min(255,c[ch]*lv);D[o+ch]=(val*a2+D[o+ch]*da*(1-a2))/oa;}D[o+3]=255*oa;}
   }
   ctx.putImageData(im,0,0);
   if(LY){const tmp=document.createElement("canvas");tmp.width=w;tmp.height=h;const tx=tmp.getContext("2d");
     [0.2,0.55,1].forEach((m,i)=>{tx.putImageData(new ImageData(LY[i],w,h),0,0);ctx.save();ctx.filter=`blur(${Math.max(0.3,ps.bmax*m/k).toFixed(2)}px)`;ctx.drawImage(tmp,0,0);ctx.restore();});}
 }
 function render(){
-  const[W,H]=RATIOS[ps.ratio],plate=$("pPlate"),cv=$("pCanvas");plate.style.setProperty("--ar",`${W}/${H}`);
+  const[W,H]=RATIOS[ps.ratio],plate=$("pPlate"),cv=$("pCanvas");plate.style.setProperty("--ar",`${W}/${H}`);plate.style.background=ps.bg;
   const rc=plate.getBoundingClientRect(),dpr=devicePixelRatio||1;if(!rc.width)return;
   cv.width=Math.round(rc.width*dpr);cv.height=Math.round(rc.height*dpr);
   draw(cv.getContext("2d"),cv.width,cv.height,W/cv.width);
