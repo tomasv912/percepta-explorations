@@ -514,7 +514,7 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
     </div>
     <div class="group">
       <div class="lbl">Onda</div>
-      <div class="row"><span>Ciclos</span><span class="v" id="w_cycV"></span><input type="range" id="w_cyc" min="0.2" max="5" step="0.05"></div>
+      <div class="row"><span>Ciclos</span><span class="v" id="w_cycV"></span><input type="range" id="w_cyc" min="0" step="1"></div>
       <div class="row"><span>Amplitud</span><span class="v" id="w_ampV"></span><input type="range" id="w_amp" min="0.1" max="0.95" step="0.01"></div>
       <div class="row"><span>Fase</span><span class="v" id="w_phV"></span><input type="range" id="w_ph" min="0" max="360" step="15"></div>
       <div class="row"><span>Grosor</span><span class="v" id="w_strokeV"></span><input type="range" id="w_stroke" min="1" max="48" step="0.5"></div>
@@ -2021,8 +2021,11 @@ function render(){const[W,H]=RATIOS[ws.ratio],plate=$("wPlate"),cv=$("wCanvas");
   const S=draw(cv.getContext("2d"),cv.width/W,true);$("wSeedTag").textContent="#"+ws.seed;
   $("wMeta").textContent=`${S.lines.reduce((a,L)=>a+L.dots.length,0).toLocaleString("es")} puntos · ${W} × ${H} px`;}
 let raf=0;const update=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(render);};
-const pct=v=>Math.round(v*100)+"%",fmt={yaw:v=>v+"°",pitch:v=>v+"°",cyc:v=>(+v).toFixed(2),amp:pct,ph:v=>v+"°",stroke:v=>v+" px",glow:pct,lines:String,open:pct,dens:pct,dot:v=>(+v).toFixed(1)+" px",jit:pct};
-for(const k in fmt){const e=$("w_"+k);e.value=ws[k];$("w_"+k+"V").textContent=fmt[k](ws[k]);e.addEventListener("input",()=>{ws[k]=+e.value;$("w_"+k+"V").textContent=fmt[k](ws[k]);update();});}
+const pct=v=>Math.round(v*100)+"%",fmt={yaw:v=>v+"°",pitch:v=>v+"°",cyc:v=>v>=5?String(v):(+v).toFixed(2),amp:pct,ph:v=>v+"°",stroke:v=>v+" px",glow:pct,lines:String,open:pct,dens:pct,dot:v=>(+v).toFixed(1)+" px",jit:pct};
+// Ciclos: fine steps up to 5, then 7, 9 … 19 and 20
+const CYC=[];for(let v=0.2;v<5.001;v+=0.05)CYC.push(+v.toFixed(2));for(let v=7;v<=19;v+=2)CYC.push(v);CYC.push(20);
+for(const k in fmt){const e=$("w_"+k);if(k==="cyc"){e.max=CYC.length-1;e.value=CYC.reduce((b,v,i)=>Math.abs(v-ws.cyc)<Math.abs(CYC[b]-ws.cyc)?i:b,0);}else e.value=ws[k];
+  $("w_"+k+"V").textContent=fmt[k](ws[k]);e.addEventListener("input",()=>{ws[k]=k==="cyc"?CYC[+e.value]:+e.value;$("w_"+k+"V").textContent=fmt[k](ws[k]);update();});}
 const segs=[];function seg(box,items,get,set){box.innerHTML="";for(const[v,l]of items){const b=document.createElement("button");b.className="chip";b.textContent=l;b.dataset.v=v;b.onclick=()=>{set(v);sync();update();};box.appendChild(b);}
   segs.push(()=>[...box.children].forEach(b=>b.setAttribute("aria-pressed",String(String(get())===b.dataset.v))));}
 const CAM={campos:[15,15],helice:[30,15],frontal:[60,15]};
