@@ -134,7 +134,8 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
 .btn kbd{font:12px var(--mono);opacity:.5}
 
 /* canvas */
-.canvas{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+.canvas{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;container-type:size}
+.canvas>.plate,.canvas>.gplate{width:min(100cqw,calc(100cqh * var(--ar)));height:auto;max-height:100cqh}
 .plate,.gplate{max-width:100%;max-height:100%;aspect-ratio:var(--ar);width:auto;height:100%;box-shadow:0 0 0 1px var(--line-default)}
 .plate{background:#fff}
 .plate svg{display:block;width:100%;height:100%}
@@ -181,7 +182,8 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
   .app{grid-template-columns:1fr;flex:none}
   .rail{border-left:0;border-top:1px solid var(--line-default);padding-left:max(16px,env(safe-area-inset-left,0px))}
   .stage{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-  .plate,.gplate{width:100%;height:auto}
+  .canvas{container-type:normal}
+  .canvas>.plate,.canvas>.gplate,.plate,.gplate{width:100%;height:auto;max-height:none}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -196,6 +198,7 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
   <button class="tab" role="tab" id="tab-mix" aria-selected="false" aria-controls="view-gradients">Mix Shapes</button>
   <button class="tab" role="tab" id="tab-grain" aria-selected="false" aria-controls="view-grain">Grain Gradients</button>
   <button class="tab" role="tab" id="tab-lens" aria-selected="false" aria-controls="view-lens">Lens Dispersion</button>
+  <button class="tab" role="tab" id="tab-wave" aria-selected="false" aria-controls="view-wave">Wave Lines</button>
 </nav>
 <div class="app" id="view-laminas" role="tabpanel">
   <aside class="rail">
@@ -493,6 +496,53 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
     <div class="actions">
       <button class="btn primary" id="lDlSvg">Descargar SVG</button>
       <button class="btn" id="lDlPng">Descargar PNG</button>
+    </div>
+  </aside>
+</div>
+<div class="app" id="view-wave" role="tabpanel" hidden>
+  <main class="stage" id="wStage">
+    <div class="canvas"><div class="gplate" id="wPlate"><canvas id="wCanvas" role="img" aria-label="Wave lines"></canvas></div></div>
+    <div class="meta"><span id="wMeta"></span></div>
+  </main>
+  <aside class="rail">
+    <div class="brand"><h1>Wave Lines</h1><span id="wSeedTag"></span></div>
+    <div class="group">
+      <div class="lbl">Onda</div>
+      <div class="row"><span>Ciclos</span><span class="v" id="w_cycV"></span><input type="range" id="w_cyc" min="0.5" max="5" step="0.05"></div>
+      <div class="row"><span>Amplitud</span><span class="v" id="w_ampV"></span><input type="range" id="w_amp" min="0.1" max="0.95" step="0.01"></div>
+      <div class="row"><span>Fase</span><span class="v" id="w_phV"></span><input type="range" id="w_ph" min="0" max="360" step="1"></div>
+      <div class="row"><span>Grosor</span><span class="v" id="w_strokeV"></span><input type="range" id="w_stroke" min="1" max="24" step="0.5"></div>
+      <div class="row"><span>Brillo</span><span class="v" id="w_glowV"></span><input type="range" id="w_glow" min="0" max="1" step="0.01"></div>
+    </div>
+    <div class="group">
+      <div class="lbl">Líneas</div>
+      <div class="seg" id="wDir" style="grid-template-columns:repeat(3,1fr)"></div>
+      <div class="row"><span>Cantidad</span><span class="v" id="w_linesV"></span><input type="range" id="w_lines" min="1" max="40" step="1"></div>
+      <div class="row"><span>Apertura</span><span class="v" id="w_openV"></span><input type="range" id="w_open" min="0.05" max="1" step="0.01"></div>
+      <div class="row"><span>Desvanecer</span><span class="v" id="w_fadeV"></span><input type="range" id="w_fade" min="0" max="1" step="0.01"></div>
+    </div>
+    <div class="group">
+      <div class="lbl">Puntos</div>
+      <div class="row"><span>Densidad</span><span class="v" id="w_densV"></span><input type="range" id="w_dens" min="0.1" max="1" step="0.01"></div>
+      <div class="row"><span>Tamaño</span><span class="v" id="w_dotV"></span><input type="range" id="w_dot" min="0.5" max="6" step="0.1"></div>
+      <div class="row"><span>Dispersión</span><span class="v" id="w_jitV"></span><input type="range" id="w_jit" min="0" max="1" step="0.01"></div>
+    </div>
+    <div class="group">
+      <div class="lbl">Color</div>
+      <div class="seg" id="wMode" style="grid-template-columns:repeat(3,1fr)"></div>
+      <div class="swatches"><span id="wMainLbl">Principal</span><div class="sw" id="wMainSw" style="grid-template-columns:repeat(6,1fr)"></div>
+        <span id="wLineLbl">Líneas</span><div class="sw" id="wLineSw" style="grid-template-columns:repeat(6,1fr)"></div></div>
+      <div class="seg" id="wBg" style="grid-template-columns:1fr 1fr"></div>
+      <label class="tg" for="w_grid"><span>Cuadrícula</span><input type="checkbox" id="w_grid"></label>
+    </div>
+    <div class="group">
+      <div class="lbl">Formato</div>
+      <div class="seg" id="wRatio" style="grid-template-columns:repeat(5,1fr)"></div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="wGen" title="Nueva semilla (R)">Nueva semilla</button>
+      <button class="btn" id="wSvg">Descargar SVG</button>
+      <button class="btn" id="wPng">Descargar PNG</button>
     </div>
   </aside>
 </div>
@@ -1882,10 +1932,81 @@ let ready=false;
 return{show(){if(!ready){ready=true;mapHref=makeMap();sync();loadSvg(SAMPLE,"Percepta");}}};
 })();
 
+/* ---------- Wave Lines ----------
+   One solid main wave and a family of dotted echoes: each echo is the same wave at a smaller (or larger)
+   amplitude, so they all pinch together where the wave crosses its axis. Echoes are scattered dots. */
+const WL=(()=>{
+const PAL=[["#f7f7f7","Blanco"],["#fce097","Amarillo"],["#ff898d","Rosa"],["#75c5ef","Celeste"],["#b88dd2","Lila"],["#151515","Negro"]];
+const RATIOS={"16:9":[3200,1800],"3:2":[3000,2000],"1:1":[3000,3000],"4:5":[2400,3000],"9:16":[1800,3200]};
+const ws={cyc:1.5,amp:0.6,ph:0,stroke:6,glow:0.5,dir:"in",lines:12,open:0.9,fade:0.45,dens:0.6,dot:2.4,jit:0.15,
+  mode:"mix",main:"#f7f7f7",line:"#75c5ef",bg:"#151515",grid:false,ratio:"16:9",seed:Math.floor(Math.random()*1e6)};
+function rngW(seed){let t=seed>>>0;return()=>{t=t+1831565813>>>0;let e=t;e=Math.imul(e^e>>>15,e|1);e^=e+Math.imul(e^e>>>7,e|61);return((e^e>>>14)>>>0)/4294967296;};}
+const usable=()=>PAL.map(p=>p[0]).filter(c=>c!==ws.bg);
+// geometry in output pixels
+function scene(){
+  const[W,H]=RATIOS[ws.ratio],A=ws.amp*H/2,ph=ws.ph*Math.PI/180,k=2*Math.PI*ws.cyc/W,r=rngW(ws.seed);
+  const yAt=(x,s)=>H/2+s*A*Math.sin(k*x+ph);
+  const cols=usable(),main=ws.mode==="multi"?cols[0]:ws.main;
+  const scales=[];for(let i=1;i<=ws.lines;i++){const t=i/ws.lines;
+    if(ws.dir==="in")scales.push(1-t*ws.open);else if(ws.dir==="out")scales.push(1+t*ws.open*0.6);else scales.push(i%2?1-Math.ceil(i/2)/Math.ceil(ws.lines/2)*ws.open:1+Math.ceil(i/2)/Math.ceil(ws.lines/2)*ws.open*0.6);}
+  const lines=scales.map((s,i)=>{const t=(i+1)/ws.lines,col=ws.mode==="uni"?ws.main:ws.mode==="multi"?cols[(i+1)%cols.length]:
+      (()=>{const c=cols.filter(c=>c!==ws.main);return c.length?c[i%c.length]:ws.main;})();
+    const n=Math.round(ws.dens*W/2.2*(1-0.35*t)),a=1-ws.fade*t,dots=[];
+    for(let q=0;q<n;q++){const x=r()*W,g=(r()+r()+r()-1.5)*ws.jit*H*0.012*(0.5+t);dots.push([x,yAt(x,s)+g,ws.dot*(0.55+0.9*r())*(1-0.3*t),a*(0.55+0.45*r())]);}
+    return{col,dots};});
+  const path=[];for(let x=0;x<=W;x+=4)path.push([x,yAt(x,1)]);
+  return{W,H,main,lines,path};}
+function grid(ctx,W,H,s){if(!ws.grid)return;ctx.save();ctx.strokeStyle=ws.bg==="#151515"?"rgba(117,197,239,.18)":"rgba(21,21,21,.12)";ctx.lineWidth=2*s;
+  const n=8,st=H/n;for(let y=st/2;y<H;y+=st){ctx.beginPath();ctx.moveTo(0,y*s);ctx.lineTo(W*s,y*s);ctx.stroke();}
+  for(let x=(W%st)/2;x<=W;x+=st){ctx.beginPath();ctx.moveTo(x*s,0);ctx.lineTo(x*s,H*s);ctx.stroke();}ctx.restore();}
+function draw(ctx,s,withGrid){const S=scene(),{W,H}=S;ctx.clearRect(0,0,W*s,H*s);if(withGrid)grid(ctx,W,H,s);
+  for(const L of S.lines){ctx.fillStyle=L.col;for(const[x,y,rr,a]of L.dots){ctx.globalAlpha=a;ctx.beginPath();ctx.arc(x*s,y*s,Math.max(0.35,rr*s),0,7);ctx.fill();}}
+  ctx.globalAlpha=1;const line=()=>{ctx.beginPath();S.path.forEach(([x,y],i)=>i?ctx.lineTo(x*s,y*s):ctx.moveTo(x*s,y*s));ctx.stroke();};
+  ctx.lineCap="round";ctx.lineJoin="round";ctx.strokeStyle=S.main;
+  if(ws.glow>0){ctx.save();ctx.globalAlpha=0.55*ws.glow;ctx.filter=`blur(${(ws.stroke*2.5*s).toFixed(1)}px)`;ctx.lineWidth=ws.stroke*3*s;line();ctx.restore();}
+  ctx.lineWidth=ws.stroke*s;line();return S;}
+function svgString(){const S=scene(),{W,H}=S,f=v=>+v.toFixed(1),out=[];
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`);
+  out.push(`<defs><filter id="glow" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="${f(ws.stroke*2.5)}"/></filter></defs>`);
+  S.lines.forEach((L,i)=>{out.push(`<g id="Linea ${i+1}" fill="${L.col}">`);for(const[x,y,r,a]of L.dots)out.push(`<circle cx="${f(x)}" cy="${f(y)}" r="${f(r)}" opacity="${a.toFixed(2)}"/>`);out.push("</g>");});
+  const d="M"+S.path.map(([x,y])=>`${f(x)} ${f(y)}`).join(" L");
+  out.push(`<g id="Principal" fill="none" stroke="${S.main}" stroke-linecap="round" stroke-linejoin="round">`);
+  if(ws.glow>0)out.push(`<path d="${d}" stroke-width="${f(ws.stroke*3)}" opacity="${(0.55*ws.glow).toFixed(2)}" filter="url(#glow)"/>`);
+  out.push(`<path d="${d}" stroke-width="${ws.stroke}"/></g></svg>`);return out.join("\n");}
+function render(){const[W,H]=RATIOS[ws.ratio],plate=$("wPlate"),cv=$("wCanvas");plate.style.setProperty("--ar",`${W}/${H}`);plate.style.background=ws.bg;
+  const rc=plate.getBoundingClientRect(),dpr=devicePixelRatio||1;if(!rc.width)return;cv.width=Math.round(rc.width*dpr);cv.height=Math.round(rc.height*dpr);
+  const S=draw(cv.getContext("2d"),cv.width/W,true);$("wSeedTag").textContent="#"+ws.seed;
+  $("wMeta").textContent=`${S.lines.reduce((a,L)=>a+L.dots.length,0).toLocaleString("es")} puntos · ${W} × ${H} px`;}
+let raf=0;const update=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(render);};
+const pct=v=>Math.round(v*100)+"%",fmt={cyc:v=>(+v).toFixed(2),amp:pct,ph:v=>v+"°",stroke:v=>v+" px",glow:pct,lines:String,open:pct,fade:pct,dens:pct,dot:v=>(+v).toFixed(1)+" px",jit:pct};
+for(const k in fmt){const e=$("w_"+k);e.value=ws[k];$("w_"+k+"V").textContent=fmt[k](ws[k]);e.addEventListener("input",()=>{ws[k]=+e.value;$("w_"+k+"V").textContent=fmt[k](ws[k]);update();});}
+const segs=[];function seg(box,items,get,set){box.innerHTML="";for(const[v,l]of items){const b=document.createElement("button");b.className="chip";b.textContent=l;b.dataset.v=v;b.onclick=()=>{set(v);sync();update();};box.appendChild(b);}
+  segs.push(()=>[...box.children].forEach(b=>b.setAttribute("aria-pressed",String(String(get())===b.dataset.v))));}
+seg($("wDir"),[["in","Adentro"],["out","Afuera"],["both","Ambos"]],()=>ws.dir,v=>ws.dir=v);
+seg($("wMode"),[["uni","Uniforme"],["multi","Multicolor"],["mix","Mixto"]],()=>ws.mode,v=>ws.mode=v);
+seg($("wBg"),[["#151515","Fondo negro"],["#f7f7f7","Fondo blanco"]],()=>ws.bg,v=>{ws.bg=v;if(ws.main===v)ws.main=usable()[v==="#151515"?0:usable().length-1];if(ws.line===v)ws.line=ws.main;});
+seg($("wRatio"),Object.keys(RATIOS).map(k=>[k,k]),()=>ws.ratio,v=>ws.ratio=v);
+$("w_grid").addEventListener("change",e=>{ws.grid=e.target.checked;update();});
+function sw(box,key){box.innerHTML="";for(const[c,nm]of PAL){const b=document.createElement("button");b.style.background=c;b.title=nm;b.setAttribute("aria-label",nm);
+  b.setAttribute("aria-checked",String(ws[key]===c));const off=c===ws.bg;b.disabled=off;b.style.opacity=off?0.25:"";b.onclick=()=>{ws[key]=c;sync();update();};box.appendChild(b);}}
+function sync(){segs.forEach(f=>f());sw($("wMainSw"),"main");$("wMainLbl").hidden=$("wMainSw").hidden=ws.mode==="multi";
+  $("wLineLbl").hidden=$("wLineSw").hidden=true;$("wMainLbl").textContent=ws.mode==="uni"?"Color":"Principal";}
+const reseed=()=>{ws.seed=Math.floor(Math.random()*1e6);update();};$("wGen").onclick=reseed;
+addEventListener("keydown",e=>{if($("view-wave").hidden||e.metaKey||e.ctrlKey||e.altKey||e.target.closest("input,textarea"))return;if(e.key==="r"||e.key==="R")reseed();});
+async function save(name,data){if(!dlCap){try{if(window.claude?.use)dlCap=await window.claude.use("downloads");}catch(e){}}
+  if(!dlCap){toast("La descarga no está disponible en esta vista.");return;}
+  try{await dlCap.save({filename:name,data});toast(name+" guardado");}catch(e){if(e?.code!=="declined")toast("No se pudo descargar");}}
+$("wSvg").onclick=()=>save(`wave-lines-${ws.seed}.svg`,svgString());
+$("wPng").onclick=async()=>{const[W,H]=RATIOS[ws.ratio],c=document.createElement("canvas");c.width=W;c.height=H;draw(c.getContext("2d"),1,false);
+  const b=await new Promise(r=>c.toBlob(r,"image/png"));await save(`wave-lines-${ws.seed}.png`,new Uint8Array(await b.arrayBuffer()));};
+new ResizeObserver(()=>{if(!$("view-wave").hidden)update();}).observe($("wStage"));
+sync();return{show(){update();}};
+})();
+
 function showView(v){
-  $("view-laminas").hidden=v!=="laminas";$("view-gradients").hidden=v==="laminas"||v==="grain"||v==="lens";$("view-grain").hidden=v!=="grain";$("view-lens").hidden=v!=="lens";
-  for(const id of["laminas","gradients","dots","mix","grain","lens"])$("tab-"+id).setAttribute("aria-selected",String(id===v));
-  if(v==="lens")LD.show();else if(v==="grain")GG.show();else if(v!=="laminas")G.show(v==="dots"?"dots":v==="mix"?"mix":"gradient");
+  $("view-laminas").hidden=v!=="laminas";$("view-gradients").hidden=v==="laminas"||v==="grain"||v==="lens"||v==="wave";$("view-grain").hidden=v!=="grain";$("view-lens").hidden=v!=="lens";$("view-wave").hidden=v!=="wave";
+  for(const id of["laminas","gradients","dots","mix","grain","lens","wave"])$("tab-"+id).setAttribute("aria-selected",String(id===v));
+  if(v==="wave")WL.show();else if(v==="lens")LD.show();else if(v==="grain")GG.show();else if(v!=="laminas")G.show(v==="dots"?"dots":v==="mix"?"mix":"gradient");
   try{history.replaceState(null,"","#"+v);}catch(e){}
 }
 $("tab-laminas").onclick=()=>showView("laminas");
@@ -1894,6 +2015,8 @@ $("tab-dots").onclick=()=>showView("dots");
 $("tab-mix").onclick=()=>showView("mix");
 $("tab-grain").onclick=()=>showView("grain");
 $("tab-lens").onclick=()=>showView("lens");
+$("tab-wave").onclick=()=>showView("wave");
+if(location.hash==="#wave")showView("wave");
 if(location.hash==="#lens")showView("lens");
 if(location.hash==="#grain")showView("grain");
 if(location.hash==="#mix")showView("mix");
