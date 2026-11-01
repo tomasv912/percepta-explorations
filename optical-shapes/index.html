@@ -1802,15 +1802,19 @@ function build(){
   const src=el("svg",{id:"lsrc",x:0,y:0,width:w,height:h,viewBox:img.vb,overflow:"visible"});
   const doc=new DOMParser().parseFromString(`<svg xmlns="${NS}" xmlns:xlink="http://www.w3.org/1999/xlink">${img.markup}</svg>`,"image/svg+xml");
   for(const n of [...doc.documentElement.childNodes])src.appendChild(document.importNode(n,true));
-  svg.append(el("defs",{},[f,g,m,edge,eb,src]),el("use",{href:"#lsrc"}),
+  // the original is cut out wherever the effect shows (inverse mask), so the zone is transformed, not overlaid
+  const gk=el("radialGradient",{id:"lmgK"},[el("stop",{offset:0,"stop-color":"#000"}),el("stop",{offset:Math.max(0,1-ls.soft).toFixed(3),"stop-color":"#000"}),el("stop",{offset:1,"stop-color":"#000","stop-opacity":0})]);
+  const mi=el("mask",{id:"lmi",maskUnits:"userSpaceOnUse",x:0,y:0,width:w,height:h},[el("rect",{width:w,height:h,fill:"#fff"}),el("g",{mask:"url(#le)"},[el("g",{id:"lMaskI"})])]);
+  svg.append(el("defs",{},[f,g,gk,m,mi,edge,eb,src]),el("use",{href:"#lsrc",mask:"url(#lmi)"}),
     el("g",{mask:"url(#le)"},[el("g",{mask:"url(#lm)"},[el("use",{href:"#lsrc",filter:"url(#lens)"})])]));
   $("lPlate").style.setProperty("--ar",`${w}/${h}`);$("lPlate").style.background=img.dark?"#ffffff":"#151515";$("lMeta").textContent=`${w} × ${h} px`;
   drawMask();
 }
 function centre(){return ls.mask==="hover"&&pos?pos:[ls.C[0]*img.w,ls.C[1]*img.h];}
-function drawMask(){const G=$("lMaskG");if(!G)return;G.innerHTML="";const{w,h}=img;
-  if(ls.mask==="all")G.append(el("rect",{width:w,height:h,fill:"#fff",opacity:ls.infl}));
-  else for(const p of trail)if(p.life>0.01)G.append(el("circle",{cx:p.x.toFixed(1),cy:p.y.toFixed(1),r:ls.rad,fill:"url(#lmg)",opacity:(p.life*ls.infl).toFixed(3)}));
+function drawMask(){const G=$("lMaskG"),GI=$("lMaskI");if(!G)return;G.innerHTML="";GI.innerHTML="";const{w,h}=img;
+  if(ls.mask==="all"){G.append(el("rect",{width:w,height:h,fill:"#fff",opacity:ls.infl}));GI.append(el("rect",{width:w,height:h,fill:"#000",opacity:ls.infl}));}
+  else for(const p of trail)if(p.life>0.01){const a={cx:p.x.toFixed(1),cy:p.y.toFixed(1),r:ls.rad,opacity:(p.life*ls.infl).toFixed(3)};
+    G.append(el("circle",{...a,fill:"url(#lmg)"}));GI.append(el("circle",{...a,fill:"url(#lmgK)"}));}
   const mp=$("lMap"),[cx,cy]=centre(),M=Math.max(w,h);if(mp){mp.setAttribute("x",(cx-M).toFixed(1));mp.setAttribute("y",(cy-M).toFixed(1));}
   const C=$("lC");C.hidden=ls.mask==="hover";C.style.left=ls.C[0]*100+"%";C.style.top=ls.C[1]*100+"%";}
 // cursor trail: a smoothed position drops points that fade out
