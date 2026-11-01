@@ -100,57 +100,78 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .btn:disabled { opacity: .5; cursor: default; }
 .frame { cursor: grab; touch-action: none; } .frame:active { cursor: grabbing; }
 .hint { margin: 0; color: var(--text-3); font-size: 12px; }
+.lib { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.lib button { appearance: none; border: 0; background: var(--fill); color: var(--text-2); font: 500 11px var(--font); height: 30px; border-radius: 6px; cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); padding: 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib button:hover { color: var(--text); }
+.lib button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); box-shadow: none; }
+.frame.placing { cursor: crosshair; }
+.sel { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 10px; background: var(--fill); box-shadow: inset 0 0 0 1px var(--line); }
+.sel .btns .btn { background: var(--surface); }
+.sel-head { display: flex; justify-content: space-between; align-items: center; font-weight: 500; }
 </style>
 </head>
 <body>
 <script src="../toolbar.js"></script>
+<script src="../stipple3d.js"></script>
 <div class="app">
   <main id="stage">
-    <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Una imagen hecha de píxeles sobre un plano en 3D"></canvas></div>
+    <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Un plano de píxeles que cubre modelos en 3D como una manta y se dispersa hacia el fondo"></canvas></div>
+    <div class="drop" id="drop" hidden>Soltá el modelo (.obj, .glb, .gltf)</div>
     <div class="hud" id="stats">—</div>
   </main>
 
   <aside>
     <div class="controls">
       <section>
-        <h2>Imagen</h2>
-        <button class="btn" id="upload">Subir imagen</button>
-        <input type="file" id="file" accept="image/*" hidden>
-        <p class="hint">También podés arrastrarla o pegarla (Ctrl+V). Arrastrá sobre el lienzo para girar el plano; con Shift, gira en el plano.</p>
-        <div id="sl-contrast"></div>
-        <div id="sl-threshold"></div>
-        <label class="check"><input type="checkbox" data-check="invert"> Invertir luces y sombras</label>
+        <h2>Modelos</h2>
+        <p class="hint">Elegí uno y hacé clic sobre el plano para ubicarlo. Arrastrá un modelo para moverlo; arrastrá el plano para girar la vista.</p>
+        <div class="lib" id="lib"></div>
+        <button class="btn" id="upload">Subir .obj, .glb o .gltf</button>
+        <input type="file" id="file" accept=".obj,.glb,.gltf" hidden>
+        <div class="btns">
+          <button class="btn" id="city" title="Una fila de edificios y plantas al frente">Ciudad al azar</button>
+          <button class="btn" id="clear">Vaciar</button>
+        </div>
+        <div class="sel" id="sel" hidden>
+          <div class="sel-head"><span id="sel-name">—</span><span class="hint" id="sel-n"></span></div>
+          <div id="sl-objS"></div>
+          <div id="sl-objH"></div>
+          <div id="sl-objYaw"></div>
+          <div class="btns">
+            <button class="btn" id="obj-var" title="Otra variante del mismo modelo">Variante</button>
+            <button class="btn" id="obj-dup">Duplicar</button>
+            <button class="btn" id="obj-del" title="Supr">Eliminar</button>
+          </div>
+        </div>
       </section>
 
       <section>
-        <h2>Plano</h2>
-        <div id="sl-rotX"></div>
-        <div id="sl-rotY"></div>
-        <div id="sl-rotZ"></div>
+        <h2>Dispersión hacia atrás</h2>
+        <p class="hint">Al frente, la manta en su lugar; hacia el fondo, los píxeles se sueltan.</p>
+        <div id="sl-disp"></div>
+        <div id="sl-start"></div>
+        <div id="sl-soft"></div>
+        <div id="sl-rise"></div>
+        <div id="sl-thin"></div>
+        <div id="sl-fadeA"></div>
+      </section>
+
+      <section>
+        <h2>Manta</h2>
+        <div id="sl-drape"></div>
+        <div id="sl-walls"></div>
+        <div id="sl-wave"></div>
+        <div id="sl-waveScale"></div>
+        <div id="sl-depth"></div>
+      </section>
+
+      <section>
+        <h2>Cámara</h2>
+        <div id="sl-pitch"></div>
+        <div id="sl-yaw"></div>
         <div id="sl-persp"></div>
         <div id="sl-zoom"></div>
-      </section>
-
-      <section>
-        <h2>Altura</h2>
-        <div id="sl-height"></div>
-        <div class="seg" data-key="heightBy" aria-label="Qué sube">
-          <button data-v="dark">Lo oscuro</button><button data-v="light">Lo claro</button>
-        </div>
-        <div id="sl-smooth"></div>
-        <div id="sl-heightNoise"></div>
-      </section>
-
-      <section>
-        <h2>Desvanecimiento</h2>
-        <p class="hint">Los píxeles van del caos al orden: dispersos por un lado del plano, en su lugar del otro.</p>
-        <div class="seg" data-key="fadeFrom" aria-label="Desde dónde">
-          <button data-v="left">Izq.</button><button data-v="right">Der.</button><button data-v="top">Arriba</button><button data-v="bottom">Abajo</button><button data-v="edges">Bordes</button>
-        </div>
-        <div id="sl-fade"></div>
-        <div id="sl-fadeSoft"></div>
-        <div id="sl-chaos"></div>
-        <div id="sl-thin"></div>
+        <div id="sl-frameY"></div>
       </section>
 
       <section>
@@ -158,7 +179,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-count"></div>
         <div id="sl-size"></div>
         <div id="sl-depthSize"></div>
-        <label class="check"><input type="checkbox" data-check="grid"> En grilla (uno por celda)</label>
         <div class="row">
           <span>Semilla</span>
           <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
@@ -172,7 +192,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <h2>Color</h2>
         <div id="palsets"></div>
         <div class="seg" data-key="colorMode" aria-label="Color">
-          <button data-v="ink">Un color</button><button data-v="tone">Por tono</button><button data-v="random">Al azar</button><button data-v="image">Imagen</button>
+          <button data-v="ink">Un color</button><button data-v="height">Por altura</button><button data-v="random">Al azar</button>
         </div>
         <div class="inks" id="inks" aria-label="Color"></div>
         <div class="row" style="grid-template-columns:56px 1fr auto">
@@ -192,120 +212,285 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
 <script>
 // ---------- State ----------
-// An image drawn with square pixels laid on a plane in 3D: more pixels where it is dark (or a grid), the plane turned
-// and seen in perspective, each pixel lifted off it by the image's tone (Altura), and, with Desvanecimiento, the
-// plane emerging from a scatter: pixels far off their place on one side, settling into it towards the other.
+// A plane of square pixels laid like a blanket over 3D models: where a model stands the plane rises over it and
+// takes its shape (Manta says how tightly), the rest lies flat or gently rolling. Towards the back the pixels come
+// loose (Dispersión hacia atrás): in place at the front, scattered further and further into the distance.
+// World: x across, y up, z into the distance (front edge at -depth/2); the plane is PW wide.
 const WHITE = '#F6F6F6', INK = '#272727';
 const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
-const AW = 1920, AH = 1080, RES = 2;
+const AW = 1920, AH = 1080, RES = 2, PW = 3, CELL = 1 / 150, LM = 112;
 const DEFAULTS = {
-  contrast: 1.2, threshold: .08, invert: false,
-  rotX: 55, rotY: -20, rotZ: 0, persp: .5, zoom: 1,
-  height: .25, heightBy: 'dark', smooth: .3, heightNoise: 0,
-  fadeFrom: 'left', fade: .35, fadeSoft: .6, chaos: .5, thin: .3,
-  count: 30000, size: 3, depthSize: .6, grid: false, seed: 1,
-  palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'tone', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
+  disp: .3, start: .35, soft: .7, rise: .35, thin: .35, fadeA: .5,
+  drape: .12, walls: 1.5, wave: .5, waveScale: .5, depth: 2.4,
+  pitch: 24, yaw: 0, persp: .55, zoom: 1.3, frameY: .02,
+  count: 45000, size: 2.5, depthSize: .6, seed: 1,
+  palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'ink', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
+const mix = (a, b, t) => a + (b - a) * t;
 function rng(seed) {
   let a = seed >>> 0 || 1;
   return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 }
 const gauss = r => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
+const pickR = (r, a, b) => a + r() * (b - a);
 
-// ---------- Image ----------
-// Read once into a tone grid (and its colours); a blurred copy gives the height its smoothness.
-const GRID = 360;
-let img = null;
-function loadImage(el) {
-  const iw = el.naturalWidth || el.width, ih = el.naturalHeight || el.height;
-  const gw = Math.max(2, Math.round(iw >= ih ? GRID : GRID * iw / ih)), gh = Math.max(2, Math.round(iw >= ih ? GRID * ih / iw : GRID));
-  const c = document.createElement('canvas'); c.width = gw; c.height = gh;
-  const x = c.getContext('2d', { willReadFrequently: true }); x.fillStyle = '#fff'; x.fillRect(0, 0, gw, gh); x.imageSmoothingQuality = 'high'; x.drawImage(el, 0, 0, gw, gh);
-  const d = x.getImageData(0, 0, gw, gh).data, lum = new Float32Array(gw * gh), rgb = new Uint32Array(gw * gh);
-  for (let k = 0; k < gw * gh; k++) { const r = d[k * 4], g = d[k * 4 + 1], b = d[k * 4 + 2]; lum[k] = (.2126 * r + .7152 * g + .0722 * b) / 255; rgb[k] = r << 16 | g << 8 | b; }
-  img = { gw, gh, lum, rgb, ar: iw / ih, blurKey: -1, blur: null };
-}
-// The starting image: a few soft shapes, so the tool shows something before an upload.
-function sampleImage() {
-  const c = document.createElement('canvas'); c.width = 900; c.height = 600;
-  const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 900, 600);
-  for (const [cx, cy, r, a] of [[300, 300, 230, .95], [600, 260, 170, .7], [520, 420, 120, .85]]) {
-    const g = x.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, `rgba(0,0,0,${a})`); g.addColorStop(1, 'rgba(0,0,0,0)');
-    x.fillStyle = g; x.fillRect(0, 0, 900, 600);
+// ---------- Models ----------
+// Each model is a height map over its footprint (a unit square, LM × LM): the top of the model seen from above,
+// in footprint units, -1 where there is nothing. The blanket only ever sees a model's top, so that is all it needs.
+// Built-in ones are height functions of (x, z) in [-.5, .5]², varied by a seed; uploads are rasterised once.
+const box = (x, z, w, d) => Math.abs(x) <= w / 2 && Math.abs(z) <= d / 2;
+const KINDS = {
+  edificio: { label: 'Edificio', make: r => {
+    const w = pickR(r, .55, 1), d = pickR(r, .55, 1), H = pickR(r, .6, 1.6), tiers = r() < .55, t2 = pickR(r, .5, .8), roof = r() < .3;
+    return (x, z) => {
+      if (!box(x, z, w, d)) return -1;
+      let h = H; if (tiers && !box(x, z, w * t2, d * t2)) h = H * .6;
+      if (roof && box(x, z, w * .25, d * .25)) h += .15;
+      return h;
+    };
+  } },
+  torre: { label: 'Torre', make: r => {
+    const w = pickR(r, .35, .6), H = pickR(r, 1.8, 3), sp = pickR(r, .3, .8), base = r() < .6;
+    return (x, z) => {
+      const m = Math.max(Math.abs(x), Math.abs(z));
+      if (base && box(x, z, w * 1.6, w * 1.6) && !box(x, z, w, w)) return H * .3;
+      if (!box(x, z, w, w)) return -1;
+      return H + Math.max(0, sp * (1 - m / (w * .22)));
+    };
+  } },
+  casa: { label: 'Casa', make: r => {
+    const w = pickR(r, .6, 1), d = pickR(r, .5, .9), wall = pickR(r, .45, .8), roofH = pickR(r, .3, .6), turn = r() < .5;
+    return (x, z) => { if (turn) [x, z] = [z, x]; if (!box(x, z, w, d)) return -1; return wall + roofH * (1 - Math.abs(z) / (d / 2)); };
+  } },
+  cupula: { label: 'Cúpula', make: r => {
+    const R = pickR(r, .3, .45), drum = pickR(r, .5, 1.2), dome = pickR(r, .7, 1.1), lan = r() < .6, plinth = r() < .5;
+    return (x, z) => {
+      const q = Math.hypot(x, z);
+      if (q <= R) return drum + Math.sqrt(R * R - q * q) * dome / R * R * 1.2 + (lan && q < R * .15 ? .25 : 0);
+      if (plinth && box(x, z, .95, .95)) return drum * .55;
+      return -1;
+    };
+  } },
+  arbol: { label: 'Árbol', make: r => {
+    const R = pickR(r, .3, .48), cy = pickR(r, .7, 1.3), ry = pickR(r, .7, 1.2), lobes = Array.from({ length: 4 }, () => [pickR(r, -.15, .15), pickR(r, -.15, .15), pickR(r, .5, .8)]);
+    return (x, z) => {
+      let h = -1;
+      for (const [ox, oz, k] of [[0, 0, 1], ...lobes]) { const rr = R * k, q = Math.hypot(x - ox, z - oz); if (q < rr) h = Math.max(h, cy * (k < 1 ? .9 : 1) + Math.sqrt(rr * rr - q * q) * ry); }
+      return h;
+    };
+  } },
+  pino: { label: 'Pino', make: r => {
+    const R = pickR(r, .3, .45), H = pickR(r, 1.4, 2.4), n = 3 + Math.floor(r() * 3);
+    return (x, z) => {
+      const q = Math.hypot(x, z) / R; if (q > 1) return -1;
+      // stacked cones: each tier a cone, the tiers stepping in as they rise
+      let h = -1; for (let i = 0; i < n; i++) { const s = 1 - i / (n + .5), top = H * (.45 + .55 * (i + 1) / n); if (q < s) h = Math.max(h, top - (top - H * .25 * (1 + i)) * q / s); }
+      return h;
+    };
+  } },
+  arbusto: { label: 'Arbusto', make: r => {
+    const blobs = Array.from({ length: 5 + Math.floor(r() * 5) }, () => [pickR(r, -.25, .25), pickR(r, -.25, .25), pickR(r, .12, .25), pickR(r, .1, .35)]);
+    return (x, z) => { let h = -1; for (const [ox, oz, rr, cy] of blobs) { const q = Math.hypot(x - ox, z - oz); if (q < rr) h = Math.max(h, cy + Math.sqrt(rr * rr - q * q)); } return h; };
+  } },
+  palmera: { label: 'Palmera', make: r => {
+    const H = pickR(r, 1.6, 2.4), n = 6 + Math.floor(r() * 4), L = pickR(r, .38, .5), a0 = r() * 6;
+    return (x, z) => {
+      const q = Math.hypot(x, z), a = Math.atan2(z, x); if (q < .05) return H + .1; if (q > L) return -1;
+      const k = (((a - a0) / (Math.PI * 2) * n) % 1 + 1) % 1, half = .5 - Math.abs(k - .5);
+      return half < .18 * (1 - q / L) + .02 ? H - (q / L) ** 2 * .8 : -1;
+    };
+  } },
+};
+// An uploaded mesh (positions, 9 per triangle, y up): centred on its footprint, the footprint fitted to the
+// unit square, its lowest point on the ground, and its top rasterised into a height map.
+const uploads = [];
+function meshMap(pos) {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, z0 = Infinity, z1 = -Infinity;
+  for (let i = 0; i < pos.length; i += 3) { x0 = Math.min(x0, pos[i]); x1 = Math.max(x1, pos[i]); y0 = Math.min(y0, pos[i + 1]); z0 = Math.min(z0, pos[i + 2]); z1 = Math.max(z1, pos[i + 2]); }
+  const k = 1 / (Math.max(x1 - x0, z1 - z0) || 1), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, map = new Float32Array(LM * LM).fill(-1);
+  const P = i => [((pos[i] - cx) * k + .5) * (LM - 1), (pos[i + 1] - y0) * k, ((pos[i + 2] - cz) * k + .5) * (LM - 1)];
+  for (let t = 0; t < pos.length; t += 9) {
+    const [a, b, c] = [P(t), P(t + 3), P(t + 6)], den = (b[2] - c[2]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[2] - c[2]);
+    if (Math.abs(den) < 1e-9) continue; // seen edge-on from above: a wall, the top decides
+    const i0 = Math.max(0, Math.floor(Math.min(a[0], b[0], c[0]))), i1 = Math.min(LM - 1, Math.ceil(Math.max(a[0], b[0], c[0])));
+    const j0 = Math.max(0, Math.floor(Math.min(a[2], b[2], c[2]))), j1 = Math.min(LM - 1, Math.ceil(Math.max(a[2], b[2], c[2])));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const l1 = ((b[2] - c[2]) * (i - c[0]) + (c[0] - b[0]) * (j - c[2])) / den, l2 = ((c[2] - a[2]) * (i - c[0]) + (a[0] - c[0]) * (j - c[2])) / den, l3 = 1 - l1 - l2;
+      if (l1 < -1e-4 || l2 < -1e-4 || l3 < -1e-4) continue;
+      const h = l1 * a[1] + l2 * b[1] + l3 * c[1], o = j * LM + i; if (h > map[o]) map[o] = h;
+    }
   }
-  loadImage(c);
+  return map;
 }
-function blurred() {
-  // Box blurs of the tone (three passes ≈ gaussian), radius from Suavizado.
-  const rad = Math.round(S.smooth * 14);
-  if (img.blurKey === rad) return img.blur;
-  const { gw, gh } = img; let a = Float32Array.from(img.lum), b = new Float32Array(a.length);
-  for (let pass = 0; pass < 3 && rad > 0; pass++) {
-    for (let y = 0; y < gh; y++) { let s = 0, n = 0; for (let x = -rad; x < gw; x++) { if (x + rad < gw) { s += a[y * gw + x + rad]; n++; } if (x - rad - 1 >= 0) { s -= a[y * gw + x - rad - 1]; n--; } if (x >= 0) b[y * gw + x] = s / n; } }
-    for (let x = 0; x < gw; x++) { let s = 0, n = 0; for (let y = -rad; y < gh; y++) { if (y + rad < gh) { s += b[(y + rad) * gw + x]; n++; } if (y - rad - 1 >= 0) { s -= b[(y - rad - 1) * gw + x]; n--; } if (y >= 0) a[y * gw + x] = s / n; } }
+const mapCache = new Map();
+function mapOf(kind, seed) {
+  if (kind.startsWith('up')) return uploads[+kind.slice(2)].map;
+  const key = kind + ':' + seed; let m = mapCache.get(key);
+  if (!m) {
+    const f = KINDS[kind].make(rng(seed * 9973 + 17)); m = new Float32Array(LM * LM);
+    for (let j = 0; j < LM; j++) for (let i = 0; i < LM; i++) m[j * LM + i] = f(i / (LM - 1) - .5, j / (LM - 1) - .5);
+    mapCache.set(key, m);
   }
-  img.blurKey = rad; img.blur = a; return a;
+  return m;
+}
+const labelOf = kind => kind.startsWith('up') ? uploads[+kind.slice(2)].name : KINDS[kind].label;
+const topOf = o => { let t = 0; for (const v of mapOf(o.kind, o.seed)) t = Math.max(t, v); return t * o.s * o.h; };
+
+// The scene: { kind, seed, x, z, s: footprint size, h: height factor, yaw: degrees }.
+let objs = [], sel = -1;
+// A skyline along the front, as in a city with its plants: buildings, a tower or two, a dome, trees in between.
+function city(seed) {
+  const r = rng(seed * 31 + 5), out = [], front = -S.depth / 2;
+  const bag = ['edificio', 'edificio', 'edificio', 'torre', 'casa', 'casa', 'cupula', 'arbol', 'arbol', 'pino', 'arbusto', 'palmera'];
+  let x = -PW / 2 + .2;
+  while (x < PW / 2 - .15) {
+    const kind = bag[Math.floor(r() * bag.length)], green = /arbol|pino|arbusto|palmera/.test(kind), s = green ? pickR(r, .1, .17) : pickR(r, .14, .24);
+    out.push({ kind, seed: Math.floor(r() * 1e6), x: x + s / 2, z: front + pickR(r, .22, .42), s, h: 1, yaw: (r() - .5) * 20 });
+    x += s * pickR(r, .85, 1.25) + (r() < .25 ? pickR(r, .1, .35) : 0);
+  }
+  return out;
+}
+
+// ---------- The blanket ----------
+// Heights at the nodes of a grid over the plane: a gentle roll (Ondulación, more of it towards the back), plus the
+// models' tops, spread out like cloth falling off them (Manta: 0 hugs every wall, 1 hangs loose), then softened.
+let field = null, fieldKey = '';
+function waveFn(seed) {
+  const r = rng(seed * 7 + 11), terms = Array.from({ length: 6 }, (_, i) => { const a = r() * Math.PI * 2, f = (1.3 + i * .9) * pickR(r, .8, 1.2); return [Math.cos(a) * f, Math.sin(a) * f, r() * 6.3, 1 / (1 + i * .8)]; });
+  return (x, z) => { let s = 0; for (const [kx, kz, p, a] of terms) s += Math.sin(kx * x + kz * z + p) * a; return s / 2.6; };
+}
+function buildField() {
+  const key = JSON.stringify([objs, S.drape, S.wave, S.waveScale, S.depth, S.seed, uploads.length]);
+  if (key === fieldKey) return; fieldKey = key;
+  const nx = Math.round(PW / CELL) + 1, nz = Math.round(S.depth / CELL) + 1, X0 = -PW / 2, Z0 = -S.depth / 2, n = nx * nz;
+  const obj = new Float32Array(n), cover = new Uint8Array(n);
+  for (const o of objs) {
+    const map = mapOf(o.kind, o.seed), R = o.s * .72, c = Math.cos(o.yaw * Math.PI / 180), s = Math.sin(o.yaw * Math.PI / 180);
+    const i0 = Math.max(0, Math.floor((o.x - R - X0) / CELL)), i1 = Math.min(nx - 1, Math.ceil((o.x + R - X0) / CELL));
+    const j0 = Math.max(0, Math.floor((o.z - R - Z0) / CELL)), j1 = Math.min(nz - 1, Math.ceil((o.z + R - Z0) / CELL));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const dx = (X0 + i * CELL - o.x) / o.s, dz = (Z0 + j * CELL - o.z) / o.s, lx = dx * c + dz * s, lz = -dx * s + dz * c;
+      if (Math.abs(lx) > .5 || Math.abs(lz) > .5) continue;
+      const v = map[Math.round((lz + .5) * (LM - 1)) * LM + Math.round((lx + .5) * (LM - 1))];
+      if (v < 0) continue;
+      const h = v * o.s * o.h, k = j * nx + i; if (h > obj[k]) obj[k] = h; cover[k] = 1;
+    }
+  }
+  // Cloth falling off the tops: no node lower than its neighbour minus the fall over one step (two sweeps, both ways).
+  const fall = mix(30, .9, S.drape ** .7) * CELL, fd = fall * Math.SQRT2;
+  for (let rep = 0; rep < 2; rep++) {
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+      const k = j * nx + i; let v = obj[k];
+      if (i > 0) v = Math.max(v, obj[k - 1] - fall);
+      if (j > 0) { v = Math.max(v, obj[k - nx] - fall); if (i > 0) v = Math.max(v, obj[k - nx - 1] - fd); if (i < nx - 1) v = Math.max(v, obj[k - nx + 1] - fd); }
+      obj[k] = v;
+    }
+    for (let j = nz - 1; j >= 0; j--) for (let i = nx - 1; i >= 0; i--) {
+      const k = j * nx + i; let v = obj[k];
+      if (i < nx - 1) v = Math.max(v, obj[k + 1] - fall);
+      if (j < nz - 1) { v = Math.max(v, obj[k + nx] - fall); if (i < nx - 1) v = Math.max(v, obj[k + nx + 1] - fd); if (i > 0) v = Math.max(v, obj[k + nx - 1] - fd); }
+      obj[k] = v;
+    }
+  }
+  const rad = Math.round(S.drape * 4);
+  if (rad > 0) blur(obj, nx, nz, rad);
+  const ground = groundOf(nx, nz, X0, Z0), h = new Float32Array(n);
+  let top = 1e-6;
+  for (let k = 0; k < n; k++) { h[k] = ground[k] + obj[k]; if (obj[k] > top) top = obj[k]; }
+  field = { nx, nz, X0, Z0, h, obj, top };
+  ptsKey = '';
+}
+// The bare plane's roll, kept until its own settings change (moving a model doesn't touch it).
+let groundCache = { key: '', h: null };
+function groundOf(nx, nz, X0, Z0) {
+  const key = [nx, nz, S.seed, S.wave, S.waveScale].join();
+  if (groundCache.key === key) return groundCache.h;
+  const wv = waveFn(S.seed), h = new Float32Array(nx * nz), amp = S.wave * .12, sc = mix(.6, 3.2, S.waveScale);
+  if (amp > 0) for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) h[j * nx + i] = wv((X0 + i * CELL) * sc, (Z0 + j * CELL) * sc) * amp * (.25 + .75 * j / (nz - 1));
+  groundCache = { key, h };
+  return h;
+}
+function blur(a, w, hgt, rad) {
+  const b = new Float32Array(a.length);
+  for (let pass = 0; pass < 2; pass++) {
+    for (let y = 0; y < hgt; y++) { let s = 0, n = 0; for (let x = -rad; x < w; x++) { if (x + rad < w) { s += a[y * w + x + rad]; n++; } if (x - rad - 1 >= 0) { s -= a[y * w + x - rad - 1]; n--; } if (x >= 0) b[y * w + x] = s / n; } }
+    for (let x = 0; x < w; x++) { let s = 0, n = 0; for (let y = -rad; y < hgt; y++) { if (y + rad < hgt) { s += b[(y + rad) * w + x]; n++; } if (y - rad - 1 >= 0) { s -= b[(y - rad - 1) * w + x]; n--; } if (y >= 0) a[y * w + x] = s / n; } }
+  }
 }
 
 // ---------- Points ----------
-// On the flat plane (u, v in [-ar/2, ar/2] × [-1/2, 1/2]): placed by darkness (or one per grid cell), each with its
-// tone, colour, a random direction and amount for the scatter, and a pick for the colour.
+// Spread over the blanket's surface, not its shadow on the ground: a cell gets as many as its area asks for, so
+// walls and slopes are covered as densely as the flat (and, with Más píxeles en las paredes, more: a wall seen
+// face on would otherwise read lighter than the ground seen at a slant). Each cell draws its points from its own random stream, so
+// moving one model leaves every other cell's pixels exactly where they were.
 let pts = [], ptsKey = '';
 function buildPoints() {
-  const key = JSON.stringify([S.count, S.grid, S.contrast, S.threshold, S.invert, S.seed, img.gw, img.gh, img.lum.length, img.ar]);
+  const key = JSON.stringify([fieldKey, S.count, S.seed, S.walls]);
   if (key === ptsKey) return; ptsKey = key;
-  const { gw, gh, lum, rgb, ar } = img, r = rng(S.seed), w = new Float32Array(gw * gh), cdf = new Float64Array(gw * gh);
-  let sum = 0;
-  for (let k = 0; k < w.length; k++) { const v = clamp(((S.invert ? lum[k] : 1 - lum[k]) - .5) * S.contrast + .5); w[k] = v <= S.threshold ? 0 : (v - S.threshold) / (1 - S.threshold); cdf[k] = sum += w[k] ** 1.2; }
+  const { nx, nz, X0, Z0, h, obj } = field, per = S.count / ((nx - 1) * (nz - 1));
   pts = [];
-  const mk = (i, j, fx, fy) => {
-    const k = j * gw + i, u = ((i + fx) / gw - .5) * ar, v = (j + fy) / gh - .5, dir = [gauss(r), gauss(r), gauss(r)], m = Math.hypot(...dir) || 1;
-    pts.push({ u, v, k, tone: w[k], dx: dir[0] / m, dy: dir[1] / m, dz: dir[2] / m, amt: .3 + r() * .7, pick: r(), hn: gauss(r) });
-  };
-  if (S.grid) {
-    const cols = Math.round(Math.sqrt(S.count * ar)), rows = Math.round(cols / ar);
-    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { const gi = Math.min(gw - 1, Math.floor((i + .5) / cols * gw)), gj = Math.min(gh - 1, Math.floor((j + .5) / rows * gh)); if (w[gj * gw + gi] > 0) { mk(gi, gj, .5, .5); pts[pts.length - 1].u = ((i + .5) / cols - .5) * ar; pts[pts.length - 1].v = (j + .5) / rows - .5; } }
-  } else if (sum > 0) for (let n = 0; n < S.count; n++) {
-    const q = r() * sum; let lo = 0, hi = cdf.length - 1;
-    while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < q) lo = mid + 1; else hi = mid; }
-    const i = lo % gw, j = (lo - i) / gw; mk(i, j, r(), r());
+  for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const k = j * nx + i, a = h[k], b = h[k + 1], c = h[k + nx], d = h[k + nx + 1];
+    const gx = (b - a + d - c) / 2 / CELL, gz = (c - a + d - b) / 2 / CELL, area = Math.min(400, Math.sqrt(1 + gx * gx + gz * gz));
+    const r = rng((S.seed * 2654435761 ^ (j * 73856093) ^ (i * 19349663)) >>> 0), want = per * area * (1 + S.walls * (1 - 1 / area)), m = Math.floor(want) + (r() < want % 1 ? 1 : 0);
+    for (let q = 0; q < m; q++) {
+      const fx = r(), fz = r(), y = mix(mix(a, b, fx), mix(c, d, fx), fz), lift = mix(mix(obj[k], obj[k + 1], fx), mix(obj[k + nx], obj[k + nx + 1], fx), fz);
+      const dir = [gauss(r), gauss(r), gauss(r)], l = Math.hypot(...dir) || 1;
+      pts.push({ x: X0 + (i + fx) * CELL, y, z: Z0 + (j + fz) * CELL, lift, back: (j + fz) / (nz - 1), dx: dir[0] / l, dy: dir[1] / l, dz: dir[2] / l, amt: .25 + r() * .75, pick: r() });
+    }
   }
 }
-// Each point in 3D, turned and projected: [x, y, size, colour, depth], back to front.
-function project() {
-  const bl = blurred(), { ar } = img, rad = Math.PI / 180;
-  const ca = Math.cos(S.rotX * rad), sa = Math.sin(S.rotX * rad), cb = Math.cos(S.rotY * rad), sb = Math.sin(S.rotY * rad), cc = Math.cos(S.rotZ * rad), sc = Math.sin(S.rotZ * rad);
-  const cam = 1.2 + (1 - S.persp) * 6, k = Math.min(AW / (ar * 1.15), AH / 1.15) * S.zoom * (1 + (1 - S.persp) * .0), out = [];
+
+// ---------- Camera ----------
+// Orbiting the middle of the plane: Inclinación is how high above it, Giro around it; Perspectiva brings the camera
+// in (and the near side grows), Escala zooms, Encuadre slides the picture up or down.
+function camera() {
+  const p = S.pitch * Math.PI / 180, a = S.yaw * Math.PI / 180, dist = 2.2 + (1 - S.persp) * 12;
+  const C = [Math.sin(a) * Math.cos(p) * dist, Math.sin(p) * dist, -Math.cos(a) * Math.cos(p) * dist];
+  const f = [-C[0] / dist, -C[1] / dist, -C[2] / dist], rl = Math.hypot(f[2], f[0]) || 1, r = [f[2] / rl, 0, -f[0] / rl];
+  const u = [f[1] * r[2] - f[2] * r[1], f[2] * r[0] - f[0] * r[2], f[0] * r[1] - f[1] * r[0]];
+  return { C, f, r, u, dist, k: AW * .8 / PW * S.zoom, oy: AH / 2 + S.frameY * AH };
+}
+function toScreen(cam, x, y, z) {
+  const dx = x - cam.C[0], dy = y - cam.C[1], dz = z - cam.C[2], d = dx * cam.f[0] + dy * cam.f[1] + dz * cam.f[2];
+  if (d < .05) return null;
+  const F = cam.dist / d;
+  return [AW / 2 + (dx * cam.r[0] + dz * cam.r[2]) * F * cam.k, cam.oy - (dx * cam.u[0] + dy * cam.u[1] + dz * cam.u[2]) * F * cam.k, F, d];
+}
+// Where a point of the picture lands on the ground (y = 0), for placing and moving models.
+function toGround(cam, X, Y) {
+  const sx = (X - AW / 2) / cam.k / cam.dist, sy = -(Y - cam.oy) / cam.k / cam.dist;
+  const d = [0, 1, 2].map(i => cam.f[i] + cam.r[i] * sx + cam.u[i] * sy);
+  if (d[1] >= -1e-6) return null;
+  const t = -cam.C[1] / d[1];
+  return [cam.C[0] + d[0] * t, cam.C[2] + d[2] * t];
+}
+
+// Each pixel loosened by how far back it is, then projected: [x, y, size, point, alpha, depth], back to front.
+function project(cam) {
+  const out = [], span = Math.max(.02, (1 - S.start) * S.soft);
   for (const p of pts) {
-    // Desvanecimiento: t = 0 where the plane is in order, 1 where it is at its most scattered.
-    const fu = p.u / ar + .5, fv = p.v + .5, along = { left: 1 - fu, right: fu, top: 1 - fv, bottom: fv, edges: 1 - 2 * Math.min(fu, 1 - fu, fv, 1 - fv) }[S.fadeFrom];
-    const t = S.fade > 0 ? smooth(1 - S.fade * (1 + S.fadeSoft), 1 - S.fade * (1 - S.fadeSoft) + 1e-3, along) : 0;
-    if (t > 0 && p.pick < t * S.thin) continue; // thinned out as it scatters
-    const tone = bl[p.k], h = S.height * ((S.heightBy === 'dark' ? 1 - tone : tone) - .5 + S.heightNoise * p.hn * .3);
-    const spread = S.chaos * t * t * p.amt * 1.2;
-    let x = p.u + p.dx * spread, y = p.v + p.dy * spread, z = h + p.dz * spread;
-    // turn: in-plane (Z), then tilt back (X), then sideways (Y); the plane lies in x-y, height along z.
-    const x1 = x * cc - y * sc, y1 = x * sc + y * cc;
-    const y2 = y1 * ca - z * sa, z2 = y1 * sa + z * ca;
-    const x3 = x1 * cb + z2 * sb, z3 = -x1 * sb + z2 * cb;
-    const f = cam / (cam - z3); if (f <= 0) continue;
-    const s = S.size * ((1 - S.depthSize) + S.depthSize * f);
-    out.push([AW / 2 + x3 * f * k, AH / 2 + y2 * f * k, Math.max(.5, s), p, z3]);
+    const t = smooth(S.start, S.start + span, p.back);
+    if (t > 0 && p.pick < t * S.thin) continue;
+    const spread = S.disp * t * t * p.amt * .9, dy = mix(p.dy, Math.abs(p.dy), S.rise);
+    const s = toScreen(cam, p.x + p.dx * spread, p.y + dy * spread * (.6 + S.rise * .8), p.z + p.dz * spread * .7);
+    if (!s) continue;
+    out.push([s[0], s[1], Math.max(.5, S.size * ((1 - S.depthSize) + S.depthSize * Math.min(3, s[2]))), p, 1 - S.fadeA * t, s[3]]);
   }
-  out.sort((a, b) => a[4] - b[4]);
+  out.sort((a, b) => b[5] - a[5]);
   return out;
 }
 function colorOf(p) {
   const P = S.palette;
-  if (S.colorMode === 'image') { const c = img.rgb[p.k]; return '#' + c.toString(16).padStart(6, '0'); }
-  const c = S.colorMode === 'tone' ? P[clamp(Math.floor(p.tone * P.length), 0, P.length - 1)] : S.colorMode === 'random' ? P[Math.floor(p.pick * P.length)] : S.ink;
+  const c = S.colorMode === 'height' ? [INK, ...P][clamp(Math.floor(p.lift / field.top * (P.length + 1) * .999), 0, P.length)] : S.colorMode === 'random' ? P[Math.floor(p.pick * P.length)] : S.ink;
   return onBg(c, S.bg);
 }
-function draw(ctx, list, ox = 0, oy = 0) {
-  for (const [x, y, s, p] of list) { ctx.fillStyle = colorOf(p); ctx.fillRect(x - s / 2 - ox, y - s / 2 - oy, s, s); }
+function draw(ctx, items) {
+  for (const [x, y, s, p, a] of items) { ctx.globalAlpha = a; ctx.fillStyle = colorOf(p); ctx.fillRect(x - s / 2, y - s / 2, s, s); }
+  ctx.globalAlpha = 1;
 }
 
 // ---------- UI ----------
@@ -313,32 +498,62 @@ const $ = s => document.querySelector(s);
 const cv = $('#cv'), frame = $('#frame'), stage = $('#stage');
 const pct = v => Math.round(v * 100) + '%', deg = v => Math.round(v) + '°';
 const SLIDERS = {
-  contrast: { label: 'Contraste', min: .5, max: 3, step: .01, fmt: v => v.toFixed(2) },
-  threshold: { label: 'Umbral', min: 0, max: .9, step: .01, fmt: pct },
-  rotX: { label: 'Inclinación', min: -89, max: 89, step: 1, fmt: deg, emph: true },
-  rotY: { label: 'Giro', min: -180, max: 180, step: 1, fmt: deg },
-  rotZ: { label: 'Rotación en el plano', min: -180, max: 180, step: 1, fmt: deg },
+  disp: { label: 'Dispersión', min: 0, max: 2, step: .01, fmt: pct, emph: true },
+  start: { label: 'Empieza a soltarse en', min: 0, max: .95, step: .01, fmt: pct },
+  soft: { label: 'Qué tan gradual', min: .05, max: 1, step: .01, fmt: pct },
+  rise: { label: 'Hacia arriba', min: 0, max: 1, step: .01, fmt: pct },
+  thin: { label: 'Se ralea', min: 0, max: 1, step: .01, fmt: pct },
+  fadeA: { label: 'Se desvanece', min: 0, max: 1, step: .01, fmt: pct },
+  drape: { label: 'Manta (ceñida ↔ suelta)', min: 0, max: 1, step: .01, fmt: pct, emph: true },
+  walls: { label: 'Más píxeles en las paredes', min: 0, max: 6, step: .1, fmt: v => '+' + Math.round(v * 100) + '%' },
+  wave: { label: 'Ondulación', min: 0, max: 1, step: .01, fmt: pct },
+  waveScale: { label: 'Tamaño de las ondas', min: 0, max: 1, step: .01, fmt: pct },
+  depth: { label: 'Profundidad del plano', min: 1, max: 5, step: .1, fmt: v => v.toFixed(1) },
+  pitch: { label: 'Inclinación', min: 2, max: 89, step: 1, fmt: deg, emph: true },
+  yaw: { label: 'Giro', min: -180, max: 180, step: 1, fmt: deg },
   persp: { label: 'Perspectiva', min: 0, max: 1, step: .01, fmt: pct },
-  zoom: { label: 'Escala', min: .3, max: 3, step: .01, fmt: v => '×' + v.toFixed(2) },
-  height: { label: 'Altura', min: -1, max: 1, step: .01, fmt: pct, emph: true },
-  smooth: { label: 'Suavizado', min: 0, max: 1, step: .01, fmt: pct },
-  heightNoise: { label: 'Rugosidad', min: 0, max: 1, step: .01, fmt: pct },
-  fade: { label: 'Desvanecimiento', min: 0, max: 1, step: .01, fmt: pct, emph: true },
-  fadeSoft: { label: 'Suavidad del pasaje', min: .05, max: 1, step: .01, fmt: pct },
-  chaos: { label: 'Dispersión', min: 0, max: 1.5, step: .01, fmt: pct },
-  thin: { label: 'Se ralea al dispersarse', min: 0, max: 1, step: .01, fmt: pct },
-  count: { label: 'Cantidad', min: 1000, max: 120000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
-  size: { label: 'Tamaño del píxel', min: 1, max: 20, step: .5, fmt: v => v + ' px', emph: true },
+  zoom: { label: 'Escala', min: .3, max: 4, step: .01, fmt: v => '×' + v.toFixed(2) },
+  frameY: { label: 'Encuadre', min: -.6, max: .6, step: .01, fmt: pct },
+  count: { label: 'Cantidad', min: 5000, max: 150000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
+  size: { label: 'Tamaño del píxel', min: 1, max: 12, step: .5, fmt: v => v + ' px', emph: true },
   depthSize: { label: 'Más chicos al fondo', min: 0, max: 1, step: .01, fmt: pct },
 };
-for (const [key, d] of Object.entries(SLIDERS)) {
+// The selected model's own sliders, reading and writing it.
+const OBJ_SLIDERS = {
+  objS: { label: 'Tamaño', min: .03, max: 1.2, step: .01, fmt: v => v.toFixed(2), prop: 's' },
+  objH: { label: 'Alto', min: .2, max: 3, step: .01, fmt: v => '×' + v.toFixed(2), prop: 'h' },
+  objYaw: { label: 'Giro', min: -180, max: 180, step: 1, fmt: deg, prop: 'yaw' },
+};
+const mkSlider = (key, d, onInput, onReset) => {
   const host = $('#sl-' + key);
   host.className = 'slider' + (d.emph ? ' emph' : '');
   host.innerHTML = `<label for="in-${key}">${d.label}</label><output id="out-${key}"></output><input type="range" id="in-${key}" min="${d.min}" max="${d.max}" step="${d.step}" title="Doble clic para restablecer">`;
   const input = host.querySelector('input');
-  input.addEventListener('input', () => { S[key] = +input.value; sync(); });
-  input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
-}
+  input.addEventListener('input', () => onInput(+input.value));
+  input.addEventListener('dblclick', onReset);
+};
+const showSlider = (key, d, v) => {
+  const input = $('#in-' + key);
+  if (+input.value !== v) input.value = v;
+  input.style.setProperty('--p', ((v - d.min) / (d.max - d.min) * 100) + '%');
+  $('#out-' + key).textContent = d.fmt(v);
+};
+for (const [key, d] of Object.entries(SLIDERS)) mkSlider(key, d, v => { S[key] = v; sync(); }, () => { S[key] = DEFAULTS[key]; sync(); });
+for (const [key, d] of Object.entries(OBJ_SLIDERS)) mkSlider(key, d, v => { if (objs[sel]) { objs[sel][d.prop] = v; sync(); } }, () => { if (objs[sel]) { objs[sel][d.prop] = { s: .18, h: 1, yaw: 0 }[d.prop]; sync(); } });
+
+let placing = null;
+const renderLib = () => {
+  $('#lib').innerHTML = [...Object.keys(KINDS), ...uploads.map((_, i) => 'up' + i)].map(k => `<button data-kind="${k}" title="${labelOf(k)}">${labelOf(k)}</button>`).join('');
+};
+renderLib();
+$('#lib').addEventListener('click', e => { const b = e.target.closest('[data-kind]'); if (b) { placing = placing === b.dataset.kind ? null : b.dataset.kind; sync(); } });
+$('#city').addEventListener('click', () => { S.citySeed = Math.floor(Math.random() * 1e6); objs = city(S.citySeed); sel = -1; sync(); });
+$('#clear').addEventListener('click', () => { objs = []; sel = -1; sync(); });
+$('#obj-var').addEventListener('click', () => { if (objs[sel]) { objs[sel].seed = Math.floor(Math.random() * 1e6); sync(); } });
+$('#obj-dup').addEventListener('click', () => { const o = objs[sel]; if (o) { objs.push({ ...o, x: clamp(o.x + o.s * 1.1, -PW / 2, PW / 2), seed: o.kind.startsWith('up') ? o.seed : Math.floor(Math.random() * 1e6) }); sel = objs.length - 1; sync(); } });
+const delSel = () => { if (objs[sel]) { objs.splice(sel, 1); sel = -1; sync(); } };
+$('#obj-del').addEventListener('click', delSel);
+
 const renderInks = () => { $('#inks').innerHTML = [...S.palette, INK, WHITE].map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join(''); };
 renderInks();
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
@@ -349,16 +564,20 @@ document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('c
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('#reseed').addEventListener('click', reseed);
-addEventListener('keydown', e => { if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.target.closest('input, textarea, select') && e.key.toLowerCase() === 'r') reseed(); });
+addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea, select')) return;
+  if (e.key.toLowerCase() === 'r') reseed();
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && sel >= 0) { e.preventDefault(); delSel(); }
+  else if (e.key === 'Escape') { placing = null; sel = -1; sync(); }
+});
 
-let raf = 0, list = [];
+let raf = 0, list = [], cam = null, ghost = null;
 function sync() {
-  for (const k of Object.keys(SLIDERS)) {
-    const input = $('#in-' + k), d = SLIDERS[k];
-    if (+input.value !== S[k]) input.value = S[k];
-    input.style.setProperty('--p', ((S[k] - d.min) / (d.max - d.min) * 100) + '%');
-    $('#out-' + k).textContent = d.fmt(S[k]);
-  }
+  for (const [k, d] of Object.entries(SLIDERS)) showSlider(k, d, S[k]);
+  const o = objs[sel]; $('#sel').hidden = !o;
+  if (o) { for (const [k, d] of Object.entries(OBJ_SLIDERS)) showSlider(k, d, o[d.prop]); $('#sel-name').textContent = labelOf(o.kind); $('#sel-n').textContent = `${sel + 1} de ${objs.length}`; }
+  document.querySelectorAll('[data-kind]').forEach(b => b.setAttribute('aria-pressed', b.dataset.kind === placing));
+  frame.classList.toggle('placing', !!placing);
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === String(S[seg.dataset.key]))));
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
@@ -367,8 +586,20 @@ function sync() {
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   cancelAnimationFrame(raf); raf = requestAnimationFrame(render);
 }
+// A model's footprint on the ground, as a closed outline in the picture (for the selection and the placing ghost).
+function footprint(o) {
+  const c = Math.cos(o.yaw * Math.PI / 180), s = Math.sin(o.yaw * Math.PI / 180), out = [];
+  for (const [a, b] of [[-.5, -.5], [.5, -.5], [.5, .5], [-.5, .5]]) { const p = toScreen(cam, o.x + (a * c - b * s) * o.s, 0, o.z + (a * s + b * c) * o.s); if (!p) return null; out.push(p); }
+  return out;
+}
+// Its box in the picture, footprint and top together, for picking it up.
+function screenBox(o) {
+  const f = footprint(o); if (!f) return null;
+  const t = topOf(o), pts2 = [...f, ...f.map(p => { const q = toScreen(cam, o.x, t, o.z); return q ? [p[0], q[1]] : p; })];
+  return [Math.min(...pts2.map(p => p[0])), Math.min(...pts2.map(p => p[1])), Math.max(...pts2.map(p => p[0])), Math.max(...pts2.map(p => p[1]))];
+}
 function render() {
-  buildPoints(); list = project();
+  buildField(); buildPoints(); cam = camera(); list = project(cam);
   const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 48) / AW, (r.height - 84) / AH));
   const w = Math.round(AW * k), h = Math.round(AH * k), dpr = devicePixelRatio || 1;
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
@@ -377,40 +608,89 @@ function render() {
   const ctx = cv.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, pw, ph);
   ctx.setTransform(pw / AW, 0, 0, ph / AH, 0, 0);
   draw(ctx, list);
-  $('#stats').textContent = `${list.length.toLocaleString('es')} píxeles · arrastrá para girar el plano`;
+  // On screen only: the selected model's footprint, or where the next one will go.
+  const outline = (o, dash) => {
+    const f = footprint(o); if (!f) return;
+    ctx.beginPath(); f.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+    ctx.setLineDash(dash); ctx.lineWidth = 2 * AW / w / 1.6; ctx.strokeStyle = '#3d7bff'; ctx.stroke(); ctx.setLineDash([]);
+  };
+  if (objs[sel]) outline(objs[sel], [8, 6]);
+  if (placing && ghost) outline(ghost, [4, 4]);
+  $('#stats').textContent = `${list.length.toLocaleString('es')} píxeles · ${objs.length} ${objs.length === 1 ? 'modelo' : 'modelos'} · ` +
+    (placing ? `clic para ubicar: ${labelOf(placing)} (Esc para salir)` : 'arrastrá para girar la vista');
 }
-new ResizeObserver(() => img && sync()).observe(stage);
+new ResizeObserver(() => sync()).observe(stage);
 
-// Drag turns the plane: sideways turns it (Giro), up and down tilts it (Inclinación); with Shift it spins in its plane.
-let turn = null;
-frame.addEventListener('pointerdown', e => { frame.setPointerCapture(e.pointerId); turn = { x: e.clientX, y: e.clientY, rx: S.rotX, ry: S.rotY, rz: S.rotZ }; });
-frame.addEventListener('pointermove', e => {
-  if (!turn) return;
-  const dx = e.clientX - turn.x, dy = e.clientY - turn.y;
-  if (e.shiftKey) S.rotZ = ((turn.rz + dx * .5 + 540) % 360) - 180;
-  else { S.rotY = ((turn.ry + dx * .4 + 540) % 360) - 180; S.rotX = clamp(turn.rx + dy * .4, -89, 89); }
+// ---------- Pointer ----------
+// Clicking with a model chosen places it; dragging a model moves it over the ground; dragging anywhere else turns the
+// view (sideways: Giro, up and down: Inclinación). The wheel zooms.
+const toBoard = e => { const b = frame.getBoundingClientRect(); return [(e.clientX - b.left) / b.width * AW, (e.clientY - b.top) / b.height * AH]; };
+const newObj = (kind, x, z) => ({ kind, seed: kind.startsWith('up') ? 0 : Math.floor(Math.random() * 1e6), x, z, s: /arbol|pino|arbusto|palmera/.test(kind) ? .14 : .2, h: 1, yaw: 0 });
+const onPlane = (x, z) => Math.abs(x) <= PW / 2 && Math.abs(z) <= S.depth / 2;
+let drag = null;
+frame.addEventListener('pointerdown', e => {
+  if (!cam) return;
+  const [X, Y] = toBoard(e), g = toGround(cam, X, Y);
+  if (placing) {
+    if (g && onPlane(g[0], g[1])) { objs.push(newObj(placing, g[0], g[1])); sel = objs.length - 1; if (!e.shiftKey) placing = null; sync(); }
+    return;
+  }
+  frame.setPointerCapture(e.pointerId);
+  // The nearest model whose box holds the pointer.
+  let hit = -1, best = Infinity;
+  objs.forEach((o, i) => { const b = screenBox(o), c = toScreen(cam, o.x, 0, o.z); if (b && c && X >= b[0] - 6 && X <= b[2] + 6 && Y >= b[1] - 6 && Y <= b[3] + 6 && c[3] < best) { best = c[3]; hit = i; } });
+  if (hit >= 0) {
+    sel = hit; const o = objs[hit];
+    if (e.altKey) { objs.push({ ...o }); sel = objs.length - 1; }
+    drag = { mode: 'move', off: g ? [objs[sel].x - g[0], objs[sel].z - g[1]] : [0, 0] };
+  } else { sel = -1; drag = { mode: 'turn', x: e.clientX, y: e.clientY, yaw: S.yaw, pitch: S.pitch }; }
   sync();
 });
-const endTurn = () => { turn = null; };
-frame.addEventListener('pointerup', endTurn); frame.addEventListener('pointercancel', endTurn);
-frame.addEventListener('wheel', e => { e.preventDefault(); S.zoom = clamp(S.zoom * Math.exp(-e.deltaY * .0015), .3, 3); sync(); }, { passive: false });
+frame.addEventListener('pointermove', e => {
+  if (!cam) return;
+  const [X, Y] = toBoard(e);
+  if (placing && !drag) { const g = toGround(cam, X, Y); ghost = g ? newObj(placing, g[0], g[1]) : null; cancelAnimationFrame(raf); raf = requestAnimationFrame(render); return; }
+  if (!drag) return;
+  if (drag.mode === 'turn') {
+    S.yaw = ((drag.yaw + (e.clientX - drag.x) * .35 + 540) % 360) - 180;
+    S.pitch = clamp(drag.pitch + (e.clientY - drag.y) * .25, 2, 89);
+  } else {
+    const g = toGround(cam, X, Y), o = objs[sel];
+    if (g && o) { o.x = clamp(g[0] + drag.off[0], -PW / 2, PW / 2); o.z = clamp(g[1] + drag.off[1], -S.depth / 2, S.depth / 2); }
+  }
+  sync();
+});
+const endDrag = () => { drag = null; };
+frame.addEventListener('pointerup', endDrag); frame.addEventListener('pointercancel', endDrag);
+frame.addEventListener('pointerleave', () => { if (ghost) { ghost = null; sync(); } });
+frame.addEventListener('wheel', e => { e.preventDefault(); S.zoom = clamp(S.zoom * Math.exp(-e.deltaY * .0015), .3, 4); sync(); }, { passive: false });
 
 // ---------- Input ----------
-function openFile(file) {
-  if (!file || !file.type.startsWith('image/')) return toast('Eso no parece una imagen.');
-  const el = new Image(), url = URL.createObjectURL(file);
-  el.onload = () => { URL.revokeObjectURL(url); loadImage(el); ptsKey = ''; sync(); toast('Imagen cargada.'); };
-  el.onerror = () => { URL.revokeObjectURL(url); toast('No se pudo leer la imagen.'); };
-  el.src = url;
+// An uploaded model joins the library and is placed in the middle of the front, ready to be moved.
+async function openFile(file) {
+  if (!file) return;
+  try {
+    const name = file.name.toLowerCase();
+    const pos = name.endsWith('.obj') ? Stipple3D.parseOBJ(await file.text()) : Stipple3D.parseGLB(await file.arrayBuffer());
+    if (!pos.length) throw new Error('empty');
+    uploads.push({ name: file.name.replace(/\.[^.]+$/, ''), map: meshMap(pos) });
+    renderLib();
+    objs.push({ ...newObj('up' + (uploads.length - 1), 0, -S.depth / 2 + .4), s: .45 }); sel = objs.length - 1;
+    sync(); toast(`${file.name}: ${(pos.length / 9).toLocaleString('es')} triángulos`);
+  } catch (err) { toast('No se pudo leer el modelo (OBJ, GLB o glTF con los datos adentro).'); }
 }
 $('#upload').addEventListener('click', () => $('#file').click());
 $('#file').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
+let dragDepth = 0;
+stage.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; $('#drop').hidden = false; });
+stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#drop').hidden = true; } });
 stage.addEventListener('dragover', e => e.preventDefault());
-stage.addEventListener('drop', e => { e.preventDefault(); openFile(e.dataTransfer.files[0]); });
+stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; openFile(e.dataTransfer.files[0]); });
+// Ctrl+V: a copied .obj, .glb or .gltf file.
 addEventListener('paste', e => {
   if (e.target.closest?.('textarea, input:not([type=range]):not([type=checkbox])')) return;
-  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
-  if (item) openFile(item.getAsFile());
+  const f = [...(e.clipboardData?.files || [])].find(f => /\.(obj|glb|gltf)$/i.test(f.name));
+  if (f) { e.preventDefault(); openFile(f); } else if (e.clipboardData?.files?.length) toast('Pegá un modelo .obj, .glb o .gltf.');
 });
 
 // ---------- Export ----------
@@ -421,7 +701,7 @@ function download(name, blob) {
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   toast(name + ' descargado');
 }
-// The whole artboard at 2× (cropped to the pixels on download), background only when asked.
+// The whole artboard at 2× (cropped to the pixels on download), background only when asked; no outlines.
 $('#png').addEventListener('click', () => {
   const c = document.createElement('canvas'); c.width = AW * RES; c.height = AH * RES;
   const ctx = c.getContext('2d'); ctx.setTransform(RES, 0, 0, RES, 0, 0);
@@ -429,17 +709,21 @@ $('#png').addEventListener('click', () => {
   draw(ctx, list);
   c.toBlob(b => b ? download(`pixel-depth-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
 });
+// One path per colour and opacity (opacity in tenths), in the order they first appear from the back.
 $('#svg').addEventListener('click', () => {
   const n = v => Math.round(v * RES * 100) / 100, out = [`<svg xmlns="http://www.w3.org/2000/svg" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW * RES} ${AH * RES}">`];
   if (S.bgExport) out.push(`<rect width="${AW * RES}" height="${AH * RES}" fill="${S.bg}"/>`);
   const groups = new Map();
-  for (const [x, y, s, p] of list) { const c = colorOf(p); groups.set(c, (groups.get(c) || '') + `M${n(x - s / 2)} ${n(y - s / 2)}h${n(s)}v${n(s)}h${-n(s)}z`); }
-  for (const [c, d] of groups) out.push(`<path fill="${c}" d="${d}"/>`);
+  for (const [x, y, s, p, a] of list) {
+    const key = colorOf(p) + '|' + Math.max(1, Math.round(a * 10)) / 10;
+    groups.set(key, (groups.get(key) || '') + `M${n(x - s / 2)} ${n(y - s / 2)}h${n(s)}v${n(s)}h${-n(s)}z`);
+  }
+  for (const [key, d] of groups) { const [c, a] = key.split('|'); out.push(`<path fill="${c}"${a < 1 ? ` fill-opacity="${a}"` : ''} d="${d}"/>`); }
   out.push('</svg>');
   download(`pixel-depth-${S.seed}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));
 });
 
-sampleImage();
+objs = city(1);
 sync();
 </script>
 </body>
