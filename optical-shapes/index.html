@@ -2012,8 +2012,11 @@ function draw(ctx,s,withGrid,dotsOnly){const S=wrapDots(scene()),{W,H}=S;ctx.cle
 function svgString(){const S=wrapDots(scene()),{W,H}=S,f=v=>+v.toFixed(1),out=[];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`);
   out.push(`<defs><filter id="glow" x="-10%" y="-50%" width="120%" height="200%"><feGaussianBlur stdDeviation="${f(ws.stroke*2.5)}"/></filter></defs>`);
-  if(S.allVector)S.lines.forEach((L,i)=>{out.push(`<g id="Puntos ${i+1}" fill="${L.col}">`);for(const[x,y,r]of L.dots)out.push(`<circle cx="${f(x)}" cy="${f(y)}" r="${f(r)}"/>`);out.push("</g>");});
-  else{const c=document.createElement("canvas");c.width=W;c.height=H;draw(c.getContext("2d"),1,false,true);out.push(`<image id="Puntos" width="${W}" height="${H}" href="${c.toDataURL("image/png")}"/>`);}
+  // every dot of one colour is a single compound path (one layer per colour), so Figma stays light
+  const byCol=new Map();for(const L of S.lines){if(!byCol.has(L.col))byCol.set(L.col,[]);const P=byCol.get(L.col);
+    for(const[x,y,r]of L.dots)P.push(`M${f(x-r)} ${f(y)}a${f(r)} ${f(r)} 0 1 0 ${f(2*r)} 0a${f(r)} ${f(r)} 0 1 0 ${f(-2*r)} 0`);}
+  const NAMES={"#f7f7f7":"Blanco","#fce097":"Amarillo","#ff898d":"Rosa","#75c5ef":"Celeste","#b88dd2":"Lila","#151515":"Negro"};
+  for(const[col,P]of byCol)if(P.length)out.push(`<path id="Puntos ${NAMES[col]||col}" fill="${col}" d="${P.join("")}"/>`);
   S.curves.forEach((C,i)=>{const d="M"+C.pts.map(([x,y])=>`${f(x)} ${f(y)}`).join(" L"),sw=C.thin?Math.max(1,ws.stroke*0.3):ws.stroke;
     out.push(`<g id="${C.thin?"Eje":"Curva "+(i||1)}" fill="none" stroke="${C.col}" stroke-linecap="round" stroke-linejoin="round">`);
     if(ws.glow>0&&!C.thin&&C.col!=="#f7f7f7"&&C.col!=="#151515")out.push(`<path d="${d}" stroke-width="${f(sw*3)}" opacity="${(0.55*ws.glow).toFixed(2)}" filter="url(#glow)"/>`);
