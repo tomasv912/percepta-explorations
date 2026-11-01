@@ -1767,7 +1767,8 @@ function build(){
   const f=el("filter",{id:"lens",x:"0",y:"0",width:"100%",height:"100%",filterUnits:"userSpaceOnUse","color-interpolation-filters":"sRGB"});
   f.setAttribute("width",w);f.setAttribute("height",h);
   f.append(el("feTurbulence",{type:"fractalNoise",baseFrequency:ls.freq,numOctaves:2,seed:3,result:"turb"}),
-    el("feDisplacementMap",{in:"SourceGraphic",in2:"turb",scale:ls.warp,xChannelSelector:"R",yChannelSelector:"G",result:"warp"}));
+    el("feColorMatrix",{in:"SourceGraphic",type:"matrix",values:img.dark?"-1 0 0 0 1  0 -1 0 0 1  0 0 -1 0 1  0 0 0 1 0":"1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0",result:"src"}),
+    el("feDisplacementMap",{in:"src",in2:"turb",scale:ls.warp,xChannelSelector:"R",yChannelSelector:"G",result:"warp"}));
   const M=Math.max(w,h);if(ls.dir==="out")f.append(el("feImage",{id:"lMap",href:mapHref,x:0,y:0,width:M*2,height:M*2,preserveAspectRatio:"none",result:"map"}));
   else{const a=ls.ang*Math.PI/180;f.append(el("feFlood",{"flood-color":`rgb(${Math.round(128+127*Math.cos(a))},${Math.round(128+127*Math.sin(a))},128)`,result:"map"}));}
   const ins=[];
@@ -1779,17 +1780,20 @@ function build(){
     f.append(el("feColorMatrix",{in:"d"+k,type:"matrix",values:vals,result:"c"+k}));ins.push("c"+k);});
   let acc=ins[0];for(let k=1;k<ins.length;k++){f.append(el("feComposite",{in:acc,in2:ins[k],operator:"arithmetic",k1:0,k2:1,k3:1,k4:0,result:"s"+k}));acc="s"+k;}
   if(ls.pal!=="rgb"){ // palette: the colour split (split minus warped image, both signs) is re-coloured, R/G/B fringes → palette colours
-    const P=[0,1,2].map(i=>hx(ls.palOn[i%ls.palOn.length])),mv=[0,1,2].map(ch=>`${P[0][ch].toFixed(3)} ${P[1][ch].toFixed(3)} ${P[2][ch].toFixed(3)} 0 0`).join("  ")+"  0 0 0 1 0";
-    const gk=ls.glow*2.4;
-    // differences are taken against the inverted image (a + (1-b) - 1) so alpha stays 1 and the colours survive premultiplication
+    const P=[0,1,2].map(i=>hx(ls.palOn[i%ls.palOn.length]).map(v=>img.dark?1-v:v)),gk=ls.glow;
+    // each channel's offset becomes a palette colour; alpha follows how strong the offset is, so it lays over the artwork only at the fringes
+    const mv=[0,1,2].map(ch=>`${P[0][ch].toFixed(3)} ${P[1][ch].toFixed(3)} ${P[2][ch].toFixed(3)} 0 0`).join("  ")+`  ${(gk*0.9).toFixed(3)} ${(gk*0.9).toFixed(3)} ${(gk*0.9).toFixed(3)} 0 0`;
     const INV="-1 0 0 0 1  0 -1 0 0 1  0 0 -1 0 1  0 0 0 1 0";
-    f.append(el("feColorMatrix",{in:"warp",type:"matrix",values:INV,result:"iw"}),el("feColorMatrix",{in:acc,type:"matrix",values:INV,result:"ia"}),
-      el("feComposite",{in:acc,in2:"iw",operator:"arithmetic",k1:0,k2:1,k3:1,k4:-1,result:"dp"}),
-      el("feComposite",{in:"warp",in2:"ia",operator:"arithmetic",k1:0,k2:1,k3:1,k4:-1,result:"dn"}),
+    // both sides are flattened on black first, so transparent areas (a bare SVG) still give a difference
+    f.append(el("feFlood",{"flood-color":"#000",result:"blk"}),
+      el("feMerge",{result:"wo"},[el("feMergeNode",{in:"blk"}),el("feMergeNode",{in:"warp"})]),el("feMerge",{result:"ao"},[el("feMergeNode",{in:"blk"}),el("feMergeNode",{in:acc})]),
+      el("feColorMatrix",{in:"wo",type:"matrix",values:INV,result:"iw"}),el("feColorMatrix",{in:"ao",type:"matrix",values:INV,result:"ia"}),
+      el("feComposite",{in:"ao",in2:"iw",operator:"arithmetic",k1:0,k2:1,k3:1,k4:-1,result:"dp"}),
+      el("feComposite",{in:"wo",in2:"ia",operator:"arithmetic",k1:0,k2:1,k3:1,k4:-1,result:"dn"}),
       el("feColorMatrix",{in:"dp",type:"matrix",values:mv,result:"cp"}),el("feColorMatrix",{in:"dn",type:"matrix",values:mv,result:"cn"}),
-      el("feComposite",{in:"warp",in2:"cp",operator:"arithmetic",k1:0,k2:1,k3:gk,k4:0,result:"o1"}),
-      el("feComposite",{in:"o1",in2:"cn",operator:"arithmetic",k1:0,k2:1,k3:gk*0.6,k4:0,result:"out"}));}
+      el("feMerge",{result:"out"},[el("feMergeNode",{in:"warp"}),el("feMergeNode",{in:"cn"}),el("feMergeNode",{in:"cp"})]));}
   else f.append(el("feComposite",{in:acc,in2:"warp",operator:"arithmetic",k1:0,k2:0.5+ls.glow*0.5,k3:0.5-ls.glow*0.5,k4:0,result:"out"}));
+  if(img.dark)f.append(el("feColorMatrix",{in:"out",type:"matrix",values:"-1 0 0 0 1  0 -1 0 0 1  0 0 -1 0 1  0 0 0 1 0",result:"fin"}));
   const g=el("radialGradient",{id:"lmg"},[el("stop",{offset:0,"stop-color":"#fff"}),el("stop",{offset:Math.max(0,1-ls.soft).toFixed(3),"stop-color":"#fff"}),el("stop",{offset:1,"stop-color":"#fff","stop-opacity":0})]);
   const pad=Math.min(w,h)*0.04+ls.warp,eg=el("linearGradient",{id:"lex"},[el("stop",{offset:0,"stop-color":"#000"}),el("stop",{offset:1,"stop-color":"#fff"})]);
   const m=el("mask",{id:"lm",maskUnits:"userSpaceOnUse",x:0,y:0,width:w,height:h},[el("g",{id:"lMaskG"})]);
@@ -1800,7 +1804,7 @@ function build(){
   for(const n of [...doc.documentElement.childNodes])src.appendChild(document.importNode(n,true));
   svg.append(el("defs",{},[f,g,m,edge,eb,src]),el("use",{href:"#lsrc"}),
     el("g",{mask:"url(#le)"},[el("g",{mask:"url(#lm)"},[el("use",{href:"#lsrc",filter:"url(#lens)"})])]));
-  $("lPlate").style.setProperty("--ar",`${w}/${h}`);$("lPlate").style.background="#151515";$("lMeta").textContent=`${w} × ${h} px`;
+  $("lPlate").style.setProperty("--ar",`${w}/${h}`);$("lPlate").style.background=img.dark?"#ffffff":"#151515";$("lMeta").textContent=`${w} × ${h} px`;
   drawMask();
 }
 function centre(){return ls.mask==="hover"&&pos?pos:[ls.C[0]*img.w,ls.C[1]*img.h];}
@@ -1843,7 +1847,12 @@ function loadSvg(text,name){const doc=new DOMParser().parseFromString(text,"imag
   const vb=(root.getAttribute("viewBox")||"").split(/[\s,]+/).map(Number);
   let vw=vb.length===4?vb[2]:parseFloat(root.getAttribute("width"))||1600,vh=vb.length===4?vb[3]:parseFloat(root.getAttribute("height"))||900;
   const s=1600/Math.max(vw,vh);img={markup:root.innerHTML,vb:vb.length===4?vb.join(" "):`0 0 ${vw} ${vh}`,w:Math.round(vw*s),h:Math.round(vh*s),name};
-  $("lFileName").textContent=name;trail=[];build();}
+  $("lFileName").textContent=name;trail=[];build();
+  measure(text).then(d=>{if(d!==img.dark){img.dark=d;build();}});}
+async function measure(text){const url=URL.createObjectURL(new Blob([text],{type:"image/svg+xml"}));
+  try{const im=new Image();im.src=url;await im.decode();const c=document.createElement("canvas");c.width=200;c.height=200;const x=c.getContext("2d");x.drawImage(im,0,0,200,200);
+    const d=x.getImageData(0,0,200,200).data;let L=0,A=0;for(let i=0;i<d.length;i+=4){const a=d[i+3]/255;L+=a*(0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2])/255;A+=a;}
+    return A>0&&L/A<0.5;}catch(e){return false;}finally{URL.revokeObjectURL(url);}}
 async function loadFile(f){if(!f)return;if(f.type==="image/svg+xml"||/\.svg$/i.test(f.name))return loadSvg(await f.text(),f.name);toast("Solo SVG: copiá el frame en Figma (Copy as SVG) y pegalo acá.");}
 $("lFile").addEventListener("change",e=>{loadFile(e.target.files?.[0]);e.target.value="";});
 $("lChange").onclick=()=>$("lFile").click();
