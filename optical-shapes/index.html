@@ -195,6 +195,7 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
   <button class="tab" role="tab" id="tab-dots" aria-selected="false" aria-controls="view-gradients">Dot Shapes</button>
   <button class="tab" role="tab" id="tab-mix" aria-selected="false" aria-controls="view-gradients">Mix Shapes</button>
   <button class="tab" role="tab" id="tab-grain" aria-selected="false" aria-controls="view-grain">Grain Gradients</button>
+  <button class="tab" role="tab" id="tab-lens" aria-selected="false" aria-controls="view-lens">Lens Dispersion</button>
 </nav>
 <div class="app" id="view-laminas" role="tabpanel">
   <aside class="rail">
@@ -447,6 +448,51 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
     <div class="actions">
       <button class="btn primary" id="pGen" title="Nueva semilla (R)">Nueva semilla</button>
       <button class="btn" id="pDl">Descargar PNG</button>
+    </div>
+  </aside>
+</div>
+<div class="app" id="view-lens" role="tabpanel" hidden>
+  <main class="stage" id="lStage">
+    <div class="canvas"><div class="gplate" id="lPlate"><svg id="lSvg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none"></svg>
+      <button class="gnode" id="lC" aria-label="Centro de la dispersión" style="background:var(--content-accent)"></button></div></div>
+    <div class="meta"><span id="lMeta"></span></div>
+    <input type="file" id="lFile" accept="image/*" hidden>
+  </main>
+  <aside class="rail">
+    <div class="brand"><h1>Lens Dispersion</h1><span id="lSeedTag"></span></div>
+    <div class="group">
+      <div class="lbl">Imagen</div>
+      <div class="file"><span id="lFileName">Ejemplo</span><button class="btn sm" id="lChange">Cambiar</button></div>
+    </div>
+    <div class="group">
+      <div class="lbl">Dispersión</div>
+      <div class="seg" id="lDir" style="grid-template-columns:1fr 1fr"></div>
+      <div class="row"><span>Intensidad</span><span class="v" id="l_dispV"></span><input type="range" id="l_disp" min="0" max="120" step="1"></div>
+      <div class="row" id="lAngRow"><span>Ángulo</span><span class="v" id="l_angV"></span><input type="range" id="l_ang" min="-180" max="180" step="1"></div>
+      <div class="row"><span>Brillo del borde</span><span class="v" id="l_glowV"></span><input type="range" id="l_glow" min="0" max="2" step="0.01"></div>
+    </div>
+    <div class="group">
+      <div class="lbl">Colores</div>
+      <div class="seg" id="lPal" style="grid-template-columns:1fr 1fr"></div>
+      <div class="sw" id="lPalSw" style="grid-template-columns:repeat(6,1fr)"></div>
+    </div>
+    <div class="group">
+      <div class="lbl">Distorsión</div>
+      <div class="row"><span>Cantidad</span><span class="v" id="l_warpV"></span><input type="range" id="l_warp" min="0" max="80" step="1"></div>
+      <div class="row"><span>Escala</span><span class="v" id="l_freqV"></span><input type="range" id="l_freq" min="0.002" max="0.04" step="0.001"></div>
+    </div>
+    <div class="group">
+      <div class="lbl">Máscara</div>
+      <div class="seg" id="lMask" style="grid-template-columns:1fr 1fr"></div>
+      <div class="row"><span>Radio</span><span class="v" id="l_radV"></span><input type="range" id="l_rad" min="20" max="800" step="5"></div>
+      <div class="row"><span>Suavidad</span><span class="v" id="l_softV"></span><input type="range" id="l_soft" min="0" max="1" step="0.01"></div>
+      <div class="row"><span>Influencia</span><span class="v" id="l_inflV"></span><input type="range" id="l_infl" min="0" max="1" step="0.01"></div>
+      <div class="row" id="lFollowRow"><span>Seguimiento</span><span class="v" id="l_followV"></span><input type="range" id="l_follow" min="0.02" max="1" step="0.01"></div>
+      <div class="row" id="lFadeRow"><span>Desvanecer</span><span class="v" id="l_fadeV"></span><input type="range" id="l_fade" min="0.1" max="4" step="0.05"></div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="lDlSvg">Descargar SVG</button>
+      <button class="btn" id="lDlPng">Descargar PNG</button>
     </div>
   </aside>
 </div>
@@ -1698,10 +1744,133 @@ syncAll();
 return{show(){update();},loadSvgText};
 })();
 
+/* ---------- Lens Dispersion ----------
+   An SVG filter: the image is warped with turbulence, then split into colour layers that are each
+   displaced by a different amount (outward from a centre, or sideways) and recombined. In RGB each
+   layer is one channel; with the palette, each layer is the image's light tinted with a palette colour,
+   added on top as a fringe. A mask limits it to the whole frame or to a soft trail that follows the cursor. */
+const LD=(()=>{
+const NS="http://www.w3.org/2000/svg",PAL=[["#f7f7f7","Blanco"],["#fce097","Amarillo"],["#ff898d","Rosa"],["#75c5ef","Celeste"],["#b88dd2","Lila"],["#151515","Negro"]];
+const ls={dir:"out",disp:45,ang:0,glow:1.3,pal:"rgb",palOn:["#ff898d","#fce097","#75c5ef"],warp:18,freq:0.008,
+  mask:"hover",rad:260,soft:0.6,infl:1,follow:0.18,fade:1.2,C:[0.5,0.5]};
+let img={href:"",w:1600,h:1000,name:"Ejemplo"},mapHref="",trail=[],mouse=null,pos=null,raf=0,last=0;
+const svg=$("lSvg"),hx=c=>[1,3,5].map(i=>parseInt(c.slice(i,i+2),16)/255);
+function sample(){const c=document.createElement("canvas");c.width=1600;c.height=1000;const x=c.getContext("2d");
+  const g=x.createLinearGradient(0,0,0,1000);g.addColorStop(0,"#2f6fc4");g.addColorStop(1,"#5d9be0");x.fillStyle=g;x.fillRect(0,0,1600,1000);
+  let s=7;const r=()=>(s=(s*16807)%2147483647)/2147483647;x.filter="blur(6px)";
+  for(let i=0;i<260;i++){const cx=250+r()*1100,cy=330+Math.sin(cx/260)*60+r()*300*(1-Math.abs(cx-800)/700),rr=40+r()*110,sh=x.createRadialGradient(cx-rr*.3,cy-rr*.4,rr*.1,cx,cy,rr);
+    sh.addColorStop(0,"rgba(255,255,255,.95)");sh.addColorStop(.7,"rgba(220,228,240,.55)");sh.addColorStop(1,"rgba(150,170,200,0)");x.fillStyle=sh;x.beginPath();x.arc(cx,cy,rr,0,7);x.fill();}
+  return c.toDataURL("image/jpeg",0.9);}
+// radial displacement map: R/G = direction from the centre, growing with distance (centred, 2× the frame so it can move)
+function makeMap(){const S=512,c=document.createElement("canvas");c.width=S;c.height=S;const x=c.getContext("2d"),d=x.createImageData(S,S);
+  for(let j=0;j<S;j++)for(let i=0;i<S;i++){const u=(i+0.5)/S*2-1,v=(j+0.5)/S*2-1,k=(j*S+i)*4;d.data[k]=128+127*u;d.data[k+1]=128+127*v;d.data[k+2]=128;d.data[k+3]=255;}
+  x.putImageData(d,0,0);return c.toDataURL();}
+const el=(t,a={},kids=[])=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);kids.forEach(c=>e.appendChild(c));return e;};
+function layers(){return[[1,0,0],[0,1,0],[0,0,1]].map(m=>({m,rgb:true}));}
+function build(){
+  const{w,h}=img;svg.setAttribute("viewBox",`0 0 ${w} ${h}`);svg.innerHTML="";const L=layers(),n=L.length;
+  const f=el("filter",{id:"lens",x:"0",y:"0",width:"100%",height:"100%",filterUnits:"userSpaceOnUse","color-interpolation-filters":"sRGB"});
+  f.setAttribute("width",w);f.setAttribute("height",h);
+  f.append(el("feTurbulence",{type:"fractalNoise",baseFrequency:ls.freq,numOctaves:2,seed:3,result:"turb"}),
+    el("feDisplacementMap",{in:"SourceGraphic",in2:"turb",scale:ls.warp,xChannelSelector:"R",yChannelSelector:"G",result:"warp"}));
+  const M=Math.max(w,h);if(ls.dir==="out")f.append(el("feImage",{id:"lMap",href:mapHref,x:0,y:0,width:M*2,height:M*2,preserveAspectRatio:"none",result:"map"}));
+  else{const a=ls.ang*Math.PI/180;f.append(el("feFlood",{"flood-color":`rgb(${Math.round(128+127*Math.cos(a))},${Math.round(128+127*Math.sin(a))},128)`,result:"map"}));}
+  const ins=[];
+  const R0=ls.mask==="hover"?ls.rad:M/2,gain=ls.dir==="out"?2*M/R0:2;
+  L.forEach((Ly,k)=>{const sc=gain*(n<2?ls.disp:ls.disp*(2*k/(n-1)-1));
+    f.append(el("feDisplacementMap",{in:"warp",in2:"map",scale:sc.toFixed(2),xChannelSelector:"R",yChannelSelector:"G",result:"d"+k}));
+    let vals;if(Ly.rgb){const[a,b,c]=Ly.m;vals=`${a} 0 0 0 0  0 ${b} 0 0 0  0 0 ${c} 0 0  0 0 0 1 0`;}
+    else{const[r,g,b]=Ly.c,lr=0.2126/n*2,lg=0.7152/n*2,lb=0.0722/n*2;vals=[r,g,b].map(q=>`${(q*lr).toFixed(4)} ${(q*lg).toFixed(4)} ${(q*lb).toFixed(4)} 0 0`).join("  ")+"  0 0 0 1 0";}
+    f.append(el("feColorMatrix",{in:"d"+k,type:"matrix",values:vals,result:"c"+k}));ins.push("c"+k);});
+  let acc=ins[0];for(let k=1;k<ins.length;k++){f.append(el("feComposite",{in:acc,in2:ins[k],operator:"arithmetic",k1:0,k2:1,k3:1,k4:0,result:"s"+k}));acc="s"+k;}
+  if(ls.pal!=="rgb"){ // palette: the colour split (split minus warped image, both signs) is re-coloured, R/G/B fringes → palette colours
+    const P=[0,1,2].map(i=>hx(ls.palOn[i%ls.palOn.length])),mv=[0,1,2].map(ch=>`${P[0][ch].toFixed(3)} ${P[1][ch].toFixed(3)} ${P[2][ch].toFixed(3)} 0 0`).join("  ")+"  0 0 0 1 0";
+    const gk=ls.glow*2.4;
+    // differences are taken against the inverted image (a + (1-b) - 1) so alpha stays 1 and the colours survive premultiplication
+    const INV="-1 0 0 0 1  0 -1 0 0 1  0 0 -1 0 1  0 0 0 1 0";
+    f.append(el("feColorMatrix",{in:"warp",type:"matrix",values:INV,result:"iw"}),el("feColorMatrix",{in:acc,type:"matrix",values:INV,result:"ia"}),
+      el("feComposite",{in:acc,in2:"iw",operator:"arithmetic",k1:0,k2:1,k3:1,k4:-1,result:"dp"}),
+      el("feComposite",{in:"warp",in2:"ia",operator:"arithmetic",k1:0,k2:1,k3:1,k4:-1,result:"dn"}),
+      el("feColorMatrix",{in:"dp",type:"matrix",values:mv,result:"cp"}),el("feColorMatrix",{in:"dn",type:"matrix",values:mv,result:"cn"}),
+      el("feComposite",{in:"warp",in2:"cp",operator:"arithmetic",k1:0,k2:1,k3:gk,k4:0,result:"o1"}),
+      el("feComposite",{in:"o1",in2:"cn",operator:"arithmetic",k1:0,k2:1,k3:gk*0.6,k4:0,result:"out"}));}
+  else f.append(el("feComposite",{in:acc,in2:"warp",operator:"arithmetic",k1:0,k2:0.5+ls.glow*0.5,k3:0.5-ls.glow*0.5,k4:0,result:"out"}));
+  const g=el("radialGradient",{id:"lmg"},[el("stop",{offset:0,"stop-color":"#fff"}),el("stop",{offset:Math.max(0,1-ls.soft).toFixed(3),"stop-color":"#fff"}),el("stop",{offset:1,"stop-color":"#fff","stop-opacity":0})]);
+  const pad=Math.min(w,h)*0.04+ls.warp,eg=el("linearGradient",{id:"lex"},[el("stop",{offset:0,"stop-color":"#000"}),el("stop",{offset:1,"stop-color":"#fff"})]);
+  const m=el("mask",{id:"lm",maskUnits:"userSpaceOnUse",x:0,y:0,width:w,height:h},[el("g",{id:"lMaskG"})]);
+  const edge=el("mask",{id:"le",maskUnits:"userSpaceOnUse",x:0,y:0,width:w,height:h},[el("rect",{x:pad,y:pad,width:w-2*pad,height:h-2*pad,fill:"#fff",filter:"url(#leb)"})]);
+  const eb=el("filter",{id:"leb",x:"-20%",y:"-20%",width:"140%",height:"140%"},[el("feGaussianBlur",{stdDeviation:pad*0.5})]);
+  svg.append(el("defs",{},[f,g,m,edge,eb]),el("image",{href:img.href,width:w,height:h,preserveAspectRatio:"none"}),
+    el("g",{mask:"url(#le)"},[el("g",{mask:"url(#lm)"},[el("image",{href:img.href,width:w,height:h,preserveAspectRatio:"none",filter:"url(#lens)"})])]));
+  $("lPlate").style.setProperty("--ar",`${w}/${h}`);$("lMeta").textContent=`${w} × ${h} px`;
+  drawMask();
+}
+function centre(){return ls.mask==="hover"&&pos?pos:[ls.C[0]*img.w,ls.C[1]*img.h];}
+function drawMask(){const G=$("lMaskG");if(!G)return;G.innerHTML="";const{w,h}=img;
+  if(ls.mask==="all")G.append(el("rect",{width:w,height:h,fill:"#fff",opacity:ls.infl}));
+  else for(const p of trail)if(p.life>0.01)G.append(el("circle",{cx:p.x.toFixed(1),cy:p.y.toFixed(1),r:ls.rad,fill:"url(#lmg)",opacity:(p.life*ls.infl).toFixed(3)}));
+  const mp=$("lMap"),[cx,cy]=centre(),M=Math.max(w,h);if(mp){mp.setAttribute("x",(cx-M).toFixed(1));mp.setAttribute("y",(cy-M).toFixed(1));}
+  const C=$("lC");C.hidden=ls.mask==="hover";C.style.left=ls.C[0]*100+"%";C.style.top=ls.C[1]*100+"%";}
+// cursor trail: a smoothed position drops points that fade out
+function tick(t){raf=0;const dt=Math.min(0.1,(t-(last||t))/1000);last=t;
+  if(mouse){pos=pos?[pos[0]+(mouse[0]-pos[0])*ls.follow,pos[1]+(mouse[1]-pos[1])*ls.follow]:mouse.slice();const p=trail[trail.length-1];
+    if(!p||Math.hypot(p.x-pos[0],p.y-pos[1])>ls.rad*0.12)trail.push({x:pos[0],y:pos[1],life:1});else p.life=1;}
+  for(const p of trail)if(!(mouse&&p===trail[trail.length-1]))p.life-=dt/ls.fade;
+  trail=trail.filter(p=>p.life>0).slice(-60);drawMask();
+  if(mouse||trail.length)raf=requestAnimationFrame(tick);else last=0;}
+const kick=()=>{if(!raf)raf=requestAnimationFrame(tick);};
+svg.addEventListener("pointermove",e=>{if(ls.mask!=="hover")return;const r=svg.getBoundingClientRect();mouse=[(e.clientX-r.left)/r.width*img.w,(e.clientY-r.top)/r.height*img.h];kick();});
+svg.addEventListener("pointerleave",()=>{mouse=null;kick();});
+// centre handle when the mask is the whole frame
+{const C=$("lC");let on=false;C.addEventListener("pointerdown",e=>{on=true;C.setPointerCapture(e.pointerId);e.preventDefault();});
+  C.addEventListener("pointermove",e=>{if(!on)return;const r=$("lPlate").getBoundingClientRect();ls.C=[(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height];drawMask();});
+  C.addEventListener("pointerup",()=>on=false);}
+// controls
+const fmt={disp:v=>v+" px",ang:v=>v+"°",glow:v=>Math.round(v*100)+"%",warp:v=>v+" px",freq:v=>(+v).toFixed(3),rad:v=>v+" px",soft:v=>Math.round(v*100)+"%",infl:v=>Math.round(v*100)+"%",follow:v=>Math.round(v*100)+"%",fade:v=>(+v).toFixed(2)+" s"};
+const rebuildKeys=new Set(["disp","ang","glow","warp","freq","soft","rad"]);
+for(const k in fmt){const e=$("l_"+k);e.value=ls[k];$("l_"+k+"V").textContent=fmt[k](ls[k]);e.addEventListener("input",()=>{ls[k]=+e.value;$("l_"+k+"V").textContent=fmt[k](ls[k]);rebuildKeys.has(k)?build():drawMask();});}
+const segs=[];function seg(box,items,get,set){box.innerHTML="";for(const[v,l]of items){const b=document.createElement("button");b.className="chip";b.textContent=l;b.dataset.v=v;b.onclick=()=>{set(v);sync();build();};box.appendChild(b);}
+  segs.push(()=>[...box.children].forEach(b=>b.setAttribute("aria-pressed",String(String(get())===b.dataset.v))));}
+seg($("lDir"),[["out","Hacia afuera"],["side","Lateral"]],()=>ls.dir,v=>ls.dir=v);
+seg($("lPal"),[["rgb","RGB"],["pal","Paleta"]],()=>ls.pal,v=>ls.pal=v);
+seg($("lMask"),[["hover","Hover"],["all","Toda la imagen"]],()=>ls.mask,v=>{ls.mask=v;trail=[];});
+function palSw(){const box=$("lPalSw");box.innerHTML="";for(const[c,nm]of PAL){const b=document.createElement("button");b.style.background=c;b.title=nm;b.setAttribute("aria-label",nm);
+  b.setAttribute("aria-checked",String(ls.palOn.includes(c)));b.onclick=()=>{const i=ls.palOn.indexOf(c);if(i>=0){if(ls.palOn.length>1)ls.palOn.splice(i,1);}else{ls.palOn.push(c);if(ls.palOn.length>3)ls.palOn.shift();}
+    palSw();build();};box.appendChild(b);}}
+function sync(){segs.forEach(f=>f());$("lPalSw").hidden=ls.pal!=="pal";$("lAngRow").hidden=ls.dir!=="side";
+  for(const id of["lFollowRow","lFadeRow"])$(id).hidden=ls.mask!=="hover";palSw();}
+// image in
+async function loadFile(f){if(!f||!f.type.startsWith("image/")){toast("Subí una imagen.");return;}
+  const url=await new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.readAsDataURL(f);});const im=new Image();im.src=url;await im.decode();
+  let w=im.naturalWidth,h=im.naturalHeight;const s=Math.min(1,2400/Math.max(w,h));w=Math.round(w*s);h=Math.round(h*s);
+  let href=url;if(s<1){const c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(im,0,0,w,h);href=c.toDataURL("image/jpeg",0.92);}
+  img={href,w,h,name:f.name};$("lFileName").textContent=f.name;trail=[];build();}
+$("lFile").addEventListener("change",e=>{loadFile(e.target.files?.[0]);e.target.value="";});
+$("lChange").onclick=()=>$("lFile").click();
+const st=$("lStage");st.addEventListener("dragover",e=>{e.preventDefault();st.classList.add("drop");});
+st.addEventListener("dragleave",e=>{if(e.target===st)st.classList.remove("drop");});
+st.addEventListener("drop",e=>{e.preventDefault();st.classList.remove("drop");loadFile(e.dataTransfer.files[0]);});
+addEventListener("paste",e=>{if($("view-lens").hidden)return;const it=[...(e.clipboardData?.items||[])].find(i=>i.kind==="file"&&i.type.startsWith("image/"));if(it){e.preventDefault();loadFile(it.getAsFile());}});
+// export: the live SVG as it is now (mask included), or a PNG of it
+function svgString(){const c=svg.cloneNode(true);c.setAttribute("xmlns",NS);c.setAttribute("width",img.w);c.setAttribute("height",img.h);c.removeAttribute("style");c.removeAttribute("id");
+  return new XMLSerializer().serializeToString(c);}
+async function save(name,data){if(!dlCap){try{if(window.claude?.use)dlCap=await window.claude.use("downloads");}catch(e){}}
+  if(!dlCap){toast("La descarga no está disponible en esta vista.");return;}
+  try{await dlCap.save({filename:name,data});toast(name+" guardado");}catch(e){if(e?.code!=="declined")toast("No se pudo descargar");}}
+const base=()=>img.name.replace(/\.[^.]+$/,"").replace(/\s+/g,"-")+"-dispersion";
+$("lDlSvg").onclick=()=>save(base()+".svg",svgString());
+$("lDlPng").onclick=async()=>{const url=URL.createObjectURL(new Blob([svgString()],{type:"image/svg+xml"}));
+  try{const im=new Image();im.src=url;await im.decode();const c=document.createElement("canvas");c.width=img.w;c.height=img.h;c.getContext("2d").drawImage(im,0,0);
+    const blob=await new Promise(r=>c.toBlob(r,"image/png"));await save(base()+".png",new Uint8Array(await blob.arrayBuffer()));}
+  catch(e){toast("No se pudo generar el PNG");}finally{URL.revokeObjectURL(url);}};
+let ready=false;
+return{show(){if(!ready){ready=true;img.href=sample();mapHref=makeMap();sync();build();}}};
+})();
+
 function showView(v){
-  $("view-laminas").hidden=v!=="laminas";$("view-gradients").hidden=v==="laminas"||v==="grain";$("view-grain").hidden=v!=="grain";
-  for(const id of["laminas","gradients","dots","mix","grain"])$("tab-"+id).setAttribute("aria-selected",String(id===v));
-  if(v==="grain")GG.show();else if(v!=="laminas")G.show(v==="dots"?"dots":v==="mix"?"mix":"gradient");
+  $("view-laminas").hidden=v!=="laminas";$("view-gradients").hidden=v==="laminas"||v==="grain"||v==="lens";$("view-grain").hidden=v!=="grain";$("view-lens").hidden=v!=="lens";
+  for(const id of["laminas","gradients","dots","mix","grain","lens"])$("tab-"+id).setAttribute("aria-selected",String(id===v));
+  if(v==="lens")LD.show();else if(v==="grain")GG.show();else if(v!=="laminas")G.show(v==="dots"?"dots":v==="mix"?"mix":"gradient");
   try{history.replaceState(null,"","#"+v);}catch(e){}
 }
 $("tab-laminas").onclick=()=>showView("laminas");
@@ -1709,6 +1878,8 @@ $("tab-gradients").onclick=()=>showView("gradients");
 $("tab-dots").onclick=()=>showView("dots");
 $("tab-mix").onclick=()=>showView("mix");
 $("tab-grain").onclick=()=>showView("grain");
+$("tab-lens").onclick=()=>showView("lens");
+if(location.hash==="#lens")showView("lens");
 if(location.hash==="#grain")showView("grain");
 if(location.hash==="#mix")showView("mix");
 if(location.hash==="#gradients")showView("gradients");
