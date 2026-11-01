@@ -456,13 +456,13 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
     <div class="canvas"><div class="gplate" id="lPlate"><svg id="lSvg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none"></svg>
       <button class="gnode" id="lC" aria-label="Centro de la dispersión" style="background:var(--content-accent)"></button></div></div>
     <div class="meta"><span id="lMeta"></span></div>
-    <input type="file" id="lFile" accept="image/*" hidden>
+    <input type="file" id="lFile" accept=".svg,image/svg+xml" hidden>
   </main>
   <aside class="rail">
     <div class="brand"><h1>Lens Dispersion</h1><span id="lSeedTag"></span></div>
     <div class="group">
-      <div class="lbl">Imagen</div>
-      <div class="file"><span id="lFileName">Ejemplo</span><button class="btn sm" id="lChange">Cambiar</button></div>
+      <div class="lbl">SVG</div>
+      <div class="file"><span id="lFileName">Percepta</span><button class="btn sm" id="lChange">Cambiar</button></div>
     </div>
     <div class="group">
       <div class="lbl">Dispersión</div>
@@ -1753,14 +1753,9 @@ const LD=(()=>{
 const NS="http://www.w3.org/2000/svg",PAL=[["#f7f7f7","Blanco"],["#fce097","Amarillo"],["#ff898d","Rosa"],["#75c5ef","Celeste"],["#b88dd2","Lila"],["#151515","Negro"]];
 const ls={dir:"out",disp:45,ang:0,glow:1.3,pal:"rgb",palOn:["#ff898d","#fce097","#75c5ef"],warp:18,freq:0.008,
   mask:"hover",rad:260,soft:0.6,infl:1,follow:0.18,fade:1.2,C:[0.5,0.5]};
-let img={href:"",w:1600,h:1000,name:"Ejemplo"},mapHref="",trail=[],mouse=null,pos=null,raf=0,last=0;
+let img={markup:"",vb:"0 0 1600 900",w:1600,h:900,name:"Percepta"},mapHref="",trail=[],mouse=null,pos=null,raf=0,last=0;
 const svg=$("lSvg"),hx=c=>[1,3,5].map(i=>parseInt(c.slice(i,i+2),16)/255);
-function sample(){const c=document.createElement("canvas");c.width=1600;c.height=1000;const x=c.getContext("2d");
-  const g=x.createLinearGradient(0,0,0,1000);g.addColorStop(0,"#2f6fc4");g.addColorStop(1,"#5d9be0");x.fillStyle=g;x.fillRect(0,0,1600,1000);
-  let s=7;const r=()=>(s=(s*16807)%2147483647)/2147483647;x.filter="blur(6px)";
-  for(let i=0;i<260;i++){const cx=250+r()*1100,cy=330+Math.sin(cx/260)*60+r()*300*(1-Math.abs(cx-800)/700),rr=40+r()*110,sh=x.createRadialGradient(cx-rr*.3,cy-rr*.4,rr*.1,cx,cy,rr);
-    sh.addColorStop(0,"rgba(255,255,255,.95)");sh.addColorStop(.7,"rgba(220,228,240,.55)");sh.addColorStop(1,"rgba(150,170,200,0)");x.fillStyle=sh;x.beginPath();x.arc(cx,cy,rr,0,7);x.fill();}
-  return c.toDataURL("image/jpeg",0.9);}
+const SAMPLE=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900"><text x="800" y="545" text-anchor="middle" font-family="Inter, Helvetica, Arial, sans-serif" font-weight="700" font-size="330" letter-spacing="-14" fill="#f7f7f7">Percepta</text></svg>`;
 // radial displacement map: R/G = direction from the centre, growing with distance (centred, 2× the frame so it can move)
 function makeMap(){const S=512,c=document.createElement("canvas");c.width=S;c.height=S;const x=c.getContext("2d"),d=x.createImageData(S,S);
   for(let j=0;j<S;j++)for(let i=0;i<S;i++){const u=(i+0.5)/S*2-1,v=(j+0.5)/S*2-1,k=(j*S+i)*4;d.data[k]=128+127*u;d.data[k+1]=128+127*v;d.data[k+2]=128;d.data[k+3]=255;}
@@ -1800,9 +1795,12 @@ function build(){
   const m=el("mask",{id:"lm",maskUnits:"userSpaceOnUse",x:0,y:0,width:w,height:h},[el("g",{id:"lMaskG"})]);
   const edge=el("mask",{id:"le",maskUnits:"userSpaceOnUse",x:0,y:0,width:w,height:h},[el("rect",{x:pad,y:pad,width:w-2*pad,height:h-2*pad,fill:"#fff",filter:"url(#leb)"})]);
   const eb=el("filter",{id:"leb",x:"-20%",y:"-20%",width:"140%",height:"140%"},[el("feGaussianBlur",{stdDeviation:pad*0.5})]);
-  svg.append(el("defs",{},[f,g,m,edge,eb]),el("image",{href:img.href,width:w,height:h,preserveAspectRatio:"none"}),
-    el("g",{mask:"url(#le)"},[el("g",{mask:"url(#lm)"},[el("image",{href:img.href,width:w,height:h,preserveAspectRatio:"none",filter:"url(#lens)"})])]));
-  $("lPlate").style.setProperty("--ar",`${w}/${h}`);$("lMeta").textContent=`${w} × ${h} px`;
+  const src=el("svg",{id:"lsrc",x:0,y:0,width:w,height:h,viewBox:img.vb,overflow:"visible"});
+  const doc=new DOMParser().parseFromString(`<svg xmlns="${NS}" xmlns:xlink="http://www.w3.org/1999/xlink">${img.markup}</svg>`,"image/svg+xml");
+  for(const n of [...doc.documentElement.childNodes])src.appendChild(document.importNode(n,true));
+  svg.append(el("defs",{},[f,g,m,edge,eb,src]),el("use",{href:"#lsrc"}),
+    el("g",{mask:"url(#le)"},[el("g",{mask:"url(#lm)"},[el("use",{href:"#lsrc",filter:"url(#lens)"})])]));
+  $("lPlate").style.setProperty("--ar",`${w}/${h}`);$("lPlate").style.background="#151515";$("lMeta").textContent=`${w} × ${h} px`;
   drawMask();
 }
 function centre(){return ls.mask==="hover"&&pos?pos:[ls.C[0]*img.w,ls.C[1]*img.h];}
@@ -1839,18 +1837,22 @@ function palSw(){const box=$("lPalSw");box.innerHTML="";for(const[c,nm]of PAL){c
     palSw();build();};box.appendChild(b);}}
 function sync(){segs.forEach(f=>f());$("lPalSw").hidden=ls.pal!=="pal";$("lAngRow").hidden=ls.dir!=="side";
   for(const id of["lFollowRow","lFadeRow"])$(id).hidden=ls.mask!=="hover";palSw();}
-// image in
-async function loadFile(f){if(!f||!f.type.startsWith("image/")){toast("Subí una imagen.");return;}
-  const url=await new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.readAsDataURL(f);});const im=new Image();im.src=url;await im.decode();
-  let w=im.naturalWidth,h=im.naturalHeight;const s=Math.min(1,2400/Math.max(w,h));w=Math.round(w*s);h=Math.round(h*s);
-  let href=url;if(s<1){const c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(im,0,0,w,h);href=c.toDataURL("image/jpeg",0.92);}
-  img={href,w,h,name:f.name};$("lFileName").textContent=f.name;trail=[];build();}
+// SVG in: file, drop, or the markup Figma puts on the clipboard with Copy as SVG
+function loadSvg(text,name){const doc=new DOMParser().parseFromString(text,"image/svg+xml"),root=doc.documentElement;
+  if(root.localName!=="svg"||doc.querySelector("parsererror")){toast("No se pudo leer el SVG.");return;}
+  const vb=(root.getAttribute("viewBox")||"").split(/[\s,]+/).map(Number);
+  let vw=vb.length===4?vb[2]:parseFloat(root.getAttribute("width"))||1600,vh=vb.length===4?vb[3]:parseFloat(root.getAttribute("height"))||900;
+  const s=1600/Math.max(vw,vh);img={markup:root.innerHTML,vb:vb.length===4?vb.join(" "):`0 0 ${vw} ${vh}`,w:Math.round(vw*s),h:Math.round(vh*s),name};
+  $("lFileName").textContent=name;trail=[];build();}
+async function loadFile(f){if(!f)return;if(f.type==="image/svg+xml"||/\.svg$/i.test(f.name))return loadSvg(await f.text(),f.name);toast("Solo SVG: copiá el frame en Figma (Copy as SVG) y pegalo acá.");}
 $("lFile").addEventListener("change",e=>{loadFile(e.target.files?.[0]);e.target.value="";});
 $("lChange").onclick=()=>$("lFile").click();
 const st=$("lStage");st.addEventListener("dragover",e=>{e.preventDefault();st.classList.add("drop");});
 st.addEventListener("dragleave",e=>{if(e.target===st)st.classList.remove("drop");});
 st.addEventListener("drop",e=>{e.preventDefault();st.classList.remove("drop");loadFile(e.dataTransfer.files[0]);});
-addEventListener("paste",e=>{if($("view-lens").hidden)return;const it=[...(e.clipboardData?.items||[])].find(i=>i.kind==="file"&&i.type.startsWith("image/"));if(it){e.preventDefault();loadFile(it.getAsFile());}});
+addEventListener("paste",e=>{if($("view-lens").hidden)return;const t=e.clipboardData?.getData("text/plain")||"";
+  if(/<svg[\s>]/i.test(t)){e.preventDefault();loadSvg(t.slice(t.search(/<svg[\s>]/i)),"SVG pegado");return;}
+  const it=[...(e.clipboardData?.items||[])].find(i=>i.kind==="file"&&i.type==="image/svg+xml");if(it){e.preventDefault();loadFile(it.getAsFile());}});
 // export: the live SVG as it is now (mask included), or a PNG of it
 function svgString(){const c=svg.cloneNode(true);c.setAttribute("xmlns",NS);c.setAttribute("width",img.w);c.setAttribute("height",img.h);c.removeAttribute("style");c.removeAttribute("id");
   return new XMLSerializer().serializeToString(c);}
@@ -1864,7 +1866,7 @@ $("lDlPng").onclick=async()=>{const url=URL.createObjectURL(new Blob([svgString(
     const blob=await new Promise(r=>c.toBlob(r,"image/png"));await save(base()+".png",new Uint8Array(await blob.arrayBuffer()));}
   catch(e){toast("No se pudo generar el PNG");}finally{URL.revokeObjectURL(url);}};
 let ready=false;
-return{show(){if(!ready){ready=true;img.href=sample();mapHref=makeMap();sync();build();}}};
+return{show(){if(!ready){ready=true;mapHref=makeMap();sync();loadSvg(SAMPLE,"Percepta");}}};
 })();
 
 function showView(v){
