@@ -159,7 +159,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section>
         <h2>Manta</h2>
         <label class="check"><input type="checkbox" data-check="cut"> Recortar el plano a los modelos</label>
-        <p class="hint" id="cut-hint">Sin margen: el plano arranca en el frente de cada modelo y sigue hacia atrás solo en el ancho que ocupa.</p>
+        <p class="hint" id="cut-hint">Sin margen: el plano arranca en el frente de los modelos y sigue hacia atrás en el ancho que ocupan, de punta a punta.</p>
         <div id="sl-drape"></div>
         <div id="sl-walls"></div>
         <div id="sl-wave"></div>
@@ -402,9 +402,16 @@ function buildField() {
   const ground = groundOf(nx, nz, X0, Z0), h = new Float32Array(n);
   let top = 1e-6;
   for (let k = 0; k < n; k++) { h[k] = ground[k] + obj[k]; if (obj[k] > top) top = obj[k]; }
-  // For Recortar: where each column's first model starts (from the front), Infinity where no model stands.
+  // For Recortar: where each column's first model starts (from the front), Infinity outside the group.
   const front = new Float64Array(nx).fill(Infinity);
   for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) if (cover[j * nx + i]) { front[i] = j; break; }
+  // No streets: the gaps between models are filled too, the plane spanning the whole group from its leftmost model to
+  // its rightmost, its front edge running straight from one model's front to the next across each gap.
+  let last = -1;
+  for (let i = 0; i < nx; i++) if (front[i] < Infinity) {
+    if (last >= 0 && i - last > 1) for (let g = last + 1; g < i; g++) front[g] = Math.round(mix(front[last], front[i], (g - last) / (i - last)));
+    last = i;
+  }
   field = { nx, nz, X0, Z0, h, obj, top, front, ground: h.map((v, k) => v - obj[k]) };
   ptsKey = '';
 }
