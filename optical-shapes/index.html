@@ -207,6 +207,7 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
   <button class="tab" role="tab" id="tab-lens" aria-selected="false" aria-controls="view-lens">Lens Dispersion</button>
   <button class="tab" role="tab" id="tab-wave" aria-selected="false" aria-controls="view-wave">Wave Lines</button>
   <button class="tab" role="tab" id="tab-rays" aria-selected="false" aria-controls="view-rays">Light Image</button>
+  <button class="tab" role="tab" id="tab-god" aria-selected="false" aria-controls="view-god">God Rays</button>
   <button class="tab" role="tab" id="tab-discards" aria-selected="false" aria-controls="view-discards">Descartes</button>
 </nav>
 <div class="app" id="view-laminas" role="tabpanel">
@@ -615,6 +616,49 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
     <div class="actions">
       <button class="btn primary" id="rGen" title="Nueva semilla (R)">Nueva semilla</button>
       <button class="btn" id="rPng">Descargar PNG</button>
+    </div>
+  </aside>
+</div>
+<div class="app" id="view-god" role="tabpanel" hidden>
+  <main class="stage" id="yStage">
+    <div class="canvas"><div class="gplate" id="yPlate"><svg id="ySvg" xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab"></svg>
+      <button class="gnode" id="yS" aria-label="Origen de los rayos"></button></div></div>
+    <div class="meta"><span id="yMeta"></span></div>
+  </main>
+  <aside class="rail">
+    <div class="brand"><h1>God Rays</h1><span id="ySeedTag"></span></div>
+    <div class="group">
+      <div class="lbl">Haz</div>
+      <div class="row"><span>Dirección</span><span class="v" id="y_dirV"></span><input type="range" id="y_dir" min="0" max="345" step="15"></div>
+      <div class="row"><span>Apertura</span><span class="v" id="y_spreadV"></span><input type="range" id="y_spread" min="0" max="90" step="15"></div>
+      <div class="row"><span>Largo</span><span class="v" id="y_lenV"></span><input type="range" id="y_len" min="0.2" max="1.6" step="0.01"></div>
+    </div>
+    <div class="group">
+      <div class="lbl">Rayos</div>
+      <div class="row"><span>Cantidad</span><span class="v" id="y_nV"></span><input type="range" id="y_n" min="3" max="60" step="1"></div>
+      <div class="row"><span>Grosor</span><span class="v" id="y_widthV"></span><input type="range" id="y_width" min="0.2" max="3" step="0.05"></div>
+      <div class="row"><span>Difusos</span><span class="v" id="y_softV"></span><input type="range" id="y_soft" min="0" max="1" step="0.01"></div>
+      <div class="row"><span>Desvanecer</span><span class="v" id="y_fadeV"></span><input type="range" id="y_fade" min="0" max="1" step="0.01"></div>
+      <div class="row"><span>Dispersión de color</span><span class="v" id="y_prismV"></span><input type="range" id="y_prism" min="0" max="1" step="0.01"></div>
+    </div>
+    <div class="group">
+      <div class="lbl">Polvo</div>
+      <div class="row"><span>Cantidad</span><span class="v" id="y_dustV"></span><input type="range" id="y_dust" min="0" max="1" step="0.01"></div>
+      <div class="row"><span>Tamaño</span><span class="v" id="y_dotV"></span><input type="range" id="y_dot" min="0.5" max="8" step="0.1"></div>
+    </div>
+    <div class="group">
+      <div class="lbl">Color</div>
+      <div class="seg" id="yPal" style="grid-template-columns:1fr 1fr"></div>
+      <div class="seg" id="yBg" style="grid-template-columns:1fr 1fr"></div>
+    </div>
+    <div class="group">
+      <div class="lbl">Formato</div>
+      <div class="seg" id="yRatio" style="grid-template-columns:repeat(5,1fr)"></div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="yGen" title="Nueva semilla (R)">Nueva semilla</button>
+      <button class="btn" id="ySvgDl">Descargar SVG</button>
+      <button class="btn" id="yPng">Descargar PNG</button>
     </div>
   </aside>
 </div>
@@ -2248,13 +2292,82 @@ new ResizeObserver(()=>{if(!$("view-rays").hidden)update();}).observe($("rStage"
 return{show(){update();}};
 })();
 
-const VIEWS={laminas:"view-laminas",gradients:"view-gradients",dots:"view-gradients",mix:"view-gradients",grain:"view-grain",lens:"view-lens",wave:"view-wave",rays:"view-rays",discards:"view-discards"};
+/* ---------- God Rays ----------
+   Vector light shafts from one source: each ray is a thin wedge with a gradient that fades along it.
+   Some rays are crisp, some sit in a blur group (soft). Crisp ones can split into palette-coloured
+   fringes, like light through a prism. Dust is equal dots, merged into one path per colour. */
+const GR=(()=>{
+const PALS={suave:["#f7f7f7","#fad6ae","#ebab9e","#97a7d6","#50425c"],vivo:["#f7f7f7","#fce097","#ff898d","#75c5ef","#b88dd2"]};
+const NAMES={"#f7f7f7":"Blanco","#fad6ae":"Durazno","#ebab9e":"Coral","#97a7d6":"Azul","#50425c":"Ciruela","#fce097":"Amarillo","#ff898d":"Rosa","#75c5ef":"Celeste","#b88dd2":"Lila"};
+const RATIOS={"16:9":[3200,1800],"3:2":[3000,2000],"1:1":[3000,3000],"4:5":[2400,3000],"9:16":[1800,3200]};
+const ys={dir:30,spread:30,len:1,n:18,width:1,soft:0.6,fade:0.6,prism:0.5,dust:0.5,dot:2.6,pal:"suave",bg:"#151515",ratio:"16:9",S:[0.12,0.0],seed:Math.floor(Math.random()*1e6)};
+function rngY(seed){let t=seed>>>0;return()=>{t=t+1831565813>>>0;let e=t;e=Math.imul(e^e>>>15,e|1);e^=e+Math.imul(e^e>>>7,e|61);return((e^e>>>14)>>>0)/4294967296;};}
+function build(){
+  const[W,H]=RATIOS[ys.ratio],r=rngY(ys.seed),P=PALS[ys.pal],f=v=>+v.toFixed(1),D=Math.hypot(W,H)*ys.len,sx=ys.S[0]*W,sy=ys.S[1]*H;
+  const th=ys.dir*Math.PI/180,sp=ys.spread*Math.PI/180,defs=[],soft=[[],[],[]],sharp=[],fr=[];
+  const ray=(a,len,w0,w1,col,op,fadeAt,id,off=0)=>{const ux=Math.cos(a),uy=Math.sin(a),px=-uy,py=ux,ox=sx+px*off,oy=sy+py*off,ex=ox+ux*len,ey=oy+uy*len;
+    defs.push(`<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${f(ox)}" y1="${f(oy)}" x2="${f(ex)}" y2="${f(ey)}"><stop offset="0" stop-color="${col}" stop-opacity="${op.toFixed(2)}"/><stop offset="${fadeAt.toFixed(2)}" stop-color="${col}" stop-opacity="${(op*0.8).toFixed(2)}"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient>`);
+    return `<path d="M${f(ox+px*w0/2)} ${f(oy+py*w0/2)}L${f(ex+px*w1/2)} ${f(ey+py*w1/2)}L${f(ex-px*w1/2)} ${f(ey-py*w1/2)}L${f(ox-px*w0/2)} ${f(oy-py*w0/2)}Z" fill="url(#${id})"/>`;};
+  const base=Math.min(W,H)*0.004*ys.width;
+  // a wide, very soft core that gives the beam its glow
+  soft[2].push(ray(th,D*0.85,base*4,D*Math.tan(sp/2)*0.9+base*20,P[1],0.35,Math.max(0.02,(1-ys.fade)*0.3),"ycore"));
+  for(let i=0;i<ys.n;i++){const a=th+(r()-0.5)*sp,len=D*(0.35+0.65*r()),isSoft=r()<ys.soft,fadeAt=Math.max(0.02,(1-ys.fade)*(0.2+0.6*r()));
+    const col=r()<0.7?P[0]:P[1+Math.floor(r()*3)];
+    if(isSoft){const lvl=Math.floor(r()*3),w1=base*(6+r()*22);soft[lvl].push(ray(a,len,base*(1+r()*3),w1,col,0.25+0.35*r(),fadeAt,"yr"+i));}
+    else{const w1=base*(1.2+r()*4);sharp.push(ray(a,len,base*0.4,w1,col,0.55+0.45*r(),fadeAt,"yr"+i));
+      // prism: thin coloured copies beside the crisp ray
+      if(r()<ys.prism){const fc=[P[2],P[1],P[3]];fc.forEach((c,j)=>{fr.push(ray(a+0.004*(j-1),len*0.92,base*0.3,w1*0.7,c,0.75,fadeAt,`yf${i}_${j}`,(j-1)*w1*0.9+w1*1.1));});}}}
+  // dust: equal dots within the fan, densest a third of the way out
+  const dots=new Map(),N=Math.round(ys.dust*2600),rd=ys.dot;
+  for(let q=0;q<N;q++){const a=th+(r()+r()-1)*sp*0.55,t=D*(0.12+0.75*Math.pow(r(),0.8)),x=sx+Math.cos(a)*t,y=sy+Math.sin(a)*t;if(x<0||y<0||x>W||y>H)continue;
+    const c=r()<0.55?P[1]:r()<0.6?P[0]:P[2+Math.floor(r()*2)];if(!dots.has(c))dots.set(c,[]);dots.get(c).push(`M${f(x-rd)} ${f(y)}a${rd} ${rd} 0 1 0 ${f(2*rd)} 0a${rd} ${rd} 0 1 0 ${f(-2*rd)} 0`);}
+  const bl=[0.006,0.014,0.03].map(k=>k*Math.min(W,H));
+  defs.push(...bl.map((b,i)=>`<filter id="yb${i}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${f(b)}"/></filter>`));
+  const out=[`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`,`<defs>${defs.join("")}</defs>`];
+  soft.forEach((g,i)=>{if(g.length)out.push(`<g id="Rayos difusos ${i+1}" filter="url(#yb${i})">${g.join("")}</g>`);});
+  if(sharp.length)out.push(`<g id="Rayos definidos">${sharp.join("")}</g>`);
+  if(fr.length)out.push(`<g id="Dispersión de color">${fr.join("")}</g>`);
+  for(const[c,p]of dots)out.push(`<path id="Polvo ${NAMES[c]||c}" fill="${c}" d="${p.join("")}"/>`);
+  out.push("</svg>");return{W,H,svg:out.join("\n"),count:ys.n+fr.length};}
+let last="";
+function render(){const S=build();last=S.svg;const plate=$("yPlate");plate.style.setProperty("--ar",`${S.W}/${S.H}`);plate.style.background=ys.bg;
+  const svg=$("ySvg");svg.setAttribute("viewBox",`0 0 ${S.W} ${S.H}`);svg.innerHTML=S.svg.replace(/^<svg[^>]*>|<\/svg>$/g,"");
+  const h=$("yS");h.style.left=ys.S[0]*100+"%";h.style.top=ys.S[1]*100+"%";$("ySeedTag").textContent="#"+ys.seed;$("yMeta").textContent=`${S.count} rayos · ${S.W} × ${S.H} px`;}
+let raf=0;const update=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(render);};
+const pct=v=>Math.round(v*100)+"%",fmt={dir:v=>v+"°",spread:v=>v+"°",len:pct,n:String,width:v=>(+v).toFixed(2)+"×",soft:pct,fade:pct,prism:pct,dust:pct,dot:v=>(+v).toFixed(1)+" px"};
+const setv=(k,v)=>{ys[k]=v;$("y_"+k).value=v;$("y_"+k+"V").textContent=fmt[k](v);};
+for(const k in fmt){const e=$("y_"+k);e.value=ys[k];$("y_"+k+"V").textContent=fmt[k](ys[k]);e.addEventListener("input",()=>{ys[k]=+e.value;$("y_"+k+"V").textContent=fmt[k](ys[k]);update();});}
+const segs=[];function seg(box,items,get,set){box.innerHTML="";for(const[v,l]of items){const b=document.createElement("button");b.className="chip";b.textContent=l;b.dataset.v=v;b.onclick=()=>{set(v);segs.forEach(fn=>fn());update();};box.appendChild(b);}
+  segs.push(()=>[...box.children].forEach(b=>b.setAttribute("aria-pressed",String(String(get())===b.dataset.v))));}
+seg($("yPal"),[["suave","Suave"],["vivo","Vivo"]],()=>ys.pal,v=>ys.pal=v);
+seg($("yBg"),[["#151515","Fondo negro"],["#f7f7f7","Fondo blanco"]],()=>ys.bg,v=>ys.bg=v);
+seg($("yRatio"),Object.keys(RATIOS).map(k=>[k,k]),()=>ys.ratio,v=>ys.ratio=v);segs.forEach(fn=>fn());
+// source handle can sit outside the frame; dragging the canvas turns the beam in 15° steps
+{const h=$("yS");let on=false;h.addEventListener("pointerdown",e=>{on=true;h.setPointerCapture(e.pointerId);e.preventDefault();e.stopPropagation();});
+  h.addEventListener("pointermove",e=>{if(!on)return;const rc=$("yPlate").getBoundingClientRect();ys.S=[Math.min(1.5,Math.max(-0.5,(e.clientX-rc.left)/rc.width)),Math.min(1.5,Math.max(-0.5,(e.clientY-rc.top)/rc.height))];update();});
+  h.addEventListener("pointerup",()=>on=false);
+  const sv=$("ySvg");let d=null;sv.addEventListener("pointerdown",e=>{d={x:e.clientX,dir:ys.dir};sv.setPointerCapture(e.pointerId);sv.style.cursor="grabbing";});
+  sv.addEventListener("pointermove",e=>{if(!d)return;setv("dir",((d.dir+Math.round((e.clientX-d.x)/30)*15)%360+360)%360);update();});
+  const end=()=>{d=null;sv.style.cursor="grab";};sv.addEventListener("pointerup",end);sv.addEventListener("pointercancel",end);}
+const reseed=()=>{ys.seed=Math.floor(Math.random()*1e6);update();};$("yGen").onclick=reseed;
+addEventListener("keydown",e=>{if($("view-god").hidden||e.metaKey||e.ctrlKey||e.altKey||e.target.closest("input,textarea"))return;if(e.key==="r"||e.key==="R")reseed();});
+async function save(name,data){if(!dlCap){try{if(window.claude?.use)dlCap=await window.claude.use("downloads");}catch(e){}}
+  if(!dlCap){toast("La descarga no está disponible en esta vista.");return;}
+  try{await dlCap.save({filename:name,data});toast(name+" guardado");}catch(e){if(e?.code!=="declined")toast("No se pudo descargar");}}
+$("ySvgDl").onclick=()=>save(`god-rays-${ys.seed}.svg`,last);
+$("yPng").onclick=async()=>{const[W,H]=RATIOS[ys.ratio],url=URL.createObjectURL(new Blob([last],{type:"image/svg+xml"}));
+  try{const im=new Image();im.src=url;await im.decode();const c=document.createElement("canvas");c.width=W;c.height=H;c.getContext("2d").drawImage(im,0,0);
+    const b=await new Promise(r=>c.toBlob(r,"image/png"));await save(`god-rays-${ys.seed}.png`,new Uint8Array(await b.arrayBuffer()));}finally{URL.revokeObjectURL(url);}};
+return{show(){update();}};
+})();
+
+const VIEWS={laminas:"view-laminas",gradients:"view-gradients",dots:"view-gradients",mix:"view-gradients",grain:"view-grain",lens:"view-lens",wave:"view-wave",rays:"view-rays",god:"view-god",discards:"view-discards"};
 function showView(v){if(!VIEWS[v])v="laminas";
   for(const id of new Set(Object.values(VIEWS)))$(id).hidden=id!==VIEWS[v];
   // discarded tools live behind the Descartes tab
   const tab=v==="gradients"||v==="dots"?"discards":v;
   for(const id of Object.keys(VIEWS))$("tab-"+id).setAttribute("aria-selected",String(id===tab));
-  if(v==="rays")LR.show();else if(v==="wave")WL.show();else if(v==="lens")LD.show();else if(v==="grain")GG.show();
+  if(v==="god")GR.show();else if(v==="rays")LR.show();else if(v==="wave")WL.show();else if(v==="lens")LD.show();else if(v==="grain")GG.show();
   else if(v==="gradients"||v==="dots"||v==="mix")G.show(v==="dots"?"dots":v==="mix"?"mix":"gradient");
   try{history.replaceState(null,"","#"+v);}catch(e){}
 }
