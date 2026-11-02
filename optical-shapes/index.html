@@ -611,7 +611,7 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
     </div>
     <div class="group">
       <div class="lbl">Formato</div>
-      <div class="seg" id="rRatio" style="grid-template-columns:repeat(5,1fr)"></div>
+      <div class="seg" id="rRatio" style="grid-template-columns:repeat(3,1fr)"></div>
     </div>
     <div class="actions">
       <button class="btn primary" id="rGen" title="Nueva semilla (R)">Nueva semilla</button>
@@ -2186,8 +2186,8 @@ sync();return{show(){update();}};
    build up dark density, the way overlapping light filters subtract to black. */
 const LR=(()=>{
 const PALS={suave:["#fad6ae","#ebab9e","#97a7d6","#50425c"],vivo:["#fce097","#ff898d","#75c5ef","#b88dd2"]},BLACK="#151515",PAPER="#f7f7f7";
-const RATIOS={"16:9":[3200,1800],"3:2":[3000,2000],"1:1":[3000,3000],"4:5":[2400,3000],"9:16":[1800,3200]};
-const rs={style:"dots",blur:0.35,src:"img",gamma:1.2,inv:false,hue:true,n:3,spread:10,base:0.05,fade:0.55,dens:0.55,dot:2.2,pal:"suave",bg:PAPER,ratio:"16:9",seed:Math.floor(Math.random()*1e6),rays:[]};
+const RATIOS={"Imagen":null,"16:9":[3200,1800],"3:2":[3000,2000],"1:1":[3000,3000],"4:5":[2400,3000],"9:16":[1800,3200]};
+const rs={style:"dots",blur:0.35,src:"img",gamma:1.2,inv:false,hue:true,n:3,spread:10,base:0.05,fade:0.55,dens:0.55,dot:2.2,pal:"suave",bg:PAPER,ratio:"Imagen",seed:Math.floor(Math.random()*1e6),rays:[]};
 function rngR(seed){let t=seed>>>0;return()=>{t=t+1831565813>>>0;let e=t;e=Math.imul(e^e>>>15,e|1);e^=e+Math.imul(e^e>>>7,e|61);return((e^e>>>14)>>>0)/4294967296;};}
 // default layout: sources around the frame, all aimed through the middle so they cross
 function layout(){const r=rngR(rs.seed^0x5f3759df),out=[];for(let i=0;i<6;i++){const a=Math.PI*2*i/6+r()*0.6,R=0.48;
@@ -2195,19 +2195,20 @@ function layout(){const r=rngR(rs.seed^0x5f3759df),out=[];for(let i=0;i<6;i++){c
 rs.rays=layout();
 // image source: a small grid of darkness and colour; the dots are the shader that redraws it
 let src=null,srcName="Ejemplo",srcBmp=null;
+function dims(){if(rs.ratio==="Imagen"){const b=srcBmp||{width:1600,height:900},k=3200/Math.max(b.width,b.height);return[Math.round(b.width*k),Math.round(b.height*k)];}return RATIOS[rs.ratio]||[3200,1800];}
 function sample(){const c=document.createElement("canvas");c.width=1600;c.height=900;const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,1600,900);
   const g=x.createRadialGradient(560,380,40,620,450,330);g.addColorStop(0,"#fad6ae");g.addColorStop(0.55,"#ebab9e");g.addColorStop(1,"#50425c");x.fillStyle=g;x.beginPath();x.arc(620,450,330,0,7);x.fill();
   const g2=x.createLinearGradient(980,150,1400,750);g2.addColorStop(0,"#97a7d6");g2.addColorStop(1,"#151515");x.fillStyle=g2;x.fillRect(1000,170,330,560);return c;}
-function loadSrc(bmp,name){srcBmp=bmp;srcName=name;const[W,H]=RATIOS[rs.ratio],S=420/Math.max(W,H),gw=Math.round(W*S),gh=Math.round(H*S),c=document.createElement("canvas");c.width=gw;c.height=gh;
-  const x=c.getContext("2d",{willReadFrequently:true});x.fillStyle="#fff";x.fillRect(0,0,gw,gh);const k=(rs.style==="map"?Math.max:Math.min)(gw/bmp.width,gh/bmp.height);x.drawImage(bmp,(gw-bmp.width*k)/2,(gh-bmp.height*k)/2,bmp.width*k,bmp.height*k);
-  src={gw,gh,d:x.getImageData(0,0,gw,gh).data,ratio:rs.ratio,style:rs.style};$("rFileName").textContent=name;
+function loadSrc(bmp,name){srcBmp=bmp;srcName=name;const[W,H]=dims(),S=420/Math.max(W,H),gw=Math.round(W*S),gh=Math.round(H*S),c=document.createElement("canvas");c.width=gw;c.height=gh;
+  const x=c.getContext("2d",{willReadFrequently:true});x.fillStyle="#fff";x.fillRect(0,0,gw,gh);const k=Math.min(gw/bmp.width,gh/bmp.height);x.drawImage(bmp,(gw-bmp.width*k)/2,(gh-bmp.height*k)/2,bmp.width*k,bmp.height*k);
+  src={gw,gh,d:x.getImageData(0,0,gw,gh).data,ratio:rs.ratio,style:rs.style,bmp};$("rFileName").textContent=name;
   const t=$("rThumb"),tk=Math.min(240/bmp.width,88/bmp.height);t.width=Math.round(bmp.width*tk);t.height=Math.round(bmp.height*tk);t.getContext("2d").drawImage(bmp,0,0,t.width,t.height);}
 const hx=c=>[1,3,5].map(i=>parseInt(c.slice(i,i+2),16));
 // k: output px per canvas px
 function draw(ctx,w,h,k,transparent){
   const cols=PALS[rs.pal],n=rs.n,r=rngR(rs.seed),W=w*k,H=h*k,masks=[];
   const L=document.createElement("canvas");L.width=w;L.height=h;const lx=L.getContext("2d");
-  if(rs.src==="img"){if(!src||src.ratio!==rs.ratio||src.style!==rs.style)loadSrc(srcBmp||sample(),srcName);
+  if(rs.src==="img"){if(!src||src.ratio!==rs.ratio||src.style!==rs.style||src.bmp!==srcBmp)loadSrc(srcBmp||sample(),srcName);
     if(rs.style==="map"){ // gradient map: luminance through black → palette (dark to light) → white, then blurred
       const ramp=[BLACK,...cols.slice().sort((a,b)=>{const L=c=>{const v=hx(c);return .2126*v[0]+.7152*v[1]+.0722*v[2];};return L(a)-L(b);}),PAPER].map(hx);
       const{gw,gh,d}=src,sm=document.createElement("canvas");sm.width=gw;sm.height=gh;const sx=sm.getContext("2d"),im=sx.createImageData(gw,gh);
@@ -2246,7 +2247,7 @@ function compose(ctx,w,h,masks,cols,transparent){const n=masks.length;
     if(!transparent&&cnt){const t=a/255;c=[0,1,2].map(j=>bg[j]+(c[j]-bg[j])*t);a=255;}
     D[o]=c[0];D[o+1]=c[1];D[o+2]=c[2];D[o+3]=a;}
   ctx.putImageData(im,0,0);}
-function render(){const[W,H]=RATIOS[rs.ratio],plate=$("rPlate"),cv=$("rCanvas");plate.style.setProperty("--ar",`${W}/${H}`);plate.style.background=rs.bg;
+function render(){const[W,H]=dims(),plate=$("rPlate"),cv=$("rCanvas");plate.style.setProperty("--ar",`${W}/${H}`);plate.style.background=rs.bg;
   const rc=plate.getBoundingClientRect(),dpr=devicePixelRatio||1;if(!rc.width)return;cv.width=Math.round(rc.width*dpr);cv.height=Math.round(rc.height*dpr);
   draw(cv.getContext("2d"),cv.width,cv.height,W/cv.width,true);$("rSeedTag").textContent="#"+rs.seed;$("rMeta").textContent=`PNG ${W} × ${H} px`;handles();}
 let raf=0;const update=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(render);};
@@ -2281,7 +2282,7 @@ $("rFile").addEventListener("change",e=>{rFile(e.target.files?.[0]);e.target.val
   st.addEventListener("drop",e=>{e.preventDefault();st.classList.remove("drop");rFile(e.dataTransfer.files[0]);});}
 addEventListener("paste",e=>{if($("view-rays").hidden)return;const it=[...(e.clipboardData?.items||[])].find(i=>i.kind==="file"&&i.type.startsWith("image/"));if(it){e.preventDefault();rFile(it.getAsFile());}});
 addEventListener("keydown",e=>{if($("view-rays").hidden||e.metaKey||e.ctrlKey||e.altKey||e.target.closest("input,textarea"))return;if(e.key==="r"||e.key==="R")reseed();});
-$("rPng").onclick=async()=>{const[W,H]=RATIOS[rs.ratio],c=document.createElement("canvas");c.width=W;c.height=H;draw(c.getContext("2d"),W,H,1,true);
+$("rPng").onclick=async()=>{const[W,H]=dims(),c=document.createElement("canvas");c.width=W;c.height=H;draw(c.getContext("2d"),W,H,1,true);
   const b=await new Promise(r=>c.toBlob(r,"image/png"));if(!dlCap){try{if(window.claude?.use)dlCap=await window.claude.use("downloads");}catch(e){}}
   if(!dlCap){toast("La descarga no está disponible en esta vista.");return;}
   try{await dlCap.save({filename:`light-rays-${rs.seed}.png`,data:new Uint8Array(await b.arrayBuffer())});toast("PNG guardado");}catch(e){if(e?.code!=="declined")toast("No se pudo descargar");}};
