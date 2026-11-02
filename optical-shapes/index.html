@@ -535,6 +535,7 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
     </div>
     <div class="group">
       <div class="lbl">Color</div>
+      <div class="seg" id="wPal" style="grid-template-columns:1fr 1fr"></div>
       <div class="seg" id="wMode" style="grid-template-columns:repeat(3,1fr)"></div>
       <div class="swatches"><span id="wMainLbl">Principal</span><div class="sw" id="wMainSw" style="grid-template-columns:repeat(6,1fr)"></div>
         <span id="wLineLbl">Líneas</span><div class="sw" id="wLineSw" style="grid-template-columns:repeat(6,1fr)"></div></div>
@@ -1942,13 +1943,16 @@ return{show(){if(!ready){ready=true;mapHref=makeMap();sync();loadSvg(SAMPLE,"Per
    One solid main wave and a family of dotted echoes: each echo is the same wave at a smaller (or larger)
    amplitude, so they all pinch together where the wave crosses its axis. Echoes are scattered dots. */
 const WL=(()=>{
-const PAL=[["#f7f7f7","Blanco"],["#fce097","Amarillo"],["#ff898d","Rosa"],["#75c5ef","Celeste"],["#b88dd2","Lila"],["#151515","Negro"]];
+// two palettes with the same roles by index: light, four colours, dark
+const PALS={vivo:[["#f7f7f7","Blanco"],["#fce097","Amarillo"],["#ff898d","Rosa"],["#75c5ef","Celeste"],["#b88dd2","Lila"],["#151515","Negro"]],
+  suave:[["#f7f7f7","Blanco"],["#fad6ae","Durazno"],["#ebab9e","Coral"],["#97a7d6","Azul"],["#50425c","Ciruela"],["#171717","Negro"]]};
+let PAL=PALS.vivo;const LIGHT=()=>PAL[0][0],DARK=()=>PAL[5][0];
 const RATIOS={"16:9":[3200,1800],"3:2":[3000,2000],"1:1":[3000,3000],"4:5":[2400,3000],"9:16":[1800,3200]};
 const ws={cyc:1.5,amp:0.6,ph:0,stroke:6,glow:0.5,dir:"in",lines:12,open:0.9,fade:0.45,dens:0.6,dot:2.4,jit:0.15,
   mode:"mix",main:"#f7f7f7",line:"#75c5ef",bg:"#151515",grid:false,ratio:"16:9",preset:"onda",yaw:15,pitch:15,loop:true,seed:Math.floor(Math.random()*1e6)};
 function rngW(seed){let t=seed>>>0;return()=>{t=t+1831565813>>>0;let e=t;e=Math.imul(e^e>>>15,e|1);e^=e+Math.imul(e^e>>>7,e|61);return((e^e>>>14)>>>0)/4294967296;};}
 const usable=()=>PAL.map(p=>p[0]).filter(c=>c!==ws.bg);
-const DOTC=["#fce097","#ff898d","#75c5ef","#b88dd2"];
+const dotc=()=>PAL.slice(1,5).map(p=>p[0]);
 // geometry in output pixels
 function scene(){
   const[W,H]=RATIOS[ws.ratio],A=ws.amp*H/2,ph=ws.ph*Math.PI/180,k=2*Math.PI*(ws.loop&&ws.preset==='onda'?Math.max(1,Math.round(ws.cyc)):ws.cyc)/W,r=rngW(ws.seed);
@@ -1970,7 +1974,7 @@ function scene(){
 // with distance and change colour band by band (each band dithers into the next), so they read as gradients.
 function sceneClose(W,H,main,r){
   const k=2*Math.PI*(ws.loop?Math.max(1,Math.round(ws.cyc*0.35)):ws.cyc*0.35)/W,A=ws.amp*H*0.35,ph=ws.ph*Math.PI/180,yAt=x=>H*0.42+A*Math.sin(k*x+ph);
-  const band=H*0.05*(0.4+ws.open*1.6),N=Math.round(ws.dens*42000),cols=DOTC,bands=[...Array(cols.length)].map(()=>[]);
+  const band=H*0.05*(0.4+ws.open*1.6),N=Math.round(ws.dens*42000),cols=dotc(),bands=[...Array(cols.length)].map(()=>[]);
   const side=()=>ws.dir==="in"?1:ws.dir==="out"?-1:(r()<0.5?1:-1);
   for(let q=0;q<N;q++){const x=r()*W,d=-Math.log(1-r()*0.995)*band*ws.lines/6,sgn=side(),off=Math.max(ws.stroke*0.5+ws.dot,d+ws.stroke*0.8+(r()-0.5)*ws.jit*band*0.6),y=yAt(x)+sgn*off;
     if(y<0||y>H)continue;const ci=Math.floor(Math.max(0,d/band+(r()-0.5)*1.2))%cols.length;bands[ci].push([x,y,ws.dot,1]);}
@@ -1985,16 +1989,16 @@ function scene3D(W,H,cols,main,r){
   const helix=ws.preset!=="campos";
   const E=t=>{const x=(t-0.5)*2*L,w=TW*t+ph;return helix?[x,a*Math.cos(w),a*Math.sin(w)]:[x,a*Math.sin(w),0];};
   const B=t=>{const x=(t-0.5)*2*L,w=TW*t+ph;return helix?[x,a*Math.cos(w+Math.PI/2)*0.92,a*Math.sin(w+Math.PI/2)*0.92]:[x,0,a*Math.sin(w)];};
-  const c1="#ff898d",c2="#75c5ef";
+  const c1=PAL[2][0],c2=PAL[3][0];
   const curves=[[E,c1],[B,c2]].map(([F,col])=>{const pts=[];for(let i=0;i<=600;i++){const p=proj(F(i/600));pts.push([p[0],p[1]]);}return{col,pts};});
   const ax=[proj([-L,0,0]),proj([L,0,0])];curves.unshift({col:main,pts:[[ax[0][0],ax[0][1]],[ax[1][0],ax[1][1]]],thin:true});
   const lines=[],n=Math.max(4,Math.round(ws.lines*ws.cyc*2.2));
   [[E,c1],[B,c2]].forEach(([F,col],ci)=>{for(let i=0;i<=n;i++){const t=(i+ci*0.5)/n;if(t>1)continue;const p=F(t),o=[p[0],0,0],P=proj(p),O=proj(o);
     const len=Math.hypot(P[0]-O[0],P[1]-O[1]),m=Math.max(2,Math.round(len/7*ws.dens*2)),dots=[];
     for(let q=0;q<m;q++){const u=r(),g=(r()-0.5)*ws.jit*6;dots.push([O[0]+(P[0]-O[0])*u+g,O[1]+(P[1]-O[1])*u+g,ws.dot,1]);}
-    lines.push({col:DOTC[(i+ci*2)%DOTC.length],dots});}});
+    lines.push({col:dotc()[(i+ci*2)%dotc().length],dots});}});
   return{W,H,curves,lines};}
-function grid(ctx,W,H,s){if(!ws.grid)return;ctx.save();ctx.strokeStyle=ws.bg==="#151515"?"rgba(117,197,239,.18)":"rgba(21,21,21,.12)";ctx.lineWidth=2*s;
+function grid(ctx,W,H,s){if(!ws.grid)return;ctx.save();ctx.strokeStyle=ws.bg===DARK()?"rgba(117,197,239,.18)":"rgba(21,21,21,.12)";ctx.lineWidth=2*s;
   const n=8,st=H/n;for(let y=st/2;y<H;y+=st){ctx.beginPath();ctx.moveTo(0,y*s);ctx.lineTo(W*s,y*s);ctx.stroke();}
   for(let x=(W%st)/2;x<=W;x+=st){ctx.beginPath();ctx.moveTo(x*s,0);ctx.lineTo(x*s,H*s);ctx.stroke();}ctx.restore();}
 function wrapDots(S){if(!(ws.loop&&(ws.preset==='onda'||ws.preset==='cerca')))return S;
@@ -2005,7 +2009,7 @@ function draw(ctx,s,withGrid,dotsOnly){const S=wrapDots(scene()),{W,H}=S;ctx.cle
   ctx.globalAlpha=1;ctx.lineCap="round";ctx.lineJoin="round";
   for(const C of S.curves){const line=()=>{ctx.beginPath();C.pts.forEach(([x,y],i)=>i?ctx.lineTo(x*s,y*s):ctx.moveTo(x*s,y*s));ctx.stroke();};ctx.strokeStyle=C.col;
     const sw=C.thin?Math.max(1,ws.stroke*0.3):ws.stroke;
-    const mono=C.col==="#f7f7f7"||C.col==="#151515";
+    const mono=C.col===LIGHT()||C.col===DARK();
     if(ws.glow>0&&!C.thin&&!mono){ctx.save();ctx.globalAlpha=0.55*ws.glow;ctx.filter=`blur(${(sw*2.5*s).toFixed(1)}px)`;ctx.lineWidth=sw*3*s;line();ctx.restore();}
     ctx.lineWidth=sw*s;line();}
   return S;}
@@ -2015,11 +2019,11 @@ function svgString(){const S=wrapDots(scene()),{W,H}=S,f=v=>+v.toFixed(1),out=[]
   // every dot of one colour is a single compound path (one layer per colour), so Figma stays light
   const byCol=new Map();for(const L of S.lines){if(!byCol.has(L.col))byCol.set(L.col,[]);const P=byCol.get(L.col);
     for(const[x,y,r]of L.dots)P.push(`M${f(x-r)} ${f(y)}a${f(r)} ${f(r)} 0 1 0 ${f(2*r)} 0a${f(r)} ${f(r)} 0 1 0 ${f(-2*r)} 0`);}
-  const NAMES={"#f7f7f7":"Blanco","#fce097":"Amarillo","#ff898d":"Rosa","#75c5ef":"Celeste","#b88dd2":"Lila","#151515":"Negro"};
+  const NAMES=Object.fromEntries(PAL);
   for(const[col,P]of byCol)if(P.length)out.push(`<path id="Puntos ${NAMES[col]||col}" fill="${col}" d="${P.join("")}"/>`);
   S.curves.forEach((C,i)=>{const d="M"+C.pts.map(([x,y])=>`${f(x)} ${f(y)}`).join(" L"),sw=C.thin?Math.max(1,ws.stroke*0.3):ws.stroke;
     out.push(`<g id="${C.thin?"Eje":"Curva "+(i||1)}" fill="none" stroke="${C.col}" stroke-linecap="round" stroke-linejoin="round">`);
-    if(ws.glow>0&&!C.thin&&C.col!=="#f7f7f7"&&C.col!=="#151515")out.push(`<path d="${d}" stroke-width="${f(sw*3)}" opacity="${(0.55*ws.glow).toFixed(2)}" filter="url(#glow)"/>`);
+    if(ws.glow>0&&!C.thin&&C.col!==LIGHT()&&C.col!==DARK())out.push(`<path d="${d}" stroke-width="${f(sw*3)}" opacity="${(0.55*ws.glow).toFixed(2)}" filter="url(#glow)"/>`);
     out.push(`<path d="${d}" stroke-width="${f(sw)}"/></g>`);});
   out.push("</svg>");return out.join("\n");}
 function render(){const[W,H]=RATIOS[ws.ratio],plate=$("wPlate"),cv=$("wCanvas");plate.style.setProperty("--ar",`${W}/${H}`);plate.style.background=ws.bg;
@@ -2040,7 +2044,10 @@ seg($("wPreset"),[["onda","Onda"],["pulso","Pulso"],["cerca","Cerca"],["campos",
   });
 seg($("wDir"),[["in","Adentro"],["out","Afuera"],["both","Ambos"]],()=>ws.dir,v=>ws.dir=v);
 seg($("wMode"),[["uni","Uniforme"],["multi","Multicolor"],["mix","Mixto"]],()=>ws.mode,v=>ws.mode=v);
-seg($("wBg"),[["#151515","Fondo negro"],["#f7f7f7","Fondo blanco"]],()=>ws.bg,v=>{ws.bg=v;if(ws.main===v)ws.main=usable()[v==="#151515"?0:usable().length-1];if(ws.line===v)ws.line=ws.main;});
+seg($("wBg"),[["dark","Fondo negro"],["light","Fondo blanco"]],()=>ws.bg===DARK()?"dark":"light",v=>{ws.bg=v==="dark"?DARK():LIGHT();if(ws.main===ws.bg)ws.main=v==="dark"?LIGHT():DARK();if(ws.line===ws.bg)ws.line=ws.main;});
+// switching palette keeps every colour's role (same index in the other palette)
+seg($("wPal"),[["vivo","Vivo"],["suave","Suave"]],()=>Object.keys(PALS).find(k=>PALS[k]===PAL),v=>{const old=PAL.map(p=>p[0]);PAL=PALS[v];
+  for(const k of["main","line","bg"]){const i=old.indexOf(ws[k]);if(i>=0)ws[k]=PAL[i][0];}});
 seg($("wRatio"),Object.keys(RATIOS).map(k=>[k,k]),()=>ws.ratio,v=>ws.ratio=v);
 $("w_grid").addEventListener("change",e=>{ws.grid=e.target.checked;update();});
 $("w_loop").addEventListener("change",e=>{ws.loop=e.target.checked;update();});
