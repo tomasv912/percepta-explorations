@@ -640,11 +640,8 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
       <div class="row"><span>Difusos</span><span class="v" id="y_softV"></span><input type="range" id="y_soft" min="0" max="1" step="0.01"></div>
       <div class="row"><span>Desvanecer</span><span class="v" id="y_fadeV"></span><input type="range" id="y_fade" min="0" max="1" step="0.01"></div>
       <div class="row"><span>Dispersión de color</span><span class="v" id="y_prismV"></span><input type="range" id="y_prism" min="0" max="1" step="0.01"></div>
-    </div>
-    <div class="group">
-      <div class="lbl">Polvo</div>
-      <div class="row"><span>Cantidad</span><span class="v" id="y_dustV"></span><input type="range" id="y_dust" min="0" max="1" step="0.01"></div>
-      <div class="row"><span>Tamaño</span><span class="v" id="y_dotV"></span><input type="range" id="y_dot" min="0.5" max="8" step="0.1"></div>
+      <div class="row"><span>Gradiente paleta</span><span class="v" id="y_rainV"></span><input type="range" id="y_rain" min="0" max="1" step="0.01"></div>
+      <div class="row"><span>Blur definidos</span><span class="v" id="y_cblurV"></span><input type="range" id="y_cblur" min="0" max="1" step="0.01"></div>
     </div>
     <div class="group">
       <div class="lbl">Color</div>
@@ -2300,41 +2297,41 @@ const GR=(()=>{
 const PALS={suave:["#f7f7f7","#fad6ae","#ebab9e","#97a7d6","#50425c"],vivo:["#f7f7f7","#fce097","#ff898d","#75c5ef","#b88dd2"]};
 const NAMES={"#f7f7f7":"Blanco","#fad6ae":"Durazno","#ebab9e":"Coral","#97a7d6":"Azul","#50425c":"Ciruela","#fce097":"Amarillo","#ff898d":"Rosa","#75c5ef":"Celeste","#b88dd2":"Lila"};
 const RATIOS={"16:9":[3200,1800],"3:2":[3000,2000],"1:1":[3000,3000],"4:5":[2400,3000],"9:16":[1800,3200]};
-const ys={dir:30,spread:30,len:1,n:18,width:1,soft:0.6,fade:0.6,prism:0.5,dust:0.5,dot:2.6,pal:"suave",bg:"#151515",ratio:"16:9",S:[0.12,0.0],seed:Math.floor(Math.random()*1e6)};
+const ys={dir:30,spread:30,len:1,n:18,width:1,soft:0.6,fade:0.6,prism:0.4,rain:0.35,cblur:0.3,pal:"suave",bg:"#151515",ratio:"16:9",S:[0.12,0.0],seed:Math.floor(Math.random()*1e6)};
 function rngY(seed){let t=seed>>>0;return()=>{t=t+1831565813>>>0;let e=t;e=Math.imul(e^e>>>15,e|1);e^=e+Math.imul(e^e>>>7,e|61);return((e^e>>>14)>>>0)/4294967296;};}
 function build(){
   const[W,H]=RATIOS[ys.ratio],r=rngY(ys.seed),P=PALS[ys.pal],f=v=>+v.toFixed(1),D=Math.hypot(W,H)*ys.len,sx=ys.S[0]*W,sy=ys.S[1]*H;
   const th=ys.dir*Math.PI/180,sp=ys.spread*Math.PI/180,defs=[],soft=[[],[],[]],sharp=[],fr=[];
-  const ray=(a,len,w0,w1,col,op,fadeAt,id,off=0)=>{const ux=Math.cos(a),uy=Math.sin(a),px=-uy,py=ux,ox=sx+px*off,oy=sy+py*off,ex=ox+ux*len,ey=oy+uy*len;
-    defs.push(`<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${f(ox)}" y1="${f(oy)}" x2="${f(ex)}" y2="${f(ey)}"><stop offset="0" stop-color="${col}" stop-opacity="${op.toFixed(2)}"/><stop offset="${fadeAt.toFixed(2)}" stop-color="${col}" stop-opacity="${(op*0.8).toFixed(2)}"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient>`);
-    return `<path d="M${f(ox+px*w0/2)} ${f(oy+py*w0/2)}L${f(ex+px*w1/2)} ${f(ey+py*w1/2)}L${f(ex-px*w1/2)} ${f(ey-py*w1/2)}L${f(ox-px*w0/2)} ${f(oy-py*w0/2)}Z" fill="url(#${id})"/>`;};
-  const base=Math.min(W,H)*0.004*ys.width;
-  // a wide, very soft core that gives the beam its glow
-  soft[2].push(ray(th,D*0.85,base*4,D*Math.tan(sp/2)*0.9+base*20,P[1],0.35,Math.max(0.02,(1-ys.fade)*0.3),"ycore"));
-  for(let i=0;i<ys.n;i++){const a=th+(r()-0.5)*sp,len=D*(0.35+0.65*r()),isSoft=r()<ys.soft,fadeAt=Math.max(0.02,(1-ys.fade)*(0.2+0.6*r()));
+  // every ray is a triangle with its tip exactly on the source, so they all leave the same point
+  const ray=(a,len,w1,col,op,fadeAt,id,rainbow)=>{const ux=Math.cos(a),uy=Math.sin(a),px=-uy,py=ux,ex=sx+ux*len,ey=sy+uy*len;
+    const stops=rainbow?[...[P[1],P[2],P[3],P[4]].map((c,k)=>`<stop offset="${(k/3*Math.min(0.95,fadeAt+0.3)).toFixed(2)}" stop-color="${c}" stop-opacity="${op.toFixed(2)}"/>`),`<stop offset="1" stop-color="${P[4]}" stop-opacity="0"/>`].join("")
+      :`<stop offset="0" stop-color="${col}" stop-opacity="${op.toFixed(2)}"/><stop offset="${fadeAt.toFixed(2)}" stop-color="${col}" stop-opacity="${(op*0.8).toFixed(2)}"/><stop offset="1" stop-color="${col}" stop-opacity="0"/>`;
+    defs.push(`<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${f(sx)}" y1="${f(sy)}" x2="${f(ex)}" y2="${f(ey)}">${stops}</linearGradient>`);
+    return `<path d="M${f(sx)} ${f(sy)}L${f(ex+px*w1/2)} ${f(ey+py*w1/2)}L${f(ex-px*w1/2)} ${f(ey-py*w1/2)}Z" fill="url(#${id})"/>`;};
+  const base=Math.min(W,H)*0.004*ys.width,sharpB=[[],[],[]];
+  soft[2].push(ray(th,D*0.85,D*Math.tan(sp/2)*0.9+base*20,P[1],0.35,Math.max(0.02,(1-ys.fade)*0.3),"ycore"));
+  for(let i=0;i<ys.n;i++){const a=th+(r()-0.5)*sp,len=D*(0.35+0.65*r()),fadeAt=Math.max(0.02,(1-ys.fade)*(0.2+0.6*r()));
     const col=r()<0.7?P[0]:P[1+Math.floor(r()*3)];
-    if(isSoft){const lvl=Math.floor(r()*3),w1=base*(6+r()*22);soft[lvl].push(ray(a,len,base*(1+r()*3),w1,col,0.25+0.35*r(),fadeAt,"yr"+i));}
-    else{const w1=base*(1.2+r()*4);sharp.push(ray(a,len,base*0.4,w1,col,0.55+0.45*r(),fadeAt,"yr"+i));
-      // prism: thin coloured copies beside the crisp ray
-      if(r()<ys.prism){const fc=[P[2],P[1],P[3]];fc.forEach((c,j)=>{fr.push(ray(a+0.004*(j-1),len*0.92,base*0.3,w1*0.7,c,0.75,fadeAt,`yf${i}_${j}`,(j-1)*w1*0.9+w1*1.1));});}}}
-  // dust: equal dots within the fan, densest a third of the way out
-  const dots=new Map(),N=Math.round(ys.dust*2600),rd=ys.dot;
-  for(let q=0;q<N;q++){const a=th+(r()+r()-1)*sp*0.55,t=D*(0.12+0.75*Math.pow(r(),0.8)),x=sx+Math.cos(a)*t,y=sy+Math.sin(a)*t;if(x<0||y<0||x>W||y>H)continue;
-    const c=r()<0.55?P[1]:r()<0.6?P[0]:P[2+Math.floor(r()*2)];if(!dots.has(c))dots.set(c,[]);dots.get(c).push(`M${f(x-rd)} ${f(y)}a${rd} ${rd} 0 1 0 ${f(2*rd)} 0a${rd} ${rd} 0 1 0 ${f(-2*rd)} 0`);}
-  const bl=[0.006,0.014,0.03].map(k=>k*Math.min(W,H));
+    if(r()<ys.soft){soft[Math.floor(r()*3)].push(ray(a,len,base*(6+r()*22),col,0.25+0.35*r(),fadeAt,"yr"+i));continue;}
+    const w1=base*(1.2+r()*4),rain=r()<ys.rain,lvl=ys.cblur>0?Math.floor(r()*3):-1,html=ray(a,len,w1,col,0.55+0.45*r(),fadeAt,"yr"+i,rain);
+    (lvl<0?sharp:sharpB[lvl]).push(html);
+    // prism: thin coloured rays fanning out by a hair from the same point
+    if(r()<ys.prism)[P[2],P[1],P[3]].forEach((c,j)=>fr.push(ray(a+(j-1)*0.006+0.004,len*0.92,w1*0.6,c,0.75,fadeAt,`yf${i}_${j}`)));}
+  const bl=[0.006,0.014,0.03].map(k=>k*Math.min(W,H)),cb=[0.2,0.55,1].map(k=>Math.max(0.3,k*ys.cblur*0.008*Math.min(W,H)));
   defs.push(...bl.map((b,i)=>`<filter id="yb${i}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${f(b)}"/></filter>`));
+  defs.push(...cb.map((b,i)=>`<filter id="yc${i}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="${f(b)}"/></filter>`));
   const out=[`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`,`<defs>${defs.join("")}</defs>`];
   soft.forEach((g,i)=>{if(g.length)out.push(`<g id="Rayos difusos ${i+1}" filter="url(#yb${i})">${g.join("")}</g>`);});
   if(sharp.length)out.push(`<g id="Rayos definidos">${sharp.join("")}</g>`);
+  sharpB.forEach((g,i)=>{if(g.length)out.push(`<g id="Rayos definidos blur ${i+1}" filter="url(#yc${i})">${g.join("")}</g>`);});
   if(fr.length)out.push(`<g id="Dispersión de color">${fr.join("")}</g>`);
-  for(const[c,p]of dots)out.push(`<path id="Polvo ${NAMES[c]||c}" fill="${c}" d="${p.join("")}"/>`);
   out.push("</svg>");return{W,H,svg:out.join("\n"),count:ys.n+fr.length};}
 let last="";
 function render(){const S=build();last=S.svg;const plate=$("yPlate");plate.style.setProperty("--ar",`${S.W}/${S.H}`);plate.style.background=ys.bg;
   const svg=$("ySvg");svg.setAttribute("viewBox",`0 0 ${S.W} ${S.H}`);svg.innerHTML=S.svg.replace(/^<svg[^>]*>|<\/svg>$/g,"");
   const h=$("yS");h.style.left=ys.S[0]*100+"%";h.style.top=ys.S[1]*100+"%";$("ySeedTag").textContent="#"+ys.seed;$("yMeta").textContent=`${S.count} rayos · ${S.W} × ${S.H} px`;}
 let raf=0;const update=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(render);};
-const pct=v=>Math.round(v*100)+"%",fmt={dir:v=>v+"°",spread:v=>v+"°",len:pct,n:String,width:v=>(+v).toFixed(2)+"×",soft:pct,fade:pct,prism:pct,dust:pct,dot:v=>(+v).toFixed(1)+" px"};
+const pct=v=>Math.round(v*100)+"%",fmt={dir:v=>v+"°",spread:v=>v+"°",len:pct,n:String,width:v=>(+v).toFixed(2)+"×",soft:pct,fade:pct,prism:pct,rain:pct,cblur:pct};
 const setv=(k,v)=>{ys[k]=v;$("y_"+k).value=v;$("y_"+k+"V").textContent=fmt[k](v);};
 for(const k in fmt){const e=$("y_"+k);e.value=ys[k];$("y_"+k+"V").textContent=fmt[k](ys[k]);e.addEventListener("input",()=>{ys[k]=+e.value;$("y_"+k+"V").textContent=fmt[k](ys[k]);update();});}
 const segs=[];function seg(box,items,get,set){box.innerHTML="";for(const[v,l]of items){const b=document.createElement("button");b.className="chip";b.textContent=l;b.dataset.v=v;b.onclick=()=>{set(v);segs.forEach(fn=>fn());update();};box.appendChild(b);}
