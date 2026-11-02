@@ -628,18 +628,49 @@ const expRes = () => RES * +S.expScale;
 let toastT = 0;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600); }
 function download(name, blob) {
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
-  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  // Already cropped here (to the pixels' box), so the toolbar's crop pass is skipped: it would decode the whole image
+  // again, which for a ×4 export is slow and, past the browser's canvas limits, fails.
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.dataset.cropped = '1';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
   toast(name + ' descargado');
 }
-$('#png').addEventListener('click', () => {
+// A PNG drawn in horizontal strips and encoded here, so no canvas ever holds the whole image: browsers cap a canvas's
+// size (Safari at about 16 million pixels) and a ×4 export goes well past it. draw(ctx, y) paints the band starting at
+// row y onto a strip canvas the full width W.
+const crcTable = new Uint32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+const crc32 = (parts) => { let c = 0xFFFFFFFF; for (const d of parts) for (let i = 0; i < d.length; i++) c = crcTable[(c ^ d[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+async function stripPNG(W, H, paint) {
+  const band = Math.max(1, Math.min(H, Math.floor(4e6 / W))), c = document.createElement('canvas'); c.width = W; c.height = band;
+  const ctx = c.getContext('2d', { willReadFrequently: true }), zs = new CompressionStream('deflate'), w = zs.writable.getWriter();
+  const out = new Response(zs.readable).arrayBuffer();
+  for (let y = 0; y < H; y += band) {
+    const h = Math.min(band, H - y); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, band);
+    paint(ctx, y);
+    const d = ctx.getImageData(0, 0, W, h).data, rows = new Uint8Array(h * (W * 4 + 1));
+    for (let r = 0; r < h; r++) rows.set(d.subarray(r * W * 4, (r + 1) * W * 4), r * (W * 4 + 1) + 1); // filter byte 0
+    await w.write(rows);
+  }
+  await w.close();
+  const z = new Uint8Array(await out), chunk = (type, data) => {
+    const t = new TextEncoder().encode(type), len = new Uint8Array(4), crc = new Uint8Array(4);
+    new DataView(len.buffer).setUint32(0, data.length); new DataView(crc.buffer).setUint32(0, crc32([t, data]));
+    return [len, t, data, crc];
+  };
+  const ihdr = new Uint8Array(13), v = new DataView(ihdr.buffer); v.setUint32(0, W); v.setUint32(4, H); ihdr.set([8, 6, 0, 0, 0], 8);
+  return new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), ...chunk('IHDR', ihdr), ...chunk('IDAT', z), ...chunk('IEND', new Uint8Array(0))], { type: 'image/png' });
+}
+$('#png').addEventListener('click', async () => {
   const b = bounds(pts); if (!b) return;
-  const k = expRes(), c = document.createElement('canvas'); c.width = (b.x1 - b.x0) * k; c.height = (b.y1 - b.y0) * k;
-  const ctx = c.getContext('2d'); ctx.setTransform(k, 0, 0, k, 0, 0);
-  if (S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, b.x1 - b.x0, b.y1 - b.y0); }
-  draw(ctx, pts, b.x0, b.y0, k);
-  const suffix = S.expScale === '1' ? '' : `@${S.expScale}x`;
-  c.toBlob(bl => bl ? download(`pixel-model-${S.seed}${suffix}.png`, bl) : toast('No se pudo generar el PNG (demasiado grande).'), 'image/png');
+  const k = expRes(), W = (b.x1 - b.x0) * k, H = (b.y1 - b.y0) * k, suffix = S.expScale === '1' ? '' : `@${S.expScale}x`;
+  const paint = (ctx, y) => { ctx.setTransform(k, 0, 0, k, 0, -y); if (S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, b.x1 - b.x0, b.y1 - b.y0); } draw(ctx, pts, b.x0, b.y0, k); };
+  toast(`Generando PNG ${W} × ${H}…`);
+  try {
+    let blob;
+    if (typeof CompressionStream === 'function') blob = await stripPNG(W, H, paint);
+    else { const c = document.createElement('canvas'); c.width = W; c.height = H; paint(c.getContext('2d'), 0); blob = await new Promise(r => c.toBlob(r, 'image/png')); }
+    if (!blob) throw new Error('png');
+    download(`pixel-model-${S.seed}${suffix}.png`, blob);
+  } catch (err) { toast('No se pudo generar el PNG.'); }
 });
 $('#svg').addEventListener('click', () => {
   const b = bounds(pts); if (!b) return;
