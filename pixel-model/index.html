@@ -212,6 +212,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       </section>
     </div>
     <footer>
+      <div class="seg" data-key="expScale" aria-label="Resolución al exportar" title="Resolución de PNG y SVG">
+        <button data-v="1">×1</button><button data-v="2">×2</button><button data-v="4">×4</button>
+      </div>
       <button class="btn primary big" id="png">Exportar PNG</button>
       <button class="btn big" id="svg">Exportar SVG</button>
     </footer>
@@ -233,7 +236,7 @@ const DEFAULTS = {
   count: 40000, size: 3, contrast: 1.6, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
-  colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
+  colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false, expScale: '1',
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -311,12 +314,12 @@ function colorOf(p) {
   return onBg(c, S.bg);
 }
 // Pixels are drawn where they are now: home plus the animation's offset (p.dx, p.dy).
-function draw(ctx, list, ox = 0, oy = 0) {
+function draw(ctx, list, ox = 0, oy = 0, q = RES) {
   const groups = new Map(), s = S.size;
   for (const p of list) { const c = colorOf(p); let l = groups.get(c); if (!l) groups.set(c, l = []); l.push(p); }
   for (const [c, l] of groups) {
     ctx.fillStyle = c; ctx.beginPath();
-    for (const p of l) ctx.rect(Math.round((p.x + (p.dx || 0) - s / 2 - ox) * RES) / RES, Math.round((p.y + (p.dy || 0) - s / 2 - oy) * RES) / RES, s, s);
+    for (const p of l) ctx.rect(Math.round((p.x + (p.dx || 0) - s / 2 - ox) * q) / q, Math.round((p.y + (p.dy || 0) - s / 2 - oy) * q) / q, s, s);
     ctx.fill();
   }
 }
@@ -620,7 +623,8 @@ addEventListener('paste', e => {
 });
 
 // ---------- Export ----------
-// Cropped to the pixels; background only when asked.
+// Cropped to the pixels; background only when asked. ×1 is the artboard at 2×, ×2 and ×4 double and quadruple that.
+const expRes = () => RES * +S.expScale;
 let toastT = 0;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600); }
 function download(name, blob) {
@@ -630,22 +634,23 @@ function download(name, blob) {
 }
 $('#png').addEventListener('click', () => {
   const b = bounds(pts); if (!b) return;
-  const c = document.createElement('canvas'); c.width = (b.x1 - b.x0) * RES; c.height = (b.y1 - b.y0) * RES;
-  const ctx = c.getContext('2d'); ctx.setTransform(RES, 0, 0, RES, 0, 0);
+  const k = expRes(), c = document.createElement('canvas'); c.width = (b.x1 - b.x0) * k; c.height = (b.y1 - b.y0) * k;
+  const ctx = c.getContext('2d'); ctx.setTransform(k, 0, 0, k, 0, 0);
   if (S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, b.x1 - b.x0, b.y1 - b.y0); }
-  draw(ctx, pts, b.x0, b.y0);
-  c.toBlob(bl => bl ? download(`pixel-model-${S.seed}.png`, bl) : toast('No se pudo generar el PNG.'), 'image/png');
+  draw(ctx, pts, b.x0, b.y0, k);
+  const suffix = S.expScale === '1' ? '' : `@${S.expScale}x`;
+  c.toBlob(bl => bl ? download(`pixel-model-${S.seed}${suffix}.png`, bl) : toast('No se pudo generar el PNG (demasiado grande).'), 'image/png');
 });
 $('#svg').addEventListener('click', () => {
   const b = bounds(pts); if (!b) return;
-  const w = (b.x1 - b.x0) * RES, h = (b.y1 - b.y0) * RES, n = v => Math.round(v * RES * 100) / 100, s = S.size * RES, out = [];
+  const k = expRes(), w = (b.x1 - b.x0) * k, h = (b.y1 - b.y0) * k, n = v => Math.round(v * k * 100) / 100, s = S.size * k, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
   if (S.bgExport) out.push(`<rect width="${w}" height="${h}" fill="${S.bg}"/>`);
   const groups = new Map();
   for (const p of pts) { const c = colorOf(p); groups.set(c, (groups.get(c) || '') + `M${n(p.x + (p.dx || 0) - S.size / 2 - b.x0)} ${n(p.y + (p.dy || 0) - S.size / 2 - b.y0)}h${s}v${s}h${-s}z`); }
   for (const [c, d] of groups) out.push(`<path fill="${c}" d="${d}"/>`);
   out.push('</svg>');
-  download(`pixel-model-${S.seed}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));
+  download(`pixel-model-${S.seed}${S.expScale === '1' ? '' : `@${S.expScale}x`}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));
 });
 
 // A .zip of files as they are (no compression), for the PNG sequence.
