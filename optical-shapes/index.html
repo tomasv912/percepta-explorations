@@ -206,7 +206,7 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
   <button class="tab" role="tab" id="tab-grain" aria-selected="false" aria-controls="view-grain">Grain Gradients</button>
   <button class="tab" role="tab" id="tab-lens" aria-selected="false" aria-controls="view-lens">Lens Dispersion</button>
   <button class="tab" role="tab" id="tab-wave" aria-selected="false" aria-controls="view-wave">Wave Lines</button>
-  <button class="tab" role="tab" id="tab-rays" aria-selected="false" aria-controls="view-rays">Light Rays</button>
+  <button class="tab" role="tab" id="tab-rays" aria-selected="false" aria-controls="view-rays">Light Image</button>
   <button class="tab" role="tab" id="tab-discards" aria-selected="false" aria-controls="view-discards">Descartes</button>
 </nav>
 <div class="app" id="view-laminas" role="tabpanel">
@@ -573,10 +573,23 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
     <div class="canvas"><div class="gplate" id="rPlate"><canvas id="rCanvas" role="img" aria-label="Light rays"></canvas>
       <svg class="gline" id="rLines" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div id="rHandles"></div></div></div>
     <div class="meta"><span id="rMeta"></span></div>
+    <input type="file" id="rFile" accept="image/*" hidden>
   </main>
   <aside class="rail">
-    <div class="brand"><h1>Light Rays</h1><span id="rSeedTag"></span></div>
+    <div class="brand"><h1>Light Image</h1><span id="rSeedTag"></span></div>
     <div class="group">
+      <div class="lbl">Fuente</div>
+      <div class="seg" id="rSrc" style="grid-template-columns:1fr 1fr"></div>
+    </div>
+    <div class="group" id="rImgGroup">
+      <div class="lbl">Imagen</div>
+      <div class="ithumb"><canvas id="rThumb"></canvas></div>
+      <div class="file"><span id="rFileName">Ejemplo</span><button class="btn sm" id="rChange">Cambiar</button></div>
+      <div class="row"><span>Contraste</span><span class="v" id="r_gammaV"></span><input type="range" id="r_gamma" min="0.3" max="3" step="0.05"></div>
+      <label class="tg" for="r_inv"><span>Invertir</span><input type="checkbox" id="r_inv"></label>
+      <label class="tg" for="r_hue"><span>Colores de la imagen</span><input type="checkbox" id="r_hue" checked></label>
+    </div>
+    <div class="group" id="rRayGroup">
       <div class="lbl">Rayos</div>
       <div class="row"><span>Cantidad</span><span class="v" id="r_nV"></span><input type="range" id="r_n" min="2" max="6" step="1"></div>
       <div class="row"><span>Apertura</span><span class="v" id="r_spreadV"></span><input type="range" id="r_spread" min="0" max="45" step="1"></div>
@@ -2131,17 +2144,40 @@ sync();return{show(){update();}};
 const LR=(()=>{
 const PALS={suave:["#fad6ae","#ebab9e","#97a7d6","#50425c"],vivo:["#fce097","#ff898d","#75c5ef","#b88dd2"]},BLACK="#151515",PAPER="#f7f7f7";
 const RATIOS={"16:9":[3200,1800],"3:2":[3000,2000],"1:1":[3000,3000],"4:5":[2400,3000],"9:16":[1800,3200]};
-const rs={n:3,spread:10,base:0.05,fade:0.55,dens:0.55,dot:2.2,pal:"suave",bg:PAPER,ratio:"16:9",seed:Math.floor(Math.random()*1e6),rays:[]};
+const rs={src:"img",gamma:1.2,inv:false,hue:true,n:3,spread:10,base:0.05,fade:0.55,dens:0.55,dot:2.2,pal:"suave",bg:PAPER,ratio:"16:9",seed:Math.floor(Math.random()*1e6),rays:[]};
 function rngR(seed){let t=seed>>>0;return()=>{t=t+1831565813>>>0;let e=t;e=Math.imul(e^e>>>15,e|1);e^=e+Math.imul(e^e>>>7,e|61);return((e^e>>>14)>>>0)/4294967296;};}
 // default layout: sources around the frame, all aimed through the middle so they cross
 function layout(){const r=rngR(rs.seed^0x5f3759df),out=[];for(let i=0;i<6;i++){const a=Math.PI*2*i/6+r()*0.6,R=0.48;
   out.push({A:[0.5+Math.cos(a)*R*0.95,0.5+Math.sin(a)*R],B:[0.5-Math.cos(a)*0.12+(r()-0.5)*0.1,0.5-Math.sin(a)*0.12+(r()-0.5)*0.1]});}return out;}
 rs.rays=layout();
+// image source: a small grid of darkness and colour; the dots are the shader that redraws it
+let src=null,srcName="Ejemplo",srcBmp=null;
+function sample(){const c=document.createElement("canvas");c.width=1600;c.height=900;const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,1600,900);
+  const g=x.createRadialGradient(560,380,40,620,450,330);g.addColorStop(0,"#fad6ae");g.addColorStop(0.55,"#ebab9e");g.addColorStop(1,"#50425c");x.fillStyle=g;x.beginPath();x.arc(620,450,330,0,7);x.fill();
+  const g2=x.createLinearGradient(980,150,1400,750);g2.addColorStop(0,"#97a7d6");g2.addColorStop(1,"#151515");x.fillStyle=g2;x.fillRect(1000,170,330,560);return c;}
+function loadSrc(bmp,name){srcBmp=bmp;srcName=name;const[W,H]=RATIOS[rs.ratio],S=420/Math.max(W,H),gw=Math.round(W*S),gh=Math.round(H*S),c=document.createElement("canvas");c.width=gw;c.height=gh;
+  const x=c.getContext("2d",{willReadFrequently:true});x.fillStyle="#fff";x.fillRect(0,0,gw,gh);const k=Math.min(gw/bmp.width,gh/bmp.height);x.drawImage(bmp,(gw-bmp.width*k)/2,(gh-bmp.height*k)/2,bmp.width*k,bmp.height*k);
+  src={gw,gh,d:x.getImageData(0,0,gw,gh).data,ratio:rs.ratio};$("rFileName").textContent=name;
+  const t=$("rThumb"),tk=Math.min(240/bmp.width,88/bmp.height);t.width=Math.round(bmp.width*tk);t.height=Math.round(bmp.height*tk);t.getContext("2d").drawImage(bmp,0,0,t.width,t.height);}
 const hx=c=>[1,3,5].map(i=>parseInt(c.slice(i,i+2),16));
 // k: output px per canvas px
 function draw(ctx,w,h,k,transparent){
   const cols=PALS[rs.pal],n=rs.n,r=rngR(rs.seed),W=w*k,H=h*k,masks=[];
   const L=document.createElement("canvas");L.width=w;L.height=h;const lx=L.getContext("2d");
+  if(rs.src==="img"){if(!src||src.ratio!==rs.ratio)loadSrc(srcBmp||sample(),srcName);
+    const P=cols.map(hx),N=Math.round(rs.dens*W*H/9),rad=Math.max(0.75,rs.dot/2/k),{gw,gh,d}=src;
+    const lum=new Float32Array(gw*gh),own=new Uint8Array(gw*gh);
+    for(let p=0;p<gw*gh;p++){const R=d[p*4],G=d[p*4+1],B=d[p*4+2];let l=(0.2126*R+0.7152*G+0.0722*B)/255;if(rs.inv)l=1-l;lum[p]=Math.pow(1-l,rs.gamma);
+      // the palette colour closest in hue/tone to this pixel
+      let bi=0,bd=1e9;P.forEach((c,i)=>{const dd=(R-c[0])**2+(G-c[1])**2+(B-c[2])**2;if(dd<bd){bd=dd;bi=i;}});own[p]=bi;}
+    const paths=cols.map(()=>new Path2D());
+    for(let q=0;q<N;q++){const u=r(),v=r(),p=Math.min(gh-1,Math.floor(v*gh))*gw+Math.min(gw-1,Math.floor(u*gw)),dk=lum[p];
+      if(r()>Math.min(1,dk*1.5))continue;const x=u*w,y=v*h,li=rs.hue?own[p]:Math.floor(r()*cols.length);
+      paths[li].moveTo(x+rad,y);paths[li].arc(x,y,rad,0,7);
+      // shadows: a second dot of another colour lands on top, and the overlap turns black
+      if(r()<Math.max(0,dk-0.55)*2){const lj=(li+1+Math.floor(r()*(cols.length-1)))%cols.length,jx=x+(r()-0.5)*rad,jy=y+(r()-0.5)*rad;paths[lj].moveTo(jx+rad,jy);paths[lj].arc(jx,jy,rad,0,7);}}
+    for(let i=0;i<cols.length;i++){lx.clearRect(0,0,w,h);lx.fillStyle="#000";lx.fill(paths[i]);masks.push(lx.getImageData(0,0,w,h).data);}
+    return compose(ctx,w,h,masks,cols,transparent);}
   for(let i=0;i<n;i++){const ray=rs.rays[i],ax=ray.A[0]*W,ay=ray.A[1]*H,bx=ray.B[0]*W,by=ray.B[1]*H,dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
     const reach=Math.hypot(W,H),half=Math.tan(rs.spread*Math.PI/180),b0=rs.base*Math.min(W,H),N=Math.round(rs.dens*W*H/45);
     lx.clearRect(0,0,w,h);lx.fillStyle="#000";lx.beginPath();const rad=Math.max(0.4,rs.dot/2/k);
@@ -2149,11 +2185,13 @@ function draw(ctx,w,h,k,transparent){
       const wdt=b0+t*half,o=(r()+r()+r()-1.5)*0.8*wdt,x=(ax+ux*t-uy*o)/k,y=(ay+uy*t+ux*o)/k;
       if(x<-2||y<-2||x>w+2||y>h+2)continue;lx.moveTo(x+rad,y);lx.arc(x,y,rad,0,7);}
     lx.fill();masks.push(lx.getImageData(0,0,w,h).data);}
+  compose(ctx,w,h,masks,cols,transparent);}
+function compose(ctx,w,h,masks,cols,transparent){const n=masks.length;
   const im=ctx.createImageData(w,h),D=im.data,bg=hx(rs.bg),bk=hx(BLACK),C=cols.map(hx);
   for(let p=0,o=0;p<w*h;p++,o+=4){let cnt=0,mx=0,ci=-1,tot=0;
     for(let i=0;i<n;i++){const a=masks[i][o+3];if(a>0){cnt++;tot+=a;if(a>mx){mx=a;ci=i;}}}
     let c,a;if(!cnt){if(transparent)continue;c=bg;a=255;}
-    else if(cnt>1){c=bk;a=Math.min(255,tot);}else{c=C[ci%C.length];a=mx;}
+    else if(cnt>1){c=bk;a=Math.min(255,tot*2);}else{c=C[ci%C.length];a=Math.min(255,mx*2);}
     if(!transparent&&cnt){const t=a/255;c=[0,1,2].map(j=>bg[j]+(c[j]-bg[j])*t);a=255;}
     D[o]=c[0];D[o+1]=c[1];D[o+2]=c[2];D[o+3]=a;}
   ctx.putImageData(im,0,0);}
@@ -2163,6 +2201,7 @@ function render(){const[W,H]=RATIOS[rs.ratio],plate=$("rPlate"),cv=$("rCanvas");
 let raf=0;const update=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(render);};
 // handles: white = source, coloured = where the beam aims
 function handles(){const box=$("rHandles"),svg=$("rLines"),cols=PALS[rs.pal];box.innerHTML="";svg.innerHTML="";
+  $("rImgGroup").hidden=rs.src!=="img";$("rRayGroup").hidden=rs.src==="img";if(rs.src==="img")return;
   for(let i=0;i<rs.n;i++){const ray=rs.rays[i];
     for(const c of["#000","#fff"]){const l=document.createElementNS("http://www.w3.org/2000/svg","line");l.setAttribute("vector-effect","non-scaling-stroke");
       l.setAttribute("x1",ray.A[0]*100);l.setAttribute("y1",ray.A[1]*100);l.setAttribute("x2",ray.B[0]*100);l.setAttribute("y2",ray.B[1]*100);svg.appendChild(l);}
@@ -2173,14 +2212,21 @@ function handles(){const box=$("rHandles"),svg=$("rLines"),cols=PALS[rs.pal];box
         let p=[(ev.clientX-rc.left)/rc.width,(ev.clientY-rc.top)/rc.height];if(ev.shiftKey){const o=ray[k==="A"?"B":"A"],dx=(p[0]-o[0])*rc.width,dy=(p[1]-o[1])*rc.height,L=Math.hypot(dx,dy),st=Math.PI/12,an=Math.round(Math.atan2(dy,dx)/st)*st;p=[o[0]+Math.cos(an)*L/rc.width,o[1]+Math.sin(an)*L/rc.height];}
         ray[k]=[Math.min(1.5,Math.max(-0.5,p[0])),Math.min(1.5,Math.max(-0.5,p[1]))];e.style.left=ray[k][0]*100+"%";e.style.top=ray[k][1]*100+"%";update();});
       e.addEventListener("pointerup",()=>on=false);box.appendChild(e);}}}
-const fmt={n:String,spread:v=>v+"°",base:v=>Math.round(v*100)+"%",fade:v=>Math.round(v*100)+"%",dens:v=>Math.round(v*100)+"%",dot:v=>(+v).toFixed(1)+" px"};
+const fmt={gamma:v=>(+v).toFixed(2),n:String,spread:v=>v+"°",base:v=>Math.round(v*100)+"%",fade:v=>Math.round(v*100)+"%",dens:v=>Math.round(v*100)+"%",dot:v=>(+v).toFixed(1)+" px"};
 for(const k in fmt){const e=$("r_"+k);e.value=rs[k];$("r_"+k+"V").textContent=fmt[k](rs[k]);e.addEventListener("input",()=>{rs[k]=+e.value;$("r_"+k+"V").textContent=fmt[k](rs[k]);update();});}
 const segs=[];function seg(box,items,get,set){box.innerHTML="";for(const[v,l]of items){const b=document.createElement("button");b.className="chip";b.textContent=l;b.dataset.v=v;b.onclick=()=>{set(v);segs.forEach(f=>f());update();};box.appendChild(b);}
   segs.push(()=>[...box.children].forEach(b=>b.setAttribute("aria-pressed",String(String(get())===b.dataset.v))));}
+seg($("rSrc"),[["img","Imagen"],["rays","Rayos"]],()=>rs.src,v=>rs.src=v);
 seg($("rPal"),[["suave","Suave"],["vivo","Vivo"]],()=>rs.pal,v=>rs.pal=v);
 seg($("rBg"),[[PAPER,"Fondo blanco"],[BLACK,"Fondo negro"]],()=>rs.bg,v=>rs.bg=v);
 seg($("rRatio"),Object.keys(RATIOS).map(k=>[k,k]),()=>rs.ratio,v=>rs.ratio=v);segs.forEach(f=>f());
 const reseed=()=>{rs.seed=Math.floor(Math.random()*1e6);update();};$("rGen").onclick=reseed;
+for(const k of["inv","hue"]){$("r_"+k).checked=rs[k];$("r_"+k).addEventListener("change",e=>{rs[k]=e.target.checked;update();});}
+async function rFile(f){if(!f||!f.type.startsWith("image/")){toast("Subí una imagen.");return;}const bmp=await createImageBitmap(f);loadSrc(bmp,f.name||"Imagen pegada");rs.src="img";segs.forEach(fn=>fn());update();}
+$("rFile").addEventListener("change",e=>{rFile(e.target.files?.[0]);e.target.value="";});$("rChange").onclick=()=>$("rFile").click();
+{const st=$("rStage");st.addEventListener("dragover",e=>{e.preventDefault();st.classList.add("drop");});st.addEventListener("dragleave",e=>{if(e.target===st)st.classList.remove("drop");});
+  st.addEventListener("drop",e=>{e.preventDefault();st.classList.remove("drop");rFile(e.dataTransfer.files[0]);});}
+addEventListener("paste",e=>{if($("view-rays").hidden)return;const it=[...(e.clipboardData?.items||[])].find(i=>i.kind==="file"&&i.type.startsWith("image/"));if(it){e.preventDefault();rFile(it.getAsFile());}});
 addEventListener("keydown",e=>{if($("view-rays").hidden||e.metaKey||e.ctrlKey||e.altKey||e.target.closest("input,textarea"))return;if(e.key==="r"||e.key==="R")reseed();});
 $("rPng").onclick=async()=>{const[W,H]=RATIOS[rs.ratio],c=document.createElement("canvas");c.width=W;c.height=H;draw(c.getContext("2d"),W,H,1,true);
   const b=await new Promise(r=>c.toBlob(r,"image/png"));if(!dlCap){try{if(window.claude?.use)dlCap=await window.claude.use("downloads");}catch(e){}}
