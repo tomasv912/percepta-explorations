@@ -168,6 +168,13 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
 .gt.caret svg{width:8px;height:8px}
 .gt.caret[aria-expanded="true"]{background:var(--fill-strong);color:var(--content-primary)}
 .gsep{width:1px;height:16px;background:var(--line-default);margin:0 4px}
+.discards{display:flex;align-items:center;justify-content:center;background:var(--surface-subtle)}
+.dcards{display:grid;grid-template-columns:repeat(2,minmax(0,280px));gap:16px;padding:24px}
+.dcard{appearance:none;border:0;background:var(--surface-default);border-radius:12px;box-shadow:0 0 0 1px var(--line-default),var(--shadow-2xs);padding:8px;display:flex;flex-direction:column;gap:8px;cursor:pointer;text-align:left;font:inherit;color:var(--content-primary);transition:box-shadow .15s}
+.dcard:hover{box-shadow:0 0 0 1px var(--content-muted),var(--shadow-2xs)}
+.dthumb{display:block;aspect-ratio:3/2;border-radius:8px;background-color:#151515}
+.dname{font-weight:500;padding:0 4px 4px}
+@media (max-width:820px){.dcards{grid-template-columns:1fr}}
 .gpop{position:fixed;z-index:20;width:232px;background:var(--surface-default);border-radius:12px;box-shadow:0 0 0 1px var(--line-default),var(--shadow-2xs);
   padding:12px;display:flex;flex-direction:column;gap:10px}
 .gpop h3{margin:0;font-size:12px;font-weight:500}
@@ -193,12 +200,14 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
   <a class="brandlink" href="https://tomi-percepta-explos.vercel.app/home/" target="_blank" rel="noopener">percepta</a>
   <span class="navsep" aria-hidden="true"></span>
   <button class="tab" role="tab" id="tab-laminas" aria-selected="true" aria-controls="view-laminas">Láminas</button>
-  <button class="tab" role="tab" id="tab-gradients" aria-selected="false" aria-controls="view-gradients">Gradient Shapes</button>
-  <button class="tab" role="tab" id="tab-dots" aria-selected="false" aria-controls="view-gradients">Dot Shapes</button>
+  <button class="tab" role="tab" id="tab-gradients" aria-selected="false" aria-controls="view-gradients" hidden>Gradient Shapes</button>
+  <button class="tab" role="tab" id="tab-dots" aria-selected="false" aria-controls="view-gradients" hidden>Dot Shapes</button>
   <button class="tab" role="tab" id="tab-mix" aria-selected="false" aria-controls="view-gradients">Mix Shapes</button>
   <button class="tab" role="tab" id="tab-grain" aria-selected="false" aria-controls="view-grain">Grain Gradients</button>
   <button class="tab" role="tab" id="tab-lens" aria-selected="false" aria-controls="view-lens">Lens Dispersion</button>
   <button class="tab" role="tab" id="tab-wave" aria-selected="false" aria-controls="view-wave">Wave Lines</button>
+  <button class="tab" role="tab" id="tab-rays" aria-selected="false" aria-controls="view-rays">Light Rays</button>
+  <button class="tab" role="tab" id="tab-discards" aria-selected="false" aria-controls="view-discards">Descartes</button>
 </nav>
 <div class="app" id="view-laminas" role="tabpanel">
   <aside class="rail">
@@ -550,6 +559,47 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
       <button class="btn primary" id="wGen" title="Nueva semilla (R)">Nueva semilla</button>
       <button class="btn" id="wSvg">Descargar SVG</button>
       <button class="btn" id="wPng">Descargar PNG</button>
+    </div>
+  </aside>
+</div>
+<div class="app discards" id="view-discards" role="tabpanel" hidden>
+  <div class="dcards">
+    <button class="dcard" id="dGrad"><span class="dthumb" style="background:radial-gradient(60% 50% at 45% 55%,#97a7d6,transparent 70%),radial-gradient(40% 35% at 62% 40%,#fad6ae,transparent 70%),#151515"></span><span class="dname">Gradient Shapes</span></button>
+    <button class="dcard" id="dDots"><span class="dthumb" style="background-image:radial-gradient(#f7f7f7 1px,transparent 1.6px);background-size:7px 7px;background-color:#151515;-webkit-mask:radial-gradient(55% 45% at 50% 55%,#000 40%,transparent 75%);mask:radial-gradient(55% 45% at 50% 55%,#000 40%,transparent 75%)"></span><span class="dname">Dot Shapes</span></button>
+  </div>
+</div>
+<div class="app" id="view-rays" role="tabpanel" hidden>
+  <main class="stage" id="rStage">
+    <div class="canvas"><div class="gplate" id="rPlate"><canvas id="rCanvas" role="img" aria-label="Light rays"></canvas>
+      <svg class="gline" id="rLines" viewBox="0 0 100 100" preserveAspectRatio="none"></svg><div id="rHandles"></div></div></div>
+    <div class="meta"><span id="rMeta"></span></div>
+  </main>
+  <aside class="rail">
+    <div class="brand"><h1>Light Rays</h1><span id="rSeedTag"></span></div>
+    <div class="group">
+      <div class="lbl">Rayos</div>
+      <div class="row"><span>Cantidad</span><span class="v" id="r_nV"></span><input type="range" id="r_n" min="2" max="6" step="1"></div>
+      <div class="row"><span>Apertura</span><span class="v" id="r_spreadV"></span><input type="range" id="r_spread" min="0" max="45" step="1"></div>
+      <div class="row"><span>Ancho de origen</span><span class="v" id="r_baseV"></span><input type="range" id="r_base" min="0" max="0.3" step="0.005"></div>
+      <div class="row"><span>Alcance</span><span class="v" id="r_fadeV"></span><input type="range" id="r_fade" min="0" max="1" step="0.01"></div>
+    </div>
+    <div class="group">
+      <div class="lbl">Puntos</div>
+      <div class="row"><span>Densidad</span><span class="v" id="r_densV"></span><input type="range" id="r_dens" min="0.05" max="1" step="0.01"></div>
+      <div class="row"><span>Tamaño</span><span class="v" id="r_dotV"></span><input type="range" id="r_dot" min="0.5" max="6" step="0.1"></div>
+    </div>
+    <div class="group">
+      <div class="lbl">Color</div>
+      <div class="seg" id="rPal" style="grid-template-columns:1fr 1fr"></div>
+      <div class="seg" id="rBg" style="grid-template-columns:1fr 1fr"></div>
+    </div>
+    <div class="group">
+      <div class="lbl">Formato</div>
+      <div class="seg" id="rRatio" style="grid-template-columns:repeat(5,1fr)"></div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="rGen" title="Nueva semilla (R)">Nueva semilla</button>
+      <button class="btn" id="rPng">Descargar PNG</button>
     </div>
   </aside>
 </div>
@@ -2074,25 +2124,85 @@ new ResizeObserver(()=>{if(!$("view-wave").hidden)update();}).observe($("wStage"
 sync();return{show(){update();}};
 })();
 
-function showView(v){
-  $("view-laminas").hidden=v!=="laminas";$("view-gradients").hidden=v==="laminas"||v==="grain"||v==="lens"||v==="wave";$("view-grain").hidden=v!=="grain";$("view-lens").hidden=v!=="lens";$("view-wave").hidden=v!=="wave";
-  for(const id of["laminas","gradients","dots","mix","grain","lens","wave"])$("tab-"+id).setAttribute("aria-selected",String(id===v));
-  if(v==="wave")WL.show();else if(v==="lens")LD.show();else if(v==="grain")GG.show();else if(v!=="laminas")G.show(v==="dots"?"dots":v==="mix"?"mix":"gradient");
+/* ---------- Light Rays ----------
+   Beams of equal soft dots, one colour per beam. Each beam is drawn on its own layer; wherever dots
+   of two or more beams land on the same pixels the result is the palette's black, so crossings
+   build up dark density, the way overlapping light filters subtract to black. */
+const LR=(()=>{
+const PALS={suave:["#fad6ae","#ebab9e","#97a7d6","#50425c"],vivo:["#fce097","#ff898d","#75c5ef","#b88dd2"]},BLACK="#151515",PAPER="#f7f7f7";
+const RATIOS={"16:9":[3200,1800],"3:2":[3000,2000],"1:1":[3000,3000],"4:5":[2400,3000],"9:16":[1800,3200]};
+const rs={n:3,spread:10,base:0.05,fade:0.55,dens:0.55,dot:2.2,pal:"suave",bg:PAPER,ratio:"16:9",seed:Math.floor(Math.random()*1e6),rays:[]};
+function rngR(seed){let t=seed>>>0;return()=>{t=t+1831565813>>>0;let e=t;e=Math.imul(e^e>>>15,e|1);e^=e+Math.imul(e^e>>>7,e|61);return((e^e>>>14)>>>0)/4294967296;};}
+// default layout: sources around the frame, all aimed through the middle so they cross
+function layout(){const r=rngR(rs.seed^0x5f3759df),out=[];for(let i=0;i<6;i++){const a=Math.PI*2*i/6+r()*0.6,R=0.48;
+  out.push({A:[0.5+Math.cos(a)*R*0.95,0.5+Math.sin(a)*R],B:[0.5-Math.cos(a)*0.12+(r()-0.5)*0.1,0.5-Math.sin(a)*0.12+(r()-0.5)*0.1]});}return out;}
+rs.rays=layout();
+const hx=c=>[1,3,5].map(i=>parseInt(c.slice(i,i+2),16));
+// k: output px per canvas px
+function draw(ctx,w,h,k,transparent){
+  const cols=PALS[rs.pal],n=rs.n,r=rngR(rs.seed),W=w*k,H=h*k,masks=[];
+  const L=document.createElement("canvas");L.width=w;L.height=h;const lx=L.getContext("2d");
+  for(let i=0;i<n;i++){const ray=rs.rays[i],ax=ray.A[0]*W,ay=ray.A[1]*H,bx=ray.B[0]*W,by=ray.B[1]*H,dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
+    const reach=Math.hypot(W,H),half=Math.tan(rs.spread*Math.PI/180),b0=rs.base*Math.min(W,H),N=Math.round(rs.dens*W*H/45);
+    lx.clearRect(0,0,w,h);lx.fillStyle="#000";lx.beginPath();const rad=Math.max(0.4,rs.dot/2/k);
+    for(let q=0;q<N;q++){const t=-Math.log(1-r()*0.999)*reach*(0.06+rs.fade*0.5);if(t>reach)continue;
+      const wdt=b0+t*half,o=(r()+r()+r()-1.5)*0.8*wdt,x=(ax+ux*t-uy*o)/k,y=(ay+uy*t+ux*o)/k;
+      if(x<-2||y<-2||x>w+2||y>h+2)continue;lx.moveTo(x+rad,y);lx.arc(x,y,rad,0,7);}
+    lx.fill();masks.push(lx.getImageData(0,0,w,h).data);}
+  const im=ctx.createImageData(w,h),D=im.data,bg=hx(rs.bg),bk=hx(BLACK),C=cols.map(hx);
+  for(let p=0,o=0;p<w*h;p++,o+=4){let cnt=0,mx=0,ci=-1,tot=0;
+    for(let i=0;i<n;i++){const a=masks[i][o+3];if(a>0){cnt++;tot+=a;if(a>mx){mx=a;ci=i;}}}
+    let c,a;if(!cnt){if(transparent)continue;c=bg;a=255;}
+    else if(cnt>1){c=bk;a=Math.min(255,tot);}else{c=C[ci%C.length];a=mx;}
+    if(!transparent&&cnt){const t=a/255;c=[0,1,2].map(j=>bg[j]+(c[j]-bg[j])*t);a=255;}
+    D[o]=c[0];D[o+1]=c[1];D[o+2]=c[2];D[o+3]=a;}
+  ctx.putImageData(im,0,0);}
+function render(){const[W,H]=RATIOS[rs.ratio],plate=$("rPlate"),cv=$("rCanvas");plate.style.setProperty("--ar",`${W}/${H}`);plate.style.background=rs.bg;
+  const rc=plate.getBoundingClientRect(),dpr=devicePixelRatio||1;if(!rc.width)return;cv.width=Math.round(rc.width*dpr);cv.height=Math.round(rc.height*dpr);
+  draw(cv.getContext("2d"),cv.width,cv.height,W/cv.width,true);$("rSeedTag").textContent="#"+rs.seed;$("rMeta").textContent=`PNG ${W} × ${H} px`;handles();}
+let raf=0;const update=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(render);};
+// handles: white = source, coloured = where the beam aims
+function handles(){const box=$("rHandles"),svg=$("rLines"),cols=PALS[rs.pal];box.innerHTML="";svg.innerHTML="";
+  for(let i=0;i<rs.n;i++){const ray=rs.rays[i];
+    for(const c of["#000","#fff"]){const l=document.createElementNS("http://www.w3.org/2000/svg","line");l.setAttribute("vector-effect","non-scaling-stroke");
+      l.setAttribute("x1",ray.A[0]*100);l.setAttribute("y1",ray.A[1]*100);l.setAttribute("x2",ray.B[0]*100);l.setAttribute("y2",ray.B[1]*100);svg.appendChild(l);}
+    for(const k of["A","B"]){const e=document.createElement("button");e.className="gnode";e.style.left=ray[k][0]*100+"%";e.style.top=ray[k][1]*100+"%";
+      e.style.background=k==="A"?"#fff":cols[i%cols.length];e.setAttribute("aria-label",`Rayo ${i+1}: ${k==="A"?"origen":"dirección"}`);
+      let on=false;e.addEventListener("pointerdown",ev=>{on=true;e.setPointerCapture(ev.pointerId);ev.preventDefault();});
+      e.addEventListener("pointermove",ev=>{if(!on)return;const rc=$("rPlate").getBoundingClientRect();
+        let p=[(ev.clientX-rc.left)/rc.width,(ev.clientY-rc.top)/rc.height];if(ev.shiftKey){const o=ray[k==="A"?"B":"A"],dx=(p[0]-o[0])*rc.width,dy=(p[1]-o[1])*rc.height,L=Math.hypot(dx,dy),st=Math.PI/12,an=Math.round(Math.atan2(dy,dx)/st)*st;p=[o[0]+Math.cos(an)*L/rc.width,o[1]+Math.sin(an)*L/rc.height];}
+        ray[k]=[Math.min(1.5,Math.max(-0.5,p[0])),Math.min(1.5,Math.max(-0.5,p[1]))];e.style.left=ray[k][0]*100+"%";e.style.top=ray[k][1]*100+"%";update();});
+      e.addEventListener("pointerup",()=>on=false);box.appendChild(e);}}}
+const fmt={n:String,spread:v=>v+"°",base:v=>Math.round(v*100)+"%",fade:v=>Math.round(v*100)+"%",dens:v=>Math.round(v*100)+"%",dot:v=>(+v).toFixed(1)+" px"};
+for(const k in fmt){const e=$("r_"+k);e.value=rs[k];$("r_"+k+"V").textContent=fmt[k](rs[k]);e.addEventListener("input",()=>{rs[k]=+e.value;$("r_"+k+"V").textContent=fmt[k](rs[k]);update();});}
+const segs=[];function seg(box,items,get,set){box.innerHTML="";for(const[v,l]of items){const b=document.createElement("button");b.className="chip";b.textContent=l;b.dataset.v=v;b.onclick=()=>{set(v);segs.forEach(f=>f());update();};box.appendChild(b);}
+  segs.push(()=>[...box.children].forEach(b=>b.setAttribute("aria-pressed",String(String(get())===b.dataset.v))));}
+seg($("rPal"),[["suave","Suave"],["vivo","Vivo"]],()=>rs.pal,v=>rs.pal=v);
+seg($("rBg"),[[PAPER,"Fondo blanco"],[BLACK,"Fondo negro"]],()=>rs.bg,v=>rs.bg=v);
+seg($("rRatio"),Object.keys(RATIOS).map(k=>[k,k]),()=>rs.ratio,v=>rs.ratio=v);segs.forEach(f=>f());
+const reseed=()=>{rs.seed=Math.floor(Math.random()*1e6);update();};$("rGen").onclick=reseed;
+addEventListener("keydown",e=>{if($("view-rays").hidden||e.metaKey||e.ctrlKey||e.altKey||e.target.closest("input,textarea"))return;if(e.key==="r"||e.key==="R")reseed();});
+$("rPng").onclick=async()=>{const[W,H]=RATIOS[rs.ratio],c=document.createElement("canvas");c.width=W;c.height=H;draw(c.getContext("2d"),W,H,1,true);
+  const b=await new Promise(r=>c.toBlob(r,"image/png"));if(!dlCap){try{if(window.claude?.use)dlCap=await window.claude.use("downloads");}catch(e){}}
+  if(!dlCap){toast("La descarga no está disponible en esta vista.");return;}
+  try{await dlCap.save({filename:`light-rays-${rs.seed}.png`,data:new Uint8Array(await b.arrayBuffer())});toast("PNG guardado");}catch(e){if(e?.code!=="declined")toast("No se pudo descargar");}};
+new ResizeObserver(()=>{if(!$("view-rays").hidden)update();}).observe($("rStage"));
+return{show(){update();}};
+})();
+
+const VIEWS={laminas:"view-laminas",gradients:"view-gradients",dots:"view-gradients",mix:"view-gradients",grain:"view-grain",lens:"view-lens",wave:"view-wave",rays:"view-rays",discards:"view-discards"};
+function showView(v){if(!VIEWS[v])v="laminas";
+  for(const id of new Set(Object.values(VIEWS)))$(id).hidden=id!==VIEWS[v];
+  // discarded tools live behind the Descartes tab
+  const tab=v==="gradients"||v==="dots"?"discards":v;
+  for(const id of Object.keys(VIEWS))$("tab-"+id).setAttribute("aria-selected",String(id===tab));
+  if(v==="rays")LR.show();else if(v==="wave")WL.show();else if(v==="lens")LD.show();else if(v==="grain")GG.show();
+  else if(v==="gradients"||v==="dots"||v==="mix")G.show(v==="dots"?"dots":v==="mix"?"mix":"gradient");
   try{history.replaceState(null,"","#"+v);}catch(e){}
 }
-$("tab-laminas").onclick=()=>showView("laminas");
-$("tab-gradients").onclick=()=>showView("gradients");
-$("tab-dots").onclick=()=>showView("dots");
-$("tab-mix").onclick=()=>showView("mix");
-$("tab-grain").onclick=()=>showView("grain");
-$("tab-lens").onclick=()=>showView("lens");
-$("tab-wave").onclick=()=>showView("wave");
-if(location.hash==="#wave")showView("wave");
-if(location.hash==="#lens")showView("lens");
-if(location.hash==="#grain")showView("grain");
-if(location.hash==="#mix")showView("mix");
-if(location.hash==="#gradients")showView("gradients");
-if(location.hash==="#dots")showView("dots");
+for(const id of Object.keys(VIEWS))$("tab-"+id).onclick=()=>showView(id);
+$("dGrad").onclick=()=>showView("gradients");$("dDots").onclick=()=>showView("dots");
+if(location.hash.length>1)showView(location.hash.slice(1));
 </script>
 
 </body>
