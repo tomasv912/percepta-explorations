@@ -112,6 +112,13 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
   <aside>
     <div class="controls">
       <section>
+        <h2>Preset</h2>
+        <div class="seg" id="presets" aria-label="Preset">
+          <button data-preset="olas">Olas</button><button data-preset="horiz">Desplazamiento horizontal</button>
+        </div>
+      </section>
+
+      <section>
         <h2>Ola</h2>
         <div id="sl-layers"></div>
         <div id="sl-amp"></div>
@@ -133,6 +140,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-count"></div>
         <div id="sl-size"></div>
         <div id="sl-depthSize"></div>
+        <div id="sl-thresh"></div>
       </section>
 
       <section>
@@ -141,6 +149,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-dur"></div>
         <div id="sl-travel"></div>
         <div id="sl-flow"></div>
+        <label class="check"><input type="checkbox" data-check="cross"> Atraviesan el cuadro (entran por un lado, salen por el otro)</label>
         <div id="sl-jitter"></div>
         <button class="btn" id="play" aria-pressed="true">Pausa</button>
       </section>
@@ -190,7 +199,7 @@ const AW = 3840, AH = 2160;
 const DEFAULTS = {
   seed: 1, layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25,
   count: 500, size: 24, depthSize: .5,
-  fps: 8, dur: 4, travel: 1, flow: 0, jitter: .5,
+  fps: 8, dur: 4, travel: 1, flow: 0, cross: false, thresh: 0, jitter: .5,
   palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'random', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
   vidFps: '8', vidFmt: 'mp4', fullFrame: false,
 };
@@ -213,18 +222,16 @@ function build() {
   const layers = Array.from({ length: S.layers }, (_, l) => ({
     waves: Array.from({ length: S.complexity }, (_, k) => ({
       f: S.freq * (k === 0 ? 1 : 1 + k * .7) * (.7 + r() * .6) * Math.PI * 2,
-      th: (r() - .5) * 1.1, ph: r() * Math.PI * 2, a: 1 / (1 + k * 1.1), turns: (k % 2 ? -1 : 1) * Math.max(1, Math.round(S.travel * (1 + k * .5))),
+      th: (r() - .5) * 1.1, ph: r() * Math.PI * 2, a: 1 / (1 + k * 1.1), turns: S.travel ? (k % 2 ? -1 : 1) * Math.max(1, Math.round(S.travel * (1 + k * .5))) : 0,
     })),
     base: (l - (S.layers - 1) / 2) * .35 + (r() - .5) * .15, tilt: (r() - .5) * .3,
   }));
   const cubes = [];
   for (let tries = 0; cubes.length < S.count && tries < S.count * 30; tries++) {
     const u = r(), v = r(), L = r() * layers.length | 0;
-    // Sheets thin out towards their ends; when the cubes travel (Viaje) they are spread evenly along instead and
-    // grow in at one end and shrink out at the other.
-    const keep = smooth(0, .22, v) * (1 - smooth(.65, 1, v)) * (S.flow ? 1 : smooth(0, .11, u) * smooth(0, .11, 1 - u));
-    if (r() > keep) continue;
-    cubes.push({ u, v, L, n: gauss(r) * S.thickness * .06, pal: r() * S.palette.length | 0, k: 1 + (r() - .5) * .3, jx: r() * 1e4 | 0 });
+    // A cube keeps only its ranks on the sheet, u along and qv into the depth: where it sits is worked out each
+    // drawing (see placeAt), so it can gather where the sheet curves.
+    cubes.push({ u, qv: v, L, n: gauss(r) * S.thickness * .06, pal: r() * S.palette.length | 0, k: 1 + (r() - .5) * .3, jx: r() * 1e4 | 0 });
   }
   scene = { layers, cubes, focal: .4 + S.persp * 1.4, zNear: 1, zFar: 1 + 1.5 + S.persp * 2.5 };
   fitT = null;
@@ -232,31 +239,68 @@ function build() {
 const frames = () => Math.max(2, Math.round(S.dur * S.fps));
 // Cubes at drawing i of the loop, in artboard pixels, back to front: [x, y, size, colour index].
 function cubesAt(i) {
-  const { layers, cubes, focal, zNear, zFar } = scene, t = i / frames(), out = [];
+  const { layers, cubes, focal, zNear, zFar } = scene, t = i / frames(), out = [], cdfs = new Map();
   for (const c of cubes) {
     const L = layers[c.L];
-    // Viaje: every cube slides along its sheet, a whole number of lengths over the loop, out at one end and back in
-    // at the other, so the loop closes; it rides the waves as it goes.
-    const u = ((c.u + S.flow * t) % 1 + 1) % 1, env = S.flow ? smooth(0, .08, u) * smooth(0, .08, 1 - u) : 1;
+    // Viaje: every cube's rank slides along, a whole number of lengths over the loop, out at one end and back in at
+    // the other, so the loop closes; it rides the waves as it goes.
+    const q = ((c.u + S.flow * t) % 1 + 1) % 1, [u, v] = placeAt(cdfs, c.L, c.qv, q, t), env = S.flow ? smooth(0, .08, u) * smooth(0, .08, 1 - u) : 1;
     if (env <= .02) continue;
     let h = 0, norm = 0;
-    for (const w of L.waves) { h += w.a * Math.sin(w.f * (u * Math.cos(w.th) + c.v * Math.sin(w.th)) + w.ph - 2 * Math.PI * w.turns * t); norm += w.a; }
-    const y = L.base + L.tilt * (u - .5) + h / norm * S.amp + c.n, z = zNear + c.v * (zFar - zNear), x = (u - .5) * 2 * z / focal * 1.1;
-    out.push([x / z * focal, (.9 - y) / z * focal, ((1 - S.depthSize) + S.depthSize * clamp(1.6 / z) * c.k) * env, c.pal, z, c.jx]);
+    for (const w of L.waves) { h += w.a * Math.sin(w.f * (u * Math.cos(w.th) + v * Math.sin(w.th)) + w.ph - 2 * Math.PI * w.turns * t); norm += w.a; }
+    const y = L.base + L.tilt * (u - .5) + h / norm * S.amp + c.n * (1 - S.thresh * .7), z = zNear + v * (zFar - zNear), x = (u - .5) * 2 * z / focal * 1.1;
+    out.push([x / z * focal, (.9 - y) / z * focal, ((1 - S.depthSize) + S.depthSize * clamp(1.6 / z) * c.k) * env, c.pal, z, c.jx, u]);
   }
   out.sort((a, b) => b[4] - a[4]);
   // Fitted once over the whole loop, so the picture holds still in the frame while the waves move.
   if (!fitT) {
+    // Atraviesan el cuadro: the sheets run past both sides, so the cubes come in at one edge and leave at the other
+    // (their ends, where they grow and shrink, out of sight); fitted to the width only.
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-    for (let k = 0; k < frames(); k += Math.max(1, frames() / 12 | 0)) for (const c of cubesRaw(k)) { x0 = Math.min(x0, c[0]); x1 = Math.max(x1, c[0]); y0 = Math.min(y0, c[1]); y1 = Math.max(y1, c[1]); }
-    const m = S.size * 2 + 80, k = Math.min((AW - 2 * m) / (x1 - x0 || 1), (AH - 2 * m) / (y1 - y0 || 1));
-    fitT = { k, ox: AW / 2 - (x0 + x1) / 2 * k, oy: AH / 2 - (y0 + y1) / 2 * k };
+    for (let k = 0; k < frames(); k += Math.max(1, frames() / 12 | 0)) for (const c of cubesRaw(k)) {
+      if (S.cross && (c[4] < .1 || c[4] > .9)) continue;
+      x0 = Math.min(x0, c[0]); x1 = Math.max(x1, c[0]); y0 = Math.min(y0, c[1]); y1 = Math.max(y1, c[1]);
+    }
+    // (crossing, the width and the height are fitted each on its own: the cubes stay square, the picture stretches)
+    const m = S.size * 2 + 80, ky = (AH - 2 * m) / (y1 - y0 || 1), kx = S.cross ? AW / (x1 - x0 || 1) : Math.min((AW - 2 * m) / (x1 - x0 || 1), ky), k = S.cross ? ky : kx;
+    fitT = { kx, k, ox: AW / 2 - (x0 + x1) / 2 * kx, oy: AH / 2 - (y0 + y1) / 2 * k };
   }
   // A mano: each drawing, each cube up to Temblor × a fifth of its size off its place (the same in every loop).
   return out.map(c => {
     const s = S.size * c[2], jr = rng(c[5] * 7919 + i * 104729 + 1), j = S.jitter * s * .2;
-    return [c[0] * fitT.k + fitT.ox + (jr() - .5) * 2 * j, c[1] * fitT.k + fitT.oy + (jr() - .5) * 2 * j, Math.max(2, Math.round(s / 2) * 2), c[3]];
+    return [c[0] * (fitT.kx ?? fitT.k) + fitT.ox + (jr() - .5) * 2 * j, c[1] * fitT.k + fitT.oy + (jr() - .5) * 2 * j, Math.max(2, Math.round(s / 2) * 2), c[3], c[6]];
   });
+}
+// Where a cube sits on its sheet at time t, from its two ranks (qv into the depth, q along): read off the sheet's
+// density, a grid of NV rows by NU columns. The density thins towards the near and far edges and towards the ends
+// (unless the cubes travel or cross the frame) and, with Umbral, piles up where the sheet curves most (crests and
+// troughs: the waves' curvature, |∂²h/∂u² + ∂²h/∂v²|), the flats emptying as it rises. The grid moves with the
+// waves, so the cubes gather on the crests and go with them; t runs round the loop, so does the grid.
+const NU = 160, NV = 28;
+function sheetAt(cdfs, li, t) {
+  let g = cdfs.get(li); if (g) return g;
+  const L = scene.layers[li], A = L.waves.reduce((a, w) => a + w.a * w.f * w.f, 0), th = S.thresh, mixK = Math.min(1, th * 4), ends = !(S.flow || S.cross);
+  const rows = [], vcdf = new Float64Array(NV + 1);
+  let vs = 0;
+  for (let r = 0; r < NV; r++) {
+    const v = (r + .5) / NV, cdf = new Float64Array(NU + 1), edge = smooth(0, .22, v) * (1 - smooth(.65, 1, v));
+    let sum = 0;
+    for (let j = 0; j < NU; j++) {
+      const u = (j + .5) / NU; let lap = 0;
+      for (const w of L.waves) lap -= w.a * w.f * w.f * Math.sin(w.f * (u * Math.cos(w.th) + v * Math.sin(w.th)) + w.ph - 2 * Math.PI * w.turns * t);
+      const curv = Math.min(1, Math.abs(lap) / A * 1.6), base = edge * (ends ? smooth(0, .11, u) * smooth(0, .11, 1 - u) : 1);
+      cdf[j + 1] = sum += base * ((1 - mixK) + mixK * Math.pow(Math.max(0, curv - th * .8) / (1 - th * .8), 1 + th * 4)) + 1e-9;
+    }
+    for (let j = 1; j <= NU; j++) cdf[j] /= sum;
+    rows.push(cdf); vcdf[r + 1] = vs += sum;
+  }
+  for (let r = 1; r <= NV; r++) vcdf[r] /= vs;
+  g = { rows, vcdf }; cdfs.set(li, g); return g;
+}
+const invert = (cdf, n, q) => { let lo = 0, hi = n; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cdf[mid] < q) lo = mid; else hi = mid; } return lo + (q - cdf[lo]) / ((cdf[hi] - cdf[lo]) || 1); };
+function placeAt(cdfs, li, qv, q, t) {
+  const g = sheetAt(cdfs, li, t), rv = invert(g.vcdf, NV, qv), row = Math.min(NV - 1, Math.floor(rv));
+  return [invert(g.rows[row], NU, q) / NU, rv / NV];
 }
 function cubesRaw(i) { const keep = fitT; fitT = { k: 1, ox: 0, oy: 0 }; const j = S.jitter; S.jitter = 0; const o = cubesAt(i).map(c => c); S.jitter = j; fitT = keep; return o; }
 function colorOf(pal) { return onBg(S.colorMode === 'ink' ? S.ink : S.palette[pal % S.palette.length], S.bg); }
@@ -285,11 +329,12 @@ const SLIDERS = {
   depthSize: { label: 'Más chicos al fondo', min: 0, max: 1, step: .01, fmt: pct },
   fps: { label: 'Dibujos por segundo', min: 2, max: 24, step: 1, fmt: String, emph: true },
   dur: { label: 'Duración del loop', min: 1, max: 20, step: .5, fmt: v => v + ' s', emph: true },
+  thresh: { label: 'Umbral (se juntan en las curvas)', min: 0, max: .95, step: .01, fmt: pct },
   flow: { label: 'Viaje de los cubos', min: -4, max: 4, step: 1, fmt: v => v === 0 ? 'quietos' : (v > 0 ? '→ ' : '← ') + Math.abs(v) + (Math.abs(v) === 1 ? ' vuelta' : ' vueltas') },
-  travel: { label: 'Recorrido de la onda', min: 1, max: 4, step: 1, fmt: v => v + (v === 1 ? ' vuelta' : ' vueltas') },
+  travel: { label: 'Recorrido de la onda', min: 0, max: 4, step: 1, fmt: v => v === 0 ? 'quieta' : v + (v === 1 ? ' vuelta' : ' vueltas') },
   jitter: { label: 'Temblor a mano', min: 0, max: 1, step: .01, fmt: pct },
 };
-const REBUILD = ['layers', 'amp', 'freq', 'complexity', 'persp', 'thickness', 'count', 'size', 'depthSize', 'travel', 'flow'];
+const REBUILD = ['layers', 'amp', 'freq', 'complexity', 'persp', 'thickness', 'count', 'size', 'depthSize', 'travel', 'flow', 'thresh'];
 for (const [key, d] of Object.entries(SLIDERS)) {
   const host = $('#sl-' + key);
   host.className = 'slider' + (d.emph ? ' emph' : '');
@@ -303,8 +348,15 @@ renderInks();
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
 const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.palette = colors; renderInks(); sync(); });
 const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => S.palette, () => S.bg, v => { S.bg = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
-document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = b.dataset.v; sync(); } }));
-document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
+document.querySelectorAll('.seg[data-key]').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = b.dataset.v; sync(); } }));
+document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; fitT = null; sync(); }));
+// Presets: Olas, the waves rolling in place; Desplazamiento horizontal, the wave held still and the cubes, gathered on
+// its curves, carried along it left to right across the whole frame, in at the left edge and out at the right, once a loop.
+const PRESETS = {
+  olas: { flow: 0, cross: false, thresh: 0, travel: 1, dur: 4 },
+  horiz: { flow: 1, cross: true, thresh: .35, travel: 0, dur: 6 },
+};
+$('#presets').addEventListener('click', e => { const b = e.target.closest('[data-preset]'); if (b) { Object.assign(S, PRESETS[b.dataset.preset]); build(); sync(); } });
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); build(); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); build(); sync(); };
 $('#reseed').addEventListener('click', reseed);
@@ -317,10 +369,11 @@ function sync() {
     input.style.setProperty('--p', ((S[k] - d.min) / (d.max - d.min) * 100) + '%');
     $('#out-' + k).textContent = d.fmt(S[k]);
   }
-  document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === String(S[seg.dataset.key]))));
+  document.querySelectorAll('.seg[data-key]').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === String(S[seg.dataset.key]))));
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink';
+  document.querySelectorAll('[data-preset]').forEach(b => b.setAttribute('aria-pressed', Object.entries(PRESETS[b.dataset.preset]).every(([k, v]) => S[k] === v)));
   markPalette(); updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   shown = -1; paint();
