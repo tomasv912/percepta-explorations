@@ -498,7 +498,8 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
       <div class="lbl">Máscara</div>
       <div class="seg" id="lMask" style="grid-template-columns:1fr 1fr"></div>
       <div class="row"><span>Radio</span><span class="v" id="l_radV"></span><input type="range" id="l_rad" min="20" max="800" step="5"></div>
-      <div class="row"><span>Suavidad</span><span class="v" id="l_softV"></span><input type="range" id="l_soft" min="0" max="1" step="0.01"></div>
+      <div class="seg" id="lEdge" style="grid-template-columns:1fr 1fr"></div>
+      <div class="row" id="lSoftRow"><span>Suavidad</span><span class="v" id="l_softV"></span><input type="range" id="l_soft" min="0" max="1" step="0.01"></div>
       <div class="row"><span>Influencia</span><span class="v" id="l_inflV"></span><input type="range" id="l_infl" min="0" max="1" step="0.01"></div>
       <div class="row" id="lFollowRow"><span>Seguimiento</span><span class="v" id="l_followV"></span><input type="range" id="l_follow" min="0.02" max="1" step="0.01"></div>
       <div class="row" id="lFadeRow"><span>Desvanecer</span><span class="v" id="l_fadeV"></span><input type="range" id="l_fade" min="0.1" max="4" step="0.05"></div>
@@ -1914,11 +1915,14 @@ return{show(){update();},loadSvgText};
    added on top as a fringe. A mask limits it to the whole frame or to a soft trail that follows the cursor. */
 const LD=(()=>{
 const NS="http://www.w3.org/2000/svg",PAL=[["#f7f7f7","Blanco"],["#fce097","Amarillo"],["#ff898d","Rosa"],["#75c5ef","Celeste"],["#b88dd2","Lila"],["#151515","Negro"]];
-const ls={dir:"out",disp:45,ang:0,glow:1.3,pal:"rgb",palOn:["#ff898d","#fce097","#75c5ef"],warp:18,freq:0.008,
+const ls={edge:"fade",dir:"out",disp:45,ang:0,glow:1.3,pal:"rgb",palOn:["#ff898d","#fce097","#75c5ef"],warp:18,freq:0.008,
   mask:"hover",rad:260,soft:0.6,infl:1,follow:0.18,fade:1.2,C:[0.5,0.5]};
 let img={markup:"",vb:"0 0 1600 900",w:1600,h:900,name:"Percepta"},mapHref="",trail=[],mouse=null,pos=null,raf=0,last=0;
 const svg=$("lSvg"),hx=c=>[1,3,5].map(i=>parseInt(c.slice(i,i+2),16)/255);
 const SAMPLE=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900"><text x="800" y="545" text-anchor="middle" font-family="Inter, Helvetica, Arial, sans-serif" font-weight="700" font-size="330" letter-spacing="-14" fill="#f7f7f7">Percepta</text></svg>`;
+let fallHref="";function makeFall(){const S=256,c=document.createElement("canvas");c.width=S;c.height=S;const x=c.getContext("2d"),d=x.createImageData(S,S);
+  for(let j=0;j<S;j++)for(let i=0;i<S;i++){const r=Math.hypot((i+0.5)/S*2-1,(j+0.5)/S*2-1),v=r>=1?0:Math.round(255*(0.5+0.5*Math.cos(Math.PI*r))),k=(j*S+i)*4;d.data[k]=d.data[k+1]=d.data[k+2]=v;d.data[k+3]=255;}
+  x.putImageData(d,0,0);return c.toDataURL();}
 // radial displacement map: R/G = direction from the centre, growing with distance (centred, 2× the frame so it can move)
 function makeMap(){const S=512,c=document.createElement("canvas");c.width=S;c.height=S;const x=c.getContext("2d"),d=x.createImageData(S,S);
   for(let j=0;j<S;j++)for(let i=0;i<S;i++){const u=(i+0.5)/S*2-1,v=(j+0.5)/S*2-1,k=(j*S+i)*4;d.data[k]=128+127*u;d.data[k+1]=128+127*v;d.data[k+2]=128;d.data[k+3]=255;}
@@ -1931,13 +1935,19 @@ function build(){
   f.setAttribute("width",w);f.setAttribute("height",h);
   f.append(el("feTurbulence",{type:"fractalNoise",baseFrequency:ls.freq,numOctaves:2,seed:3,result:"turb"}),
     el("feColorMatrix",{in:"SourceGraphic",type:"matrix",values:img.dark?"-1 0 0 0 1  0 -1 0 0 1  0 0 -1 0 1  0 0 0 1 0":"1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0",result:"src"}),
-    el("feDisplacementMap",{in:"src",in2:"turb",scale:ls.warp,xChannelSelector:"R",yChannelSelector:"G",result:"warp"}));
+    ...(ls.edge==="grad"?[el("feImage",{id:"lFall",href:fallHref||(fallHref=makeFall()),x:0,y:0,width:ls.rad*2,height:ls.rad*2,preserveAspectRatio:"none",result:"fallRaw"}),
+      // opaque black outside the falloff, so the arithmetic below stays neutral there (no premultiplied-alpha surprises)
+      el("feFlood",{"flood-color":"#000",result:"blk0"}),el("feMerge",{result:"fall"},[el("feMergeNode",{in:"blk0"}),el("feMergeNode",{in:"fallRaw"})]),
+      // gradual: noise and split are scaled toward neutral (0.5) by the falloff, so both shrink to nothing at the edge
+      el("feComposite",{in:"turb",in2:"fall",operator:"arithmetic",k1:1,k2:0,k3:-0.5,k4:0.5,result:"turbF"})]:[]),
+    el("feDisplacementMap",{in:"src",in2:ls.edge==="grad"?"turbF":"turb",scale:ls.warp,xChannelSelector:"R",yChannelSelector:"G",result:"warp"}));
   const M=Math.max(w,h);if(ls.dir==="out")f.append(el("feImage",{id:"lMap",href:mapHref,x:0,y:0,width:M*2,height:M*2,preserveAspectRatio:"none",result:"map"}));
   else{const a=ls.ang*Math.PI/180;f.append(el("feFlood",{"flood-color":`rgb(${Math.round(128+127*Math.cos(a))},${Math.round(128+127*Math.sin(a))},128)`,result:"map"}));}
+  if(ls.edge==="grad")f.append(el("feComposite",{in:"map",in2:"fall",operator:"arithmetic",k1:1,k2:0,k3:-0.5,k4:0.5,result:"mapF"}));
   const ins=[];
   const R0=ls.mask==="hover"?ls.rad:M/2,gain=ls.dir==="out"?2*M/R0:2;
   L.forEach((Ly,k)=>{const sc=gain*(n<2?ls.disp:ls.disp*(2*k/(n-1)-1));
-    f.append(el("feDisplacementMap",{in:"warp",in2:"map",scale:sc.toFixed(2),xChannelSelector:"R",yChannelSelector:"G",result:"d"+k}));
+    f.append(el("feDisplacementMap",{in:"warp",in2:ls.edge==="grad"?"mapF":"map",scale:sc.toFixed(2),xChannelSelector:"R",yChannelSelector:"G",result:"d"+k}));
     let vals;if(Ly.rgb){const[a,b,c]=Ly.m;vals=`${a} 0 0 0 0  0 ${b} 0 0 0  0 0 ${c} 0 0  0 0 0 1 0`;}
     else{const[r,g,b]=Ly.c,lr=0.2126/n*2,lg=0.7152/n*2,lb=0.0722/n*2;vals=[r,g,b].map(q=>`${(q*lr).toFixed(4)} ${(q*lg).toFixed(4)} ${(q*lb).toFixed(4)} 0 0`).join("  ")+"  0 0 0 1 0";}
     f.append(el("feColorMatrix",{in:"d"+k,type:"matrix",values:vals,result:"c"+k}));ins.push("c"+k);});
@@ -1975,10 +1985,13 @@ function build(){
 }
 function centre(){return ls.mask==="hover"&&pos?pos:[ls.C[0]*img.w,ls.C[1]*img.h];}
 function drawMask(){const G=$("lMaskG"),GI=$("lMaskI");if(!G)return;G.innerHTML="";GI.innerHTML="";const{w,h}=img;
-  if(ls.mask==="all"){G.append(el("rect",{width:w,height:h,fill:"#fff",opacity:ls.infl}));GI.append(el("rect",{width:w,height:h,fill:"#000",opacity:ls.infl}));}
+  if(ls.edge==="grad"){const lead=ls.mask==="all"?1:trail.length?trail[trail.length-1].life:0;
+    G.append(el("rect",{width:w,height:h,fill:"#fff",opacity:(lead*ls.infl).toFixed(3)}));GI.append(el("rect",{width:w,height:h,fill:"#000",opacity:(lead*ls.infl).toFixed(3)}));}
+  else if(ls.mask==="all"){G.append(el("rect",{width:w,height:h,fill:"#fff",opacity:ls.infl}));GI.append(el("rect",{width:w,height:h,fill:"#000",opacity:ls.infl}));}
   else for(const p of trail)if(p.life>0.01){const a={cx:p.x.toFixed(1),cy:p.y.toFixed(1),r:ls.rad,opacity:(p.life*ls.infl).toFixed(3)};
     G.append(el("circle",{...a,fill:"url(#lmg)"}));GI.append(el("circle",{...a,fill:"url(#lmgK)"}));}
   const mp=$("lMap"),[cx,cy]=centre(),M=Math.max(w,h);if(mp){mp.setAttribute("x",(cx-M).toFixed(1));mp.setAttribute("y",(cy-M).toFixed(1));}
+  const fl=$("lFall");if(fl){fl.setAttribute("x",(cx-ls.rad).toFixed(1));fl.setAttribute("y",(cy-ls.rad).toFixed(1));}
   const C=$("lC");C.hidden=ls.mask==="hover";C.style.left=ls.C[0]*100+"%";C.style.top=ls.C[1]*100+"%";}
 // cursor trail: a smoothed position drops points that fade out
 function tick(t){raf=0;const dt=Math.min(0.1,(t-(last||t))/1000);last=t;
@@ -2003,10 +2016,11 @@ const segs=[];function seg(box,items,get,set){box.innerHTML="";for(const[v,l]of 
 seg($("lDir"),[["out","Hacia afuera"],["side","Lateral"]],()=>ls.dir,v=>ls.dir=v);
 seg($("lPal"),[["rgb","RGB"],["pal","Paleta"]],()=>ls.pal,v=>ls.pal=v);
 seg($("lMask"),[["hover","Hover"],["all","Toda la imagen"]],()=>ls.mask,v=>{ls.mask=v;trail=[];});
+seg($("lEdge"),[["fade","Fundido"],["grad","Gradual"]],()=>ls.edge,v=>{ls.edge=v;});
 function palSw(){const box=$("lPalSw");box.innerHTML="";for(const[c,nm]of PAL){const b=document.createElement("button");b.style.background=c;b.title=nm;b.setAttribute("aria-label",nm);
   b.setAttribute("aria-checked",String(ls.palOn.includes(c)));b.onclick=()=>{const i=ls.palOn.indexOf(c);if(i>=0){if(ls.palOn.length>1)ls.palOn.splice(i,1);}else{ls.palOn.push(c);if(ls.palOn.length>3)ls.palOn.shift();}
     palSw();build();};box.appendChild(b);}}
-function sync(){segs.forEach(f=>f());$("lPalSw").hidden=ls.pal!=="pal";$("lAngRow").hidden=ls.dir!=="side";
+function sync(){segs.forEach(f=>f());$("lSoftRow").hidden=ls.edge==="grad";$("lPalSw").hidden=ls.pal!=="pal";$("lAngRow").hidden=ls.dir!=="side";
   for(const id of["lFollowRow","lFadeRow"])$(id).hidden=ls.mask!=="hover";palSw();}
 // SVG in: file, drop, or the markup Figma puts on the clipboard with Copy as SVG
 function loadSvg(text,name){const doc=new DOMParser().parseFromString(text,"image/svg+xml"),root=doc.documentElement;
