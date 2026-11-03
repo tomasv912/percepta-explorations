@@ -476,6 +476,7 @@ input[type=range]::-moz-range-thumb{width:10px;height:10px;border:0;border-radiu
     <div class="group">
       <div class="lbl">SVG</div>
       <div class="file"><span id="lFileName">Percepta</span><button class="btn sm" id="lChange">Cambiar</button></div>
+      <div class="row"><span>Escala</span><span class="v" id="l_scaleV"></span><input type="range" id="l_scale" min="0.1" max="2" step="0.01"></div>
     </div>
     <div class="group">
       <div class="lbl">Dispersión</div>
@@ -1915,7 +1916,7 @@ return{show(){update();},loadSvgText};
    added on top as a fringe. A mask limits it to the whole frame or to a soft trail that follows the cursor. */
 const LD=(()=>{
 const NS="http://www.w3.org/2000/svg",PAL=[["#f7f7f7","Blanco"],["#fce097","Amarillo"],["#ff898d","Rosa"],["#75c5ef","Celeste"],["#b88dd2","Lila"],["#151515","Negro"]];
-const ls={edge:"fade",dir:"out",disp:45,ang:0,glow:1.3,pal:"rgb",palOn:["#ff898d","#fce097","#75c5ef"],warp:18,freq:0.008,
+const ls={scale:1,edge:"fade",dir:"out",disp:45,ang:0,glow:1.3,pal:"rgb",palOn:["#ff898d","#fce097","#75c5ef"],warp:18,freq:0.008,
   mask:"hover",rad:260,soft:0.6,infl:1,follow:0.18,fade:1.2,C:[0.5,0.5]};
 let img={markup:"",vb:"0 0 1600 900",w:1600,h:900,name:"Percepta"},mapHref="",trail=[],mouse=null,pos=null,raf=0,last=0;
 const svg=$("lSvg"),hx=c=>[1,3,5].map(i=>parseInt(c.slice(i,i+2),16)/255);
@@ -1972,14 +1973,14 @@ function build(){
   const m=el("mask",{id:"lm",maskUnits:"userSpaceOnUse",x:0,y:0,width:w,height:h},[el("g",{id:"lMaskG"})]);
   const edge=el("mask",{id:"le",maskUnits:"userSpaceOnUse",x:0,y:0,width:w,height:h},[el("rect",{x:pad,y:pad,width:w-2*pad,height:h-2*pad,fill:"#fff",filter:"url(#leb)"})]);
   const eb=el("filter",{id:"leb",x:"-20%",y:"-20%",width:"140%",height:"140%"},[el("feGaussianBlur",{stdDeviation:pad*0.5})]);
-  const src=el("svg",{id:"lsrc",x:0,y:0,width:w,height:h,viewBox:img.vb,overflow:"visible"});
+  const sc=ls.scale,src=el("svg",{id:"lsrc",x:(w*(1-sc)/2).toFixed(1),y:(h*(1-sc)/2).toFixed(1),width:(w*sc).toFixed(1),height:(h*sc).toFixed(1),viewBox:img.vb,overflow:"visible"});
   const doc=new DOMParser().parseFromString(`<svg xmlns="${NS}" xmlns:xlink="http://www.w3.org/1999/xlink">${img.markup}</svg>`,"image/svg+xml");
   for(const n of [...doc.documentElement.childNodes])src.appendChild(document.importNode(n,true));
   // the original is cut out wherever the effect shows (inverse mask), so the zone is transformed, not overlaid
   const gk=el("radialGradient",{id:"lmgK"},[el("stop",{offset:0,"stop-color":"#000"}),el("stop",{offset:Math.max(0,1-ls.soft).toFixed(3),"stop-color":"#000"}),el("stop",{offset:1,"stop-color":"#000","stop-opacity":0})]);
-  const mi=el("mask",{id:"lmi",maskUnits:"userSpaceOnUse",x:0,y:0,width:w,height:h},[el("rect",{width:w,height:h,fill:"#fff"}),el("g",{mask:"url(#le)"},[el("g",{id:"lMaskI"})])]);
+  const mi=el("mask",{id:"lmi",maskUnits:"userSpaceOnUse",x:0,y:0,width:w,height:h},[el("rect",{width:w,height:h,fill:"#fff"}),el("g",{id:"lMaskI"})]);
   svg.append(el("defs",{},[f,g,gk,m,mi,edge,eb,src]),el("use",{href:"#lsrc",mask:"url(#lmi)"}),
-    el("g",{mask:"url(#le)"},[el("g",{mask:"url(#lm)"},[el("use",{href:"#lsrc",filter:"url(#lens)"})])]));
+    el("g",{mask:"url(#lm)"},[el("use",{href:"#lsrc",filter:"url(#lens)"})]));
   $("lPlate").style.setProperty("--ar",`${w}/${h}`);$("lPlate").style.background=img.dark?"#ffffff":"#151515";$("lMeta").textContent=`${w} × ${h} px`;
   drawMask();
 }
@@ -2008,8 +2009,8 @@ svg.addEventListener("pointerleave",()=>{mouse=null;kick();});
   C.addEventListener("pointermove",e=>{if(!on)return;const r=$("lPlate").getBoundingClientRect();ls.C=[(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height];drawMask();});
   C.addEventListener("pointerup",()=>on=false);}
 // controls
-const fmt={disp:v=>v+" px",ang:v=>v+"°",glow:v=>Math.round(v*100)+"%",warp:v=>v+" px",freq:v=>(+v).toFixed(3),rad:v=>v+" px",soft:v=>Math.round(v*100)+"%",infl:v=>Math.round(v*100)+"%",follow:v=>Math.round(v*100)+"%",fade:v=>(+v).toFixed(2)+" s"};
-const rebuildKeys=new Set(["disp","ang","glow","warp","freq","soft","rad"]);
+const fmt={scale:v=>Math.round(v*100)+"%",disp:v=>v+" px",ang:v=>v+"°",glow:v=>Math.round(v*100)+"%",warp:v=>v+" px",freq:v=>(+v).toFixed(3),rad:v=>v+" px",soft:v=>Math.round(v*100)+"%",infl:v=>Math.round(v*100)+"%",follow:v=>Math.round(v*100)+"%",fade:v=>(+v).toFixed(2)+" s"};
+const rebuildKeys=new Set(["scale","disp","ang","glow","warp","freq","soft","rad"]);
 for(const k in fmt){const e=$("l_"+k);e.value=ls[k];$("l_"+k+"V").textContent=fmt[k](ls[k]);e.addEventListener("input",()=>{ls[k]=+e.value;$("l_"+k+"V").textContent=fmt[k](ls[k]);rebuildKeys.has(k)?build():drawMask();});}
 const segs=[];function seg(box,items,get,set){box.innerHTML="";for(const[v,l]of items){const b=document.createElement("button");b.className="chip";b.textContent=l;b.dataset.v=v;b.onclick=()=>{set(v);sync();build();};box.appendChild(b);}
   segs.push(()=>[...box.children].forEach(b=>b.setAttribute("aria-pressed",String(String(get())===b.dataset.v))));}
