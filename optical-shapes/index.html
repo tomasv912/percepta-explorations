@@ -1979,15 +1979,15 @@ function build(){
   // the original is cut out wherever the effect shows (inverse mask), so the zone is transformed, not overlaid
   const gk=el("radialGradient",{id:"lmgK"},[el("stop",{offset:0,"stop-color":"#000"}),el("stop",{offset:Math.max(0,1-ls.soft).toFixed(3),"stop-color":"#000"}),el("stop",{offset:1,"stop-color":"#000","stop-opacity":0})]);
   const mi=el("mask",{id:"lmi",maskUnits:"userSpaceOnUse",x:0,y:0,width:w,height:h},[el("rect",{width:w,height:h,fill:"#fff"}),el("g",{id:"lMaskI"})]);
-  svg.append(el("defs",{},[f,g,gk,m,mi,edge,eb,src]),el("use",{href:"#lsrc",mask:"url(#lmi)"}),
-    el("g",{mask:"url(#lm)"},[el("use",{href:"#lsrc",filter:"url(#lens)"})]));
+  svg.append(el("defs",{},[f,g,gk,m,mi,edge,eb,src]),el("g",{style:"isolation:isolate"},[el("use",{href:"#lsrc",mask:"url(#lmi)"}),
+    el("g",{mask:"url(#lm)",style:"mix-blend-mode:plus-lighter"},[el("use",{href:"#lsrc",filter:"url(#lens)"})])]));
   $("lPlate").style.setProperty("--ar",`${w}/${h}`);$("lPlate").style.background=img.dark?"#ffffff":"#151515";$("lMeta").textContent=`${w} × ${h} px`;
   drawMask();
 }
 function centre(){return ls.mask==="hover"&&pos?pos:[ls.C[0]*img.w,ls.C[1]*img.h];}
 function drawMask(){const G=$("lMaskG"),GI=$("lMaskI");if(!G)return;G.innerHTML="";GI.innerHTML="";const{w,h}=img;
-  if(ls.edge==="grad"){const lead=ls.mask==="all"?1:trail.length?trail[trail.length-1].life:0;
-    G.append(el("rect",{width:w,height:h,fill:"#fff",opacity:(lead*ls.infl).toFixed(3)}));GI.append(el("rect",{width:w,height:h,fill:"#000",opacity:(lead*ls.infl).toFixed(3)}));}
+  if(ls.edge==="grad"){const lead=ls.mask==="all"?1:trail.length?trail[trail.length-1].life:0,[gx,gy]=centre(),a={cx:gx.toFixed(1),cy:gy.toFixed(1),r:ls.rad,opacity:(lead*ls.infl).toFixed(3)};
+    G.append(el("circle",{...a,fill:"#fff"}));GI.append(el("circle",{...a,fill:"#000"}));}
   else if(ls.mask==="all"){G.append(el("rect",{width:w,height:h,fill:"#fff",opacity:ls.infl}));GI.append(el("rect",{width:w,height:h,fill:"#000",opacity:ls.infl}));}
   else for(const p of trail)if(p.life>0.01){const a={cx:p.x.toFixed(1),cy:p.y.toFixed(1),r:ls.rad,opacity:(p.life*ls.infl).toFixed(3)};
     G.append(el("circle",{...a,fill:"url(#lmg)"}));GI.append(el("circle",{...a,fill:"url(#lmgK)"}));}
