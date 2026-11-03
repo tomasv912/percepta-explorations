@@ -222,7 +222,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <div id="sl-animFade" data-radial></div>
       <label class="anim-check" data-parallel><input type="checkbox" data-check="animParallax"> Paralaje</label>
       <div class="seg" data-key="vidFps" aria-label="Cuadros por segundo del video"><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button></div>
-      <button class="btn primary" id="anim-video" title="MP4 4K del loop, con el fondo">Exportar video</button>
+      <div class="seg" data-key="vidFmt" aria-label="Formato"><button data-v="mp4">MP4</button><button data-v="png" title="Cada cuadro del loop como PNG 4K, en un .zip">PNG (.zip)</button></div>
+      <button class="btn primary" id="anim-video" title="El loop en 4K: MP4 con el fondo, o una secuencia de PNG">Exportar video</button>
     </div>
     <div class="hud"><span id="stats">Hacé clic y arrastrá sobre la mesa</span><span class="dim"><kbd>B</kbd> pincel · <kbd>V</kbd> cursor (arrastrá en vacío para elegir varias, el último cubo para redireccionar) · <kbd>⌘C</kbd> <kbd>⌘V</kbd> copiar y pegar · <kbd>⌘Z</kbd> deshacer · <kbd>Shift</kbd> línea</span></div>
   </main>
@@ -304,7 +305,7 @@ const DEFAULTS = {
   style: 'mono', size: 16, variation: .3, speedSize: 0,
   life: 2.5, permanent: true,
   colorMode: 'image', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF'],
-  depth: false, depthBlur: 14, vp: false, vpDepth: false, vpCount: 16, vpGap: 0, angle: 0, parallel: false, mode: 'vp', tunnelDir: 'in', waveAmp: 60, waveLen: 600, waveShift: .25, genSeed: 1, animDur: 6, animScale: 2.5, animBlur: 14, animFocus: .45, animFade: .8, animLoops: 1, animParallax: true, vidFps: '30', palCount: '5',
+  depth: false, depthBlur: 14, vp: false, vpDepth: false, vpCount: 16, vpGap: 0, angle: 0, parallel: false, mode: 'vp', tunnelDir: 'in', waveAmp: 60, waveLen: 600, waveShift: .25, genSeed: 1, animDur: 6, animScale: 2.5, animBlur: 14, animFocus: .45, animFade: .8, animLoops: 1, animParallax: true, vidFps: '30', vidFmt: 'mp4', palCount: '5',
   ink: '#272727', grain: .05, paper: '#F6F6F6', svgColor: 'palette', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -764,8 +765,10 @@ function setAnim(on) {
 // Wired once the page's helpers ($, toast, download) exist.
 function wireAnim() {
 $('#anim-play').addEventListener('click', () => setAnim(!anim));
-// The loop as an MP4 at 4K (the artboard at 2×), background included, at a high constant bitrate.
+// The loop as an MP4 at 4K (the artboard at 2×), background included, at a high constant bitrate; or as a sequence of
+// 4K PNGs in a .zip (numbered from 0001, the background only with Incluir el fondo, so they can go over anything).
 $('#anim-video').addEventListener('click', async () => {
+  if (S.vidFmt === 'png') return exportPngs();
   if (!('VideoEncoder' in window) || !window.Mp4Muxer) return toast('Este navegador no puede exportar video: probá con Chrome, Edge o Safari.');
   const btn = $('#anim-video'), label = btn.textContent, fps = +S.vidFps, N = Math.max(2, Math.round(S.animDur * fps)), W = AW * RES, H = AH * RES;
   const was = anim; anim = null; btn.disabled = true;
@@ -801,6 +804,46 @@ $('#anim-video').addEventListener('click', async () => {
   } catch (err) { console.error(err); toast('No se pudo exportar el video.'); }
   finally { btn.disabled = false; btn.textContent = label; if (was) setAnim(true); else wake(); }
 });
+}
+
+async function exportPngs() {
+  const btn = $('#anim-video'), label = btn.textContent, fps = +S.vidFps, N = Math.max(2, Math.round(S.animDur * fps)), W = AW * RES, H = AH * RES;
+  const was = anim; anim = null; btn.disabled = true;
+  try {
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const ctx = c.getContext('2d'), files = [];
+    for (let i = 0; i < N; i++) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
+      if (S.bgExport) { ctx.fillStyle = S.paper; ctx.fillRect(0, 0, W, H); }
+      ctx.setTransform(RES, 0, 0, RES, 0, 0); drawAnim(ctx, i / N, S, lut);
+      const blob = await new Promise(res => c.toBlob(res, 'image/png'));
+      if (!blob) throw new Error('png');
+      files.push([`pixel-trail-${String(i + 1).padStart(4, '0')}.png`, new Uint8Array(await blob.arrayBuffer())]);
+      btn.textContent = `Renderizando ${i + 1} / ${N}`;
+    }
+    btn.textContent = 'Armando el .zip…'; await new Promise(r => setTimeout(r, 0));
+    download(`pixel-trail-${{ vp: 'punto-de-fuga', par: 'paralelos', tunnel: 'tunel', wave: 'onda' }[S.mode]}-${stamp()}-${fps}fps.zip`, zipStored(files));
+  } catch (err) { console.error(err); toast('No se pudo exportar la secuencia.'); }
+  finally { btn.disabled = false; btn.textContent = label; if (was) setAnim(true); else wake(); }
+}
+// A .zip of files as they are (no compression: PNGs are compressed already), for the image sequence.
+function zipStored(files) {
+  const crcT = new Uint32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = d => { let c = 0xFFFFFFFF; for (let i = 0; i < d.length; i++) c = crcT[(c ^ d[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  const enc = new TextEncoder(), parts = [], dir = [];
+  let off = 0;
+  for (const [name, data] of files) {
+    const nm = enc.encode(name), c = crc(data), h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint32(14, c, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nm.length, true);
+    parts.push(h.buffer, nm, data);
+    const d = new DataView(new ArrayBuffer(46));
+    d.setUint32(0, 0x02014b50, true); d.setUint16(4, 20, true); d.setUint16(6, 20, true); d.setUint32(16, c, true); d.setUint32(20, data.length, true); d.setUint32(24, data.length, true); d.setUint16(28, nm.length, true); d.setUint32(42, off, true);
+    dir.push(d.buffer, nm);
+    off += 30 + nm.length + data.length;
+  }
+  const size = dir.reduce((t, x) => t + x.byteLength, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, size, true); e.setUint32(16, off, true);
+  return new Blob([...parts, ...dir, e.buffer], { type: 'application/zip' });
 }
 
 // A tile as a JPG (on white, since JPG has no transparency), for the SVG export's fills.
@@ -955,6 +998,7 @@ function sync() {
   }
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
+  if (!$('#anim-video').disabled) $('#anim-video').textContent = S.vidFmt === 'png' ? 'Exportar PNG (.zip)' : 'Exportar video';
   $('#sl-life').hidden = S.permanent;
   $('#sl-depthBlur').hidden = !S.depth;
   $('#img-box').hidden = S.colorMode !== 'image';
