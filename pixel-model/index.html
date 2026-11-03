@@ -44,6 +44,7 @@ main { position: relative; display: grid; place-items: center; overflow: hidden;
 .frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .frame { cursor: grab; touch-action: none; }
 .frame:active { cursor: grabbing; }
+.frame.moving, .frame.moving:active { cursor: move; }
 .busy { position: absolute; top: 12px; right: 14px; font: 11px var(--mono); color: var(--text-3); }
 .hud { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
 .tt { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 4px 16px rgb(0 0 0 / .06); white-space: nowrap; z-index: 1; }
@@ -232,7 +233,7 @@ const WHITE = '#F6F6F6', INK = '#272727';
 const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 const AW = 1600, AH = 1200, RES = 2;
 const DEFAULTS = {
-  yaw: -20, pitch: 12, zoom: 1, lightAz: 220, lightEl: 40, ambient: .25, shadow: .65,
+  yaw: -20, pitch: 12, zoom: 1, panX: 0, panY: 0, lightAz: 220, lightEl: 40, ambient: .25, shadow: .65,
   count: 40000, size: 3, contrast: 1.6, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
@@ -280,7 +281,7 @@ function viewTris(yaw = S.yaw) {
   for (let i = 0; i < model.length; i += 18) for (let j = 0; j < 6; j++) rot(model[i + j * 3], model[i + j * 3 + 1], model[i + j * 3 + 2], i + j * 3);
   return out;
 }
-let pts = null;
+let pts = null, ptsPan = [0, 0];
 // The render at yaw (Giro unless given); only a render at Giro becomes the scene that A mano re-samples.
 function build(fast, yaw) {
   const tris = viewTris(yaw), ar = AW / AH, h = 1.15 / S.zoom, box = { x0: -h * ar, y0: -h, x1: h * ar, y1: h };
@@ -303,7 +304,7 @@ function stipple(n, r, sc = scene) {
   const { buf, e, box } = sc, raw = Stipple3D.sample(buf, e, n, r, { gamma: S.contrast, edge: S.edge, floor: .01, gain: 1.2, threshold: S.threshold });
   const k = AW / (box.x1 - box.x0), out = [];
   for (let i = 0; i < raw.length; i += 3) {
-    const x = (raw[i] - box.x0) * k + (r() - .5) * S.size * S.jitter, y = (raw[i + 1] - box.y0) * k + (r() - .5) * S.size * S.jitter;
+    const x = (raw[i] - box.x0) * k + (r() - .5) * S.size * S.jitter + S.panX, y = (raw[i + 1] - box.y0) * k + (r() - .5) * S.size * S.jitter + S.panY;
     out.push({ x, y, tone: raw[i + 2], pick: r() });
   }
   return out;
@@ -401,7 +402,9 @@ function sync(fast) {
   updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   const k = JSON.stringify([modelName, presetSeed, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, S.count, S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
-  if (k !== key || (!fast && fastNext)) { fastNext = !!fast; pts = build(fast); key = k; }
+  if (k !== key || (!fast && fastNext)) { fastNext = !!fast; pts = build(fast); key = k; ptsPan = [S.panX, S.panY]; }
+  // Moved in the frame (Shift + drag): the same pixels, shifted; nothing is re-sampled.
+  if (ptsPan[0] !== S.panX || ptsPan[1] !== S.panY) { const dx = S.panX - ptsPan[0], dy = S.panY - ptsPan[1]; for (const p of pts) { p.x += dx; p.y += dy; } ptsPan = [S.panX, S.panY]; }
   if (S.anim !== prevAnim) { prevAnim = S.anim; for (const p of pts) p.dx = p.dy = p.vx = p.vy = 0; lastT = 0; }
   play();
   schedule();
@@ -417,19 +420,28 @@ function render() {
   ctx.setTransform(cv.width / AW, 0, 0, cv.height / AH, 0, 0);
   const list = shown || pts;
   draw(ctx, list);
-  $('#stats').textContent = `${list.length.toLocaleString('es')} píxeles · ${modelName} · arrastrá para girar`;
+  $('#stats').textContent = `${list.length.toLocaleString('es')} píxeles · ${modelName} · arrastrá para girar, con Shift para mover (doble clic: centrar)`;
 }
 new ResizeObserver(() => pts && schedule()).observe(stage);
 
-// Drag turns the model; the final frame renders in full when the drag ends.
+// Drag turns the model; the final frame renders in full when the drag ends. Shift + drag moves it in the frame instead
+// (the same pixels, shifted); a double click puts it back in the middle.
 let turn = null;
-frame.addEventListener('pointerdown', e => { frame.setPointerCapture(e.pointerId); turn = { x: e.clientX, y: e.clientY, yaw: S.yaw, pitch: S.pitch }; });
+frame.addEventListener('pointerdown', e => { frame.setPointerCapture(e.pointerId); turn = { x: e.clientX, y: e.clientY, yaw: S.yaw, pitch: S.pitch, px: S.panX, py: S.panY, move: e.shiftKey }; frame.classList.toggle('moving', e.shiftKey); });
 frame.addEventListener('pointermove', e => {
   if (!turn) return;
+  if (turn.move) {
+    const r = frame.getBoundingClientRect();
+    S.panX = Math.round(turn.px + (e.clientX - turn.x) * AW / r.width); S.panY = Math.round(turn.py + (e.clientY - turn.y) * AH / r.height);
+    return sync();
+  }
   S.yaw = ((turn.yaw + (e.clientX - turn.x) * .5 + 540) % 360) - 180; S.pitch = clamp(turn.pitch + (e.clientY - turn.y) * .4, -89, 89);
   sync(true);
 });
-const endTurn = () => { if (turn) { turn = null; sync(); } };
+const endTurn = () => { if (turn) { const moved = turn.move; turn = null; frame.classList.remove('moving'); if (!moved) sync(); } };
+frame.addEventListener('dblclick', () => { if (S.panX || S.panY) { S.panX = S.panY = 0; sync(); } });
+addEventListener('keydown', e => { if (e.key === 'Shift' && !turn) frame.classList.add('moving'); });
+addEventListener('keyup', e => { if (e.key === 'Shift' && !turn) frame.classList.remove('moving'); });
 frame.addEventListener('pointerup', endTurn); frame.addEventListener('pointercancel', endTurn);
 frame.addEventListener('wheel', e => { e.preventDefault(); S.zoom = clamp(S.zoom * Math.exp(-e.deltaY * .0015), .4, 2.5); sync(true); clearTimeout(frame.t); frame.t = setTimeout(() => sync(), 200); }, { passive: false });
 
