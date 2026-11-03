@@ -62,6 +62,7 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; }
 
 .seg { display: flex; background: var(--fill); border-radius: 8px; padding: 2px; gap: 2px; }
 .seg button { flex: 1; border: 0; background: transparent; color: var(--text-2); font: 500 12px var(--font); height: 26px; border-radius: 6px; cursor: pointer; }
+.seg.tall button { height: auto; min-height: 26px; padding: 4px 6px; line-height: 1.25; }
 .seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .08), 0 0 0 1px var(--line); }
 .seg button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
@@ -125,6 +126,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <script src="tools.js"></script>
 <script src="stipple3d.js"></script>
 <script src="flora3d.js"></script>
+<script src="vendor/mp4-muxer.js"></script>
 <div class="app">
   <main id="stage">
     <div class="frame" id="frame">
@@ -196,6 +198,22 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <button class="btn icon" id="reseed" title="Nueva semilla (R)" aria-label="Nueva semilla">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg>
           </button>
+        </div>
+      </section>
+
+      <section id="motion-sec">
+        <h2>Movimiento</h2>
+        <div class="seg tall" data-key="motion" aria-label="Movimiento">
+          <button data-v="still">Quieta</button><button data-v="horiz">Desplazamiento horizontal</button>
+        </div>
+        <p class="hint" id="motion-hint">Los cubos recorren la ola de izquierda a derecha: entran por un borde del cuadro y salen por el otro, en loop.</p>
+        <div id="sl-wThresh"></div>
+        <div id="motion-controls">
+          <div id="sl-loopDur"></div>
+          <button class="btn" id="motion-play" aria-pressed="true">Pausa</button>
+          <div class="seg" data-key="vidFps" aria-label="Cuadros por segundo"><button data-v="24">24 fps</button><button data-v="30">30 fps</button><button data-v="60">60 fps</button></div>
+          <div class="seg" data-key="vidFmt" aria-label="Formato"><button data-v="mp4">MP4</button><button data-v="png" title="Cada cuadro como PNG, en un .zip">PNG (.zip)</button></div>
+          <button class="btn primary" id="motion-export">Exportar video</button>
         </div>
       </section>
 
@@ -284,6 +302,7 @@ const DEFAULTS = {
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
   dof: 0, focus: 0, focusBand: .2,
+  motion: 'still', wThresh: 0, loopDur: 6, vidFps: '30', vidFmt: 'mp4',
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -343,7 +362,33 @@ function loadImage(el) {
 // above. Cubes are spread evenly over the sheet, so they pile up where it folds or turns edge-on and thin
 // out where it faces the camera; the far edge and the ends fade. Image: cubes follow the darkness.
 // Either way the result is fitted inside the frame, every cube included, so nothing is ever cut.
+// A sheet's density for placing ranked cubes: NV rows (into the depth) by NU columns (along). Thinner towards the
+// edges (Desvanecer bordes; not at the ends when the cubes travel: they come in and leave off the frame) and, with
+// Umbral, piled up where the sheet curves most (crests and troughs: |∂²h/∂u² + ∂²h/∂v²|), the flats emptying.
+const NU = 200, NV = 32;
+function sheetGrid(L, st, flowing) {
+  const A = L.waves.reduce((a, w) => a + w.a * w.f * w.f, 0), th = st.wThresh, mixK = Math.min(1, th * 4), rows = [], vcdf = new Float64Array(NV + 1);
+  let vs = 0;
+  for (let rI = 0; rI < NV; rI++) {
+    const v = (rI + .5) / NV, cdf = new Float64Array(NU + 1), edge = smooth(0, .12 + st.fade * .2, v) * (1 - smooth(1 - st.fade * .7, 1, v));
+    let sum = 0;
+    for (let j = 0; j < NU; j++) {
+      const u = (j + .5) / NU; let lap = 0;
+      for (const w of L.waves) lap -= w.a * w.f * w.f * Math.sin(w.f * (u * Math.cos(w.th) + v * Math.sin(w.th)) + w.ph);
+      const curv = Math.min(1, Math.abs(lap) / A * 1.6), base = edge * (flowing ? 1 : smooth(0, .05 + st.fade * .12, u) * smooth(0, .05 + st.fade * .12, 1 - u));
+      cdf[j + 1] = sum += base * ((1 - mixK) + mixK * Math.pow(Math.max(0, curv - th * .8) / (1 - th * .8), 1 + th * 4)) + 1e-9;
+    }
+    for (let j = 1; j <= NU; j++) cdf[j] /= sum;
+    rows.push(cdf); vcdf[rI + 1] = vs += sum;
+  }
+  for (let rI = 1; rI <= NV; rI++) vcdf[rI] /= vs;
+  return { rows, vcdf };
+}
+const invertCdf = (cdf, n, q) => { let lo = 0, hi = n; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cdf[mid] < q) lo = mid; else hi = mid; } return lo + (q - cdf[lo]) / ((cdf[hi] - cdf[lo]) || 1); };
+function placeOn(g, qv, q) { const rv = invertCdf(g.vcdf, NV, qv), row = Math.min(NV - 1, Math.floor(rv)); return [invertCdf(g.rows[row], NU, q) / NU, rv / NV]; }
+let wavesRanked = null;
 function generate(st) {
+  wavesRanked = null;
   // Vertical: the frame turns on its side, and the composition (except an image) flows bottom to top.
   const [W, H] = st.orient === 'v' ? [...SIZES[st.aspect]].reverse() : SIZES[st.aspect], r = rng(st.seed), rand = r, mono = st.style === 'mono', image = st.source === 'image' && img;
   const gridRows = image ? Math.max(1, Math.round(st.gridCols / img.ar)) : 0, grid = image && st.grid;
@@ -513,6 +558,19 @@ function generate(st) {
         add(x, y, 1, 0, r() < settle ? col : undefined, clamp(.5 + .45 * sheet(s * .7 + .3, w + .5)));
       }
     }
+  } else if (st.motion === 'horiz' || st.wThresh > 0) {
+    // Olas with Umbral or in motion: each cube keeps two ranks on its sheet (along and into the depth) and is placed
+    // from the sheet's density (see sheetGrid), which piles up on the curves with Umbral; Desplazamiento horizontal
+    // runs the along-rank round once a loop (wavesAt).
+    const { layers, height, focal, zNear, zFar } = waveField(), flowing = st.motion === 'horiz';
+    const grids = layers.map(L => sheetGrid(L, st, flowing)), li = new Uint8Array(n), q = new Float32Array(n), qv = new Float32Array(n), nn = new Float32Array(n), uu = new Float32Array(n);
+    for (let c = 0; c < n; c++) {
+      const l = Math.floor(r() * layers.length), a = r(), b = r(), no = gauss(r) * st.thickness * .06 * (1 - st.wThresh * .7), [u, v] = placeOn(grids[l], b, a);
+      const z = zNear + v * (zFar - zNear), x = (u - .5) * 2 * z / focal * 1.1, y = height(layers[l], u, v) + no;
+      li[got] = l; q[got] = a; qv[got] = b; nn[got] = no; uu[got] = u;
+      add(x / z * focal, (.9 - y) / z * focal, (1 - st.mod) + st.mod * clamp(1.6 / z), 0, undefined, v);
+    }
+    wavesRanked = { layers, height, focal, zNear, zFar, grids, li, q, qv, nn, uu, flowing };
   } else {
     const { layers, height, focal, zNear, zFar } = waveField();
     for (let tries = 0; got < n && tries < n * 6; tries++) {
@@ -545,13 +603,24 @@ function generate(st) {
   }
   let X0, X1, Y0, Y1;
   { X0 = .05 * W + half + tl; X1 = W - .05 * W - half - tr; Y0 = .14 * H + half + tt; Y1 = .86 * H - half - tb; }
+  const wr = wavesRanked;
+  if (wr && wr.flowing) {
+    // Desplazamiento horizontal: the sheets run past both sides of the frame (along the flow: across in Horizontal,
+    // up in Vertical), so the cubes come in at one edge and leave at the other; fitted on the middle of the sheets.
+    const vert = st.orient === 'v';
+    let a0 = Infinity, a1 = -Infinity;
+    for (let i = 0; i < got; i++) if (wr.uu[i] > .1 && wr.uu[i] < .9) { const a = vert ? py[i] : px[i]; a0 = Math.min(a0, a); a1 = Math.max(a1, a); }
+    if (vert) { y0 = a0; y1 = a1; Y0 = 0; Y1 = H; X0 = .14 * W + half; X1 = .86 * W - half; }
+    else { x0 = a0; x1 = a1; X0 = 0; X1 = W; }
+  }
   if (st.source === 'bloom') {
     // Flowers keep their proportions: one scale for both axes, centred in the box.
     const k = Math.min((X1 - X0) / (x1 - x0 || 1), (Y1 - Y0) / (y1 - y0 || 1)), mx = (X0 + X1) / 2, my = (Y0 + Y1) / 2;
     X0 = mx - (x1 - x0) * k / 2; X1 = mx + (x1 - x0) * k / 2; Y0 = my - (y1 - y0) * k / 2; Y1 = my + (y1 - y0) * k / 2;
   }
   for (let i = 0; i < got; i++) { px[i] = X0 + (px[i] - x0) / (x1 - x0 || 1) * (X1 - X0); py[i] = Y0 + (py[i] - y0) / (y1 - y0 || 1) * (Y1 - Y0); }
-  return { W, H, n: got, hx: cut(px), hy: cut(py), size: cut(size), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen), dep: cut(dep) };
+  if (wr) wr.fit = { x0, x1, y0, y1, X0, X1, Y0, Y1, vert: st.orient === 'v' };
+  return { wv: wr, W, H, n: got, hx: cut(px), hy: cut(py), size: cut(size), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen), dep: cut(dep) };
 }
 
 // An image is a flat card: fitted inside the frame unrotated (so turning it never rescales), then turned
@@ -767,6 +836,8 @@ const SLIDERS = {
   persp: { label: 'Perspectiva', min: 0, max: 1, step: .01, fmt: pct },
   thickness: { label: 'Grosor', min: 0, max: 1, step: .01, fmt: pct },
   fade: { label: 'Desvanecer bordes', min: 0, max: 1, step: .01, fmt: pct },
+  wThresh: { label: 'Umbral (se juntan en las curvas)', min: 0, max: .95, step: .01, fmt: pct },
+  loopDur: { label: 'Duración del loop', min: 2, max: 30, step: .5, fmt: v => v + ' s', emph: true },
   rfChannels: { label: 'Complejidad', min: 1, max: 6, step: 1, fmt: String, emph: true },
   rfFocus: { label: 'Punto de encauce', min: .1, max: .9, step: .01, fmt: pct },
   rfChaos: { label: 'Desorden', min: 0, max: 1, step: .01, fmt: pct },
@@ -864,7 +935,9 @@ function sync() {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   const waves = S.source === 'waves', image = S.source === 'image', mono = S.style === 'mono';
-  $('#wave-controls').hidden = !waves && S.source !== 'bloom'; $('#image-controls').hidden = !image; $('#refract-controls').hidden = S.source !== 'refract'; $('#bloom-controls').hidden = S.source !== 'bloom';
+  $('#wave-controls').hidden = !waves && S.source !== 'bloom';
+  $('#motion-sec').hidden = !waves; $('#motion-controls').hidden = $('#motion-hint').hidden = S.motion !== 'horiz';
+  if (!$('#motion-export').disabled) $('#motion-export').textContent = S.vidFmt === 'png' ? 'Exportar PNG (.zip)' : 'Exportar video'; $('#image-controls').hidden = !image; $('#refract-controls').hidden = S.source !== 'refract'; $('#bloom-controls').hidden = S.source !== 'bloom';
   $('#source-hint').textContent = image ? 'Más cubos en las zonas oscuras, menos en las claras.' : 'También podés arrastrar o pegar una imagen: más cubos en lo oscuro, menos en lo claro.';
   $('#cm-image').hidden = !image;
   $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = mono;
@@ -877,7 +950,7 @@ function sync() {
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   markPalette();
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
-  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.contrast, S.threshold, S.invert,
+  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.motion, S.wThresh, S.contrast, S.threshold, S.invert,
     S.style, S.count, S.size, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {
@@ -902,6 +975,7 @@ function frameLoop(now) {
   raf = 0;
   const dt = last ? Math.min(.05, (now - last) / 1000) : 1 / 60; last = now;
   step(dt);
+  if (flowing()) setFlow(((now - flowT0) / 1000 / S.loopDur) % 1);
   const { w, h } = fit();
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
   // Zoomed in with the lupa, the canvas renders at the zoomed size so it stays sharp.
@@ -915,7 +989,7 @@ function frameLoop(now) {
   draw(ctx, S);
   let out = 0, del = 0; for (let i = 0; i < gen.n; i++) { out += gone[i] && !gen.del[i]; del += gen.del[i]; }
   $('#stats').textContent = `${(gen.n - out - del).toLocaleString('es')} cubos · ${active.size.toLocaleString('es')} en movimiento${out ? ` · ${out.toLocaleString('es')} fuera` : ''} · ${gen.W} × ${gen.H} px`;
-  if (pressing || active.size || reform) raf = requestAnimationFrame(frameLoop); else last = 0;
+  if (pressing || active.size || reform || flowing()) raf = requestAnimationFrame(frameLoop); else last = 0;
 }
 new ResizeObserver(wake).observe(stage);
 
@@ -1092,6 +1166,107 @@ addEventListener('paste', e => {
   const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
   if (item) openFile(item.getAsFile());
 });
+
+// ---------- Desplazamiento horizontal ----------
+// Every cube's along-rank runs round once a loop (t from 0 to 1): it rides its sheet left to right, in at one edge of
+// the frame and out at the other, and the last drawing leads back into the first. Cubes dispersed by hand stay put.
+let flowPlaying = true, flowT0 = performance.now(), flowX = null, flowY = null;
+const flowing = () => S.motion === 'horiz' && S.source === 'waves' && gen0?.wv && flowPlaying && !filming;
+function wavesAt(t) {
+  const A = gen0.wv, F = A.fit, n = gen0.n;
+  if (!flowX || flowX.length !== n) { flowX = new Float32Array(n); flowY = new Float32Array(n); }
+  for (let i = 0; i < n; i++) {
+    const q = (A.q[i] + t) % 1, [u, v] = placeOn(A.grids[A.li[i]], A.qv[i], q), z = A.zNear + v * (A.zFar - A.zNear);
+    let x = (u - .5) * 2 * z / A.focal * 1.1 / z * A.focal, y = (.9 - A.height(A.layers[A.li[i]], u, v) - A.nn[i]) / z * A.focal;
+    if (F.vert) { const k = x; x = y; y = -k; }
+    flowX[i] = F.X0 + (x - F.x0) / (F.x1 - F.x0 || 1) * (F.X1 - F.X0); flowY[i] = F.Y0 + (y - F.y0) / (F.y1 - F.y0 || 1) * (F.Y1 - F.Y0);
+  }
+}
+const setFlow = t => setFlowAt(t);
+$('#motion-play').addEventListener('click', () => {
+  flowPlaying = !flowPlaying; if (flowPlaying) flowT0 = performance.now();
+  $('#motion-play').textContent = flowPlaying ? 'Pausa' : 'Reproducir'; $('#motion-play').setAttribute('aria-pressed', flowPlaying);
+  if (!flowPlaying) { for (let i = 0; i < gen.n; i++) if (!moved[i]) { X[i] = gen.hx[i]; Y[i] = gen.hy[i]; } }
+  wake();
+});
+function zipStored(files) {
+  const crcT = new Uint32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = d => { let c = 0xFFFFFFFF; for (let i = 0; i < d.length; i++) c = crcT[(c ^ d[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  const enc = new TextEncoder(), parts = [], dir = [];
+  let off = 0;
+  for (const [name, data] of files) {
+    const nm = enc.encode(name), c = crc(data), h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint32(14, c, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nm.length, true);
+    parts.push(h.buffer, nm, data);
+    const d = new DataView(new ArrayBuffer(46));
+    d.setUint32(0, 0x02014b50, true); d.setUint16(4, 20, true); d.setUint16(6, 20, true); d.setUint32(16, c, true); d.setUint32(20, data.length, true); d.setUint32(24, data.length, true); d.setUint16(28, nm.length, true); d.setUint32(42, off, true);
+    dir.push(d.buffer, nm);
+    off += 30 + nm.length + data.length;
+  }
+  const size = dir.reduce((t, x) => t + x.byteLength, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, size, true); e.setUint32(16, off, true);
+  return new Blob([...parts, ...dir, e.buffer], { type: 'application/zip' });
+}
+
+// The loop at the artboard's size (what the recorte shows): an MP4 at a high constant bitrate with the background,
+// or the frames as PNGs in a .zip (the background only with Incluir el fondo).
+let filming = false;
+$('#motion-export').addEventListener('click', async () => {
+  if (filming || !gen0?.wv) return;
+  const png = S.vidFmt === 'png', btn = $('#motion-export'), label = btn.textContent, fps = +S.vidFps, N = Math.max(2, Math.round(S.loopDur * fps));
+  const W = gen.W, H = gen.H, v = viewBox(), k = W / v.w;
+  if (!png && (!('VideoEncoder' in window) || !window.Mp4Muxer)) return toast('Este navegador no puede exportar video: probá con Chrome, Edge o Safari, o elegí PNG (.zip).');
+  filming = true; btn.disabled = true;
+  const keepX = X.slice(), keepY = Y.slice();
+  try {
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const ctx = c.getContext('2d'), frameAt = i => {
+      setFlowAt(i / N);
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
+      if (!png || S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, W, H); }
+      ctx.setTransform(k, 0, 0, k, (panX - v.x) * k, (panY - v.y) * k); draw(ctx, S);
+    };
+    if (png) {
+      const files = [];
+      for (let i = 0; i < N; i++) {
+        frameAt(i);
+        const b = await new Promise(res => c.toBlob(res, 'image/png')); if (!b) throw new Error('png');
+        files.push([`pixel-waves-${String(i + 1).padStart(4, '0')}.png`, new Uint8Array(await b.arrayBuffer())]);
+        btn.textContent = `Renderizando ${i + 1} / ${N}`;
+      }
+      btn.textContent = 'Armando el .zip…'; await new Promise(r => setTimeout(r, 0));
+      download(`pixel-waves-horizontal-${S.seed}-${fps}fps.zip`, zipStored(files));
+    } else {
+      let config = null, kind = '';
+      search: for (const br of [120e6, 80e6, 50e6])
+        for (const [codec, k2] of [['avc1.640034', 'avc'], ['avc1.640033', 'avc'], ['avc1.4d0033', 'avc'], ['vp09.00.51.08', 'vp9'], ['vp09.00.10.08', 'vp9']]) {
+          const cfg = { codec, width: W, height: H, bitrate: br, bitrateMode: 'constant', latencyMode: 'quality', framerate: fps };
+          if ((await VideoEncoder.isConfigSupported(cfg)).supported) { config = cfg; kind = k2; break search; }
+        }
+      if (!config) throw new Error('codec');
+      const muxer = new Mp4Muxer.Muxer({ target: new Mp4Muxer.ArrayBufferTarget(), video: { codec: kind, width: W, height: H, frameRate: fps }, fastStart: 'in-memory' });
+      let failed = null;
+      const tag = meta => meta?.decoderConfig ? { ...meta, decoderConfig: { ...meta.decoderConfig, colorSpace: { matrix: 'bt709', fullRange: false, ...meta.decoderConfig.colorSpace, primaries: 'bt709', transfer: 'iec61966-2-1' } } } : meta;
+      const enc = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, tag(meta)), error: e => failed = e });
+      enc.configure(config);
+      for (let i = 0; i < N; i++) {
+        if (failed) throw failed;
+        frameAt(i);
+        const f = new VideoFrame(c, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) });
+        enc.encode(f, { keyFrame: i % fps === 0 }); f.close();
+        btn.textContent = `Renderizando ${i + 1} / ${N}`;
+        while (enc.encodeQueueSize > 4) await new Promise(r => setTimeout(r, 5));
+        await new Promise(r => setTimeout(r, 0));
+      }
+      await enc.flush(); enc.close();
+      if (failed) throw failed;
+      muxer.finalize();
+      download(`pixel-waves-horizontal-${S.seed}.mp4`, new Blob([muxer.target.buffer], { type: 'video/mp4' }));
+    }
+  } catch (err) { console.error(err); toast(png ? 'No se pudo exportar la secuencia.' : 'No se pudo exportar el video.'); }
+  finally { X = keepX; Y = keepY; filming = false; btn.disabled = false; btn.textContent = label; flowT0 = performance.now(); wake(); }
+});
+function setFlowAt(t) { wavesAt(t); const src = edit.src; for (let i = 0; i < gen.n; i++) if (!moved[i]) { X[i] = flowX[src[i]]; Y[i] = flowY[src[i]]; } }
 
 // ---------- Export ----------
 let toastT = 0;
