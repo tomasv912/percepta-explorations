@@ -1916,8 +1916,8 @@ return{show(){update();},loadSvgText};
    added on top as a fringe. A mask limits it to the whole frame or to a soft trail that follows the cursor. */
 const LD=(()=>{
 const NS="http://www.w3.org/2000/svg",PAL=[["#f7f7f7","Blanco"],["#fce097","Amarillo"],["#ff898d","Rosa"],["#75c5ef","Celeste"],["#b88dd2","Lila"],["#151515","Negro"]];
-const ls={scale:1,edge:"fade",dir:"out",disp:45,ang:0,glow:1.3,pal:"rgb",palOn:["#ff898d","#fce097","#75c5ef"],warp:18,freq:0.008,
-  mask:"hover",rad:260,soft:0.6,infl:1,follow:0.18,fade:1.2,C:[0.5,0.5]};
+const ls={scale:1,edge:"fade",dir:"out",disp:3,ang:0,glow:2,pal:"rgb",palOn:["#ff898d","#fce097","#75c5ef"],warp:5,freq:0.008,
+  mask:"hover",rad:260,soft:0.2,infl:0.5,follow:0.18,fade:0.3,C:[0.5,0.5]};
 let img={markup:"",vb:"0 0 1600 900",w:1600,h:900,name:"Percepta"},mapHref="",trail=[],mouse=null,pos=null,raf=0,last=0;
 const svg=$("lSvg"),hx=c=>[1,3,5].map(i=>parseInt(c.slice(i,i+2),16)/255);
 const SAMPLE=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900"><text x="800" y="545" text-anchor="middle" font-family="Inter, Helvetica, Arial, sans-serif" font-weight="700" font-size="330" letter-spacing="-14" fill="#f7f7f7">Percepta</text></svg>`;
