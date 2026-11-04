@@ -62,6 +62,9 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; }
 
 .seg { display: flex; background: var(--fill); border-radius: 8px; padding: 2px; gap: 2px; }
 .seg button { flex: 1; border: 0; background: transparent; color: var(--text-2); font: 500 12px var(--font); height: 26px; border-radius: 6px; cursor: pointer; }
+.seg.fps button { padding: 0; min-width: 0; }
+#motion-controls { display: flex; flex-direction: column; gap: 10px; }
+#motion-controls .hint { margin-bottom: -6px; }
 .seg.tall button { height: auto; min-height: 26px; padding: 4px 6px; line-height: 1.25; }
 .seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .08), 0 0 0 1px var(--line); }
 .seg button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -204,14 +207,18 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section id="motion-sec">
         <h2>Movimiento</h2>
         <div class="seg tall" data-key="motion" aria-label="Movimiento">
-          <button data-v="still">Quieta</button><button data-v="horiz">Desplazamiento horizontal</button>
+          <button data-v="still">Quieta</button><button data-v="hand">A mano</button><button data-v="horiz" id="mv-horiz">Desplazamiento horizontal</button>
         </div>
-        <p class="hint" id="motion-hint">Los cubos recorren la ola de izquierda a derecha: entran por un borde del cuadro y salen por el otro, en loop.</p>
+        <p class="hint" id="motion-hint"></p>
         <div id="sl-wThresh"></div>
         <div id="motion-controls">
+          <label class="check" id="hand-check"><input type="checkbox" data-check="handJit"> A mano: un saltito en cada dibujo</label>
+          <div id="sl-jitter"></div>
+          <span class="hint">Dibujos por segundo</span>
+          <div class="seg fps" data-key="vidFps" aria-label="Dibujos por segundo"><button data-v="8">8</button><button data-v="9">9</button><button data-v="12">12</button><button data-v="15">15</button><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button></div>
           <div id="sl-loopDur"></div>
           <button class="btn" id="motion-play" aria-pressed="true">Pausa</button>
-          <div class="seg" data-key="vidFps" aria-label="Cuadros por segundo"><button data-v="24">24 fps</button><button data-v="30">30 fps</button><button data-v="60">60 fps</button></div>
+          <div class="seg" data-key="expScale" aria-label="Tamaño"><button data-v="1">×1</button><button data-v="2">@2x</button></div>
           <div class="seg" data-key="vidFmt" aria-label="Formato"><button data-v="mp4">MP4</button><button data-v="png" title="Cada cuadro como PNG, en un .zip">PNG (.zip)</button></div>
           <button class="btn primary" id="motion-export">Exportar video</button>
         </div>
@@ -302,7 +309,7 @@ const DEFAULTS = {
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
   dof: 0, focus: 0, focusBand: .2,
-  motion: 'still', wThresh: 0, loopDur: 6, vidFps: '30', vidFmt: 'mp4',
+  motion: 'still', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -837,6 +844,7 @@ const SLIDERS = {
   thickness: { label: 'Grosor', min: 0, max: 1, step: .01, fmt: pct },
   fade: { label: 'Desvanecer bordes', min: 0, max: 1, step: .01, fmt: pct },
   wThresh: { label: 'Umbral (se juntan en las curvas)', min: 0, max: .95, step: .01, fmt: pct },
+  jitter: { label: 'Temblor', min: .5, max: 12, step: .5, fmt: v => v + ' px' },
   loopDur: { label: 'Duración del loop', min: 2, max: 30, step: .5, fmt: v => v + ' s', emph: true },
   rfChannels: { label: 'Complejidad', min: 1, max: 6, step: 1, fmt: String, emph: true },
   rfFocus: { label: 'Punto de encauce', min: .1, max: .9, step: .01, fmt: pct },
@@ -936,8 +944,13 @@ function sync() {
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   const waves = S.source === 'waves', image = S.source === 'image', mono = S.style === 'mono';
   $('#wave-controls').hidden = !waves && S.source !== 'bloom';
-  $('#motion-sec').hidden = !waves; $('#motion-controls').hidden = $('#motion-hint').hidden = S.motion !== 'horiz';
-  if (!$('#motion-export').disabled) $('#motion-export').textContent = S.vidFmt === 'png' ? 'Exportar PNG (.zip)' : 'Exportar video'; $('#image-controls').hidden = !image; $('#refract-controls').hidden = S.source !== 'refract'; $('#bloom-controls').hidden = S.source !== 'bloom';
+  if (S.motion === 'horiz' && !waves) S.motion = 'still';
+  $('#mv-horiz').hidden = $('#sl-wThresh').hidden = !waves; $('#motion-controls').hidden = S.motion === 'still';
+  $('#hand-check').hidden = S.motion !== 'horiz'; $('#sl-jitter').hidden = !handOn();
+  $('#motion-hint').hidden = S.motion === 'still';
+  $('#motion-hint').textContent = S.motion === 'hand' ? 'Como dibujado a mano: en cada dibujo los cubos dan un saltito, y los dibujos se repiten en loop.' : 'Los cubos recorren la ola de izquierda a derecha: entran por un borde del cuadro y salen por el otro, en loop.';
+  if (!$('#motion-export').disabled) $('#motion-export').textContent = S.vidFmt === 'png' ? 'Exportar PNG (.zip)' : 'Exportar video';
+  $('#image-controls').hidden = !image; $('#refract-controls').hidden = S.source !== 'refract'; $('#bloom-controls').hidden = S.source !== 'bloom';
   $('#source-hint').textContent = image ? 'Más cubos en las zonas oscuras, menos en las claras.' : 'También podés arrastrar o pegar una imagen: más cubos en lo oscuro, menos en lo claro.';
   $('#cm-image').hidden = !image;
   $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = mono;
@@ -950,7 +963,7 @@ function sync() {
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   markPalette();
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
-  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.motion, S.wThresh, S.contrast, S.threshold, S.invert,
+  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.motion === 'horiz', S.wThresh, S.contrast, S.threshold, S.invert,
     S.style, S.count, S.size, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {
@@ -961,7 +974,7 @@ function sync() {
     // Rotating moves the cubes still at home; dispersed ones stay where they drifted.
     placeKey = pkey; place(gen0, S); rebuild(false);
   }
-  wake();
+  shownFi = -1; wake();
 }
 
 function fit() {
@@ -975,7 +988,8 @@ function frameLoop(now) {
   raf = 0;
   const dt = last ? Math.min(.05, (now - last) / 1000) : 1 / 60; last = now;
   step(dt);
-  if (flowing()) setFlow(((now - flowT0) / 1000 / S.loopDur) % 1);
+  // Animating: a new drawing Dibujos por segundo times a second, held in between (as stop motion).
+  if (animating()) { const fi = Math.floor((now - flowT0) / 1000 * +S.vidFps) % drawings(); if (fi !== shownFi) { shownFi = fi; poseAt(fi); } }
   const { w, h } = fit();
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
   // Zoomed in with the lupa, the canvas renders at the zoomed size so it stays sharp.
@@ -989,7 +1003,7 @@ function frameLoop(now) {
   draw(ctx, S);
   let out = 0, del = 0; for (let i = 0; i < gen.n; i++) { out += gone[i] && !gen.del[i]; del += gen.del[i]; }
   $('#stats').textContent = `${(gen.n - out - del).toLocaleString('es')} cubos · ${active.size.toLocaleString('es')} en movimiento${out ? ` · ${out.toLocaleString('es')} fuera` : ''} · ${gen.W} × ${gen.H} px`;
-  if (pressing || active.size || reform || flowing()) raf = requestAnimationFrame(frameLoop); else last = 0;
+  if (pressing || active.size || reform || animating()) raf = requestAnimationFrame(frameLoop); else last = 0;
 }
 new ResizeObserver(wake).observe(stage);
 
@@ -1167,11 +1181,17 @@ addEventListener('paste', e => {
   if (item) openFile(item.getAsFile());
 });
 
-// ---------- Desplazamiento horizontal ----------
-// Every cube's along-rank runs round once a loop (t from 0 to 1): it rides its sheet left to right, in at one edge of
-// the frame and out at the other, and the last drawing leads back into the first. Cubes dispersed by hand stay put.
-let flowPlaying = true, flowT0 = performance.now(), flowX = null, flowY = null;
-const flowing = () => S.motion === 'horiz' && S.source === 'waves' && gen0?.wv && flowPlaying && !filming;
+// ---------- Movimiento ----------
+// The loop is Duración del loop seconds of drawings, Dibujos por segundo of them a second, each held until the next.
+// Desplazamiento horizontal: every cube's along-rank runs round once a loop, so it rides its sheet left to right, in at
+// one edge of the frame and out at the other. A mano: in every drawing each cube sits a little off its place (up to
+// Temblor on each axis, a different jump each drawing, the same ones every loop). The last drawing leads back into
+// the first. Cubes dispersed by hand stay put.
+let flowPlaying = true, flowT0 = performance.now(), flowX = null, flowY = null, shownFi = -1;
+const handOn = () => S.motion === 'hand' || (S.motion === 'horiz' && S.handJit);
+const animMode = () => S.motion === 'hand' || (S.motion === 'horiz' && S.source === 'waves' && !!gen0?.wv);
+const animating = () => animMode() && flowPlaying && !filming;
+const drawings = () => Math.max(2, Math.round(S.loopDur * +S.vidFps));
 function wavesAt(t) {
   const A = gen0.wv, F = A.fit, n = gen0.n;
   if (!flowX || flowX.length !== n) { flowX = new Float32Array(n); flowY = new Float32Array(n); }
@@ -1182,9 +1202,28 @@ function wavesAt(t) {
     flowX[i] = F.X0 + (x - F.x0) / (F.x1 - F.x0 || 1) * (F.X1 - F.X0); flowY[i] = F.Y0 + (y - F.y0) / (F.y1 - F.y0 || 1) * (F.Y1 - F.Y0);
   }
 }
-const setFlow = t => setFlowAt(t);
+// A number in [0, 1) for a cube and a drawing, always the same for the pair.
+function hash01(a, b) {
+  let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x632be5ab, 0xc2b2ae35);
+  h ^= h >>> 13; h = Math.imul(h, 0x27d4eb2d); h ^= h >>> 15; return (h >>> 0) / 4294967296;
+}
+// Every cube where drawing fi puts it.
+function poseAt(fi) {
+  const horiz = S.motion === 'horiz' && gen0?.wv, src = edit.src, J = handOn() ? S.jitter : 0, d = fi % drawings();
+  if (horiz) wavesAt(d / drawings());
+  for (let i = 0; i < gen.n; i++) {
+    if (moved[i]) continue;
+    let x = horiz ? flowX[src[i]] : gen.hx[i], y = horiz ? flowY[src[i]] : gen.hy[i];
+    if (J) {
+      const k = src[i] * 4, jx = (.35 + .65 * hash01(k, d)) * (hash01(k + 1, d) < .5 ? -1 : 1), jy = (.35 + .65 * hash01(k + 2, d)) * (hash01(k + 3, d) < .5 ? -1 : 1);
+      x += jx * J; y += jy * J;
+    }
+    X[i] = x; Y[i] = y;
+  }
+}
+const setFlowAt = t => poseAt(Math.round(t * drawings()));
 $('#motion-play').addEventListener('click', () => {
-  flowPlaying = !flowPlaying; if (flowPlaying) flowT0 = performance.now();
+  flowPlaying = !flowPlaying; if (flowPlaying) { flowT0 = performance.now(); shownFi = -1; }
   $('#motion-play').textContent = flowPlaying ? 'Pausa' : 'Reproducir'; $('#motion-play').setAttribute('aria-pressed', flowPlaying);
   if (!flowPlaying) { for (let i = 0; i < gen.n; i++) if (!moved[i]) { X[i] = gen.hx[i]; Y[i] = gen.hy[i]; } }
   wake();
@@ -1208,20 +1247,20 @@ function zipStored(files) {
   return new Blob([...parts, ...dir, e.buffer], { type: 'application/zip' });
 }
 
-// The loop at the artboard's size (what the recorte shows): an MP4 at a high constant bitrate with the background,
-// or the frames as PNGs in a .zip (the background only with Incluir el fondo).
+// The loop at the artboard's size (what the recorte shows), or twice it (@2x): an MP4 at the drawings' rate and a high
+// constant bitrate, with the background, or the drawings as PNGs in a .zip (the background only with Incluir el fondo).
 let filming = false;
 $('#motion-export').addEventListener('click', async () => {
-  if (filming || !gen0?.wv) return;
-  const png = S.vidFmt === 'png', btn = $('#motion-export'), label = btn.textContent, fps = +S.vidFps, N = Math.max(2, Math.round(S.loopDur * fps));
-  const W = gen.W, H = gen.H, v = viewBox(), k = W / v.w;
+  if (filming || !animMode()) return;
+  const png = S.vidFmt === 'png', btn = $('#motion-export'), label = btn.textContent, fps = +S.vidFps, N = drawings(), sc = +S.expScale;
+  const W = gen.W * sc, H = gen.H * sc, v = viewBox(), k = W / v.w;
   if (!png && (!('VideoEncoder' in window) || !window.Mp4Muxer)) return toast('Este navegador no puede exportar video: probá con Chrome, Edge o Safari, o elegí PNG (.zip).');
   filming = true; btn.disabled = true;
   const keepX = X.slice(), keepY = Y.slice();
   try {
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d'), frameAt = i => {
-      setFlowAt(i / N);
+      poseAt(i);
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
       if (!png || S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, W, H); }
       ctx.setTransform(k, 0, 0, k, (panX - v.x) * k, (panY - v.y) * k); draw(ctx, S);
@@ -1231,19 +1270,20 @@ $('#motion-export').addEventListener('click', async () => {
       for (let i = 0; i < N; i++) {
         frameAt(i);
         const b = await new Promise(res => c.toBlob(res, 'image/png')); if (!b) throw new Error('png');
-        files.push([`pixel-waves-${String(i + 1).padStart(4, '0')}.png`, new Uint8Array(await b.arrayBuffer())]);
+        files.push([`pixel-waves-${String(i + 1).padStart(4, '0')}${sc > 1 ? '@2x' : ''}.png`, new Uint8Array(await b.arrayBuffer())]);
         btn.textContent = `Renderizando ${i + 1} / ${N}`;
       }
       btn.textContent = 'Armando el .zip…'; await new Promise(r => setTimeout(r, 0));
-      download(`pixel-waves-horizontal-${S.seed}-${fps}fps.zip`, zipStored(files));
+      download(`pixel-waves-${S.motion === 'hand' ? 'a-mano' : 'horizontal'}-${S.seed}-${fps}fps${sc > 1 ? '@2x' : ''}.zip`, zipStored(files));
     } else {
       let config = null, kind = '';
       search: for (const br of [120e6, 80e6, 50e6])
-        for (const [codec, k2] of [['avc1.640034', 'avc'], ['avc1.640033', 'avc'], ['avc1.4d0033', 'avc'], ['vp09.00.51.08', 'vp9'], ['vp09.00.10.08', 'vp9']]) {
+        // @2x is past what the common H.264 level takes (4096 wide), so the higher levels and codecs are tried too.
+        for (const [codec, k2] of [['avc1.640034', 'avc'], ['avc1.640033', 'avc'], ['avc1.64003C', 'avc'], ['avc1.64003D', 'avc'], ['avc1.4d0033', 'avc'], ['hvc1.1.6.L183.B0', 'hevc'], ['vp09.00.61.08', 'vp9'], ['vp09.00.51.08', 'vp9'], ['av01.0.17M.08', 'av1']]) {
           const cfg = { codec, width: W, height: H, bitrate: br, bitrateMode: 'constant', latencyMode: 'quality', framerate: fps };
           if ((await VideoEncoder.isConfigSupported(cfg)).supported) { config = cfg; kind = k2; break search; }
         }
-      if (!config) throw new Error('codec');
+      if (!config) { toast(`Este navegador no codifica MP4 de ${W} × ${H}: probá ×1 o PNG (.zip).`); return; }
       const muxer = new Mp4Muxer.Muxer({ target: new Mp4Muxer.ArrayBufferTarget(), video: { codec: kind, width: W, height: H, frameRate: fps }, fastStart: 'in-memory' });
       let failed = null;
       const tag = meta => meta?.decoderConfig ? { ...meta, decoderConfig: { ...meta.decoderConfig, colorSpace: { matrix: 'bt709', fullRange: false, ...meta.decoderConfig.colorSpace, primaries: 'bt709', transfer: 'iec61966-2-1' } } } : meta;
@@ -1261,12 +1301,11 @@ $('#motion-export').addEventListener('click', async () => {
       await enc.flush(); enc.close();
       if (failed) throw failed;
       muxer.finalize();
-      download(`pixel-waves-horizontal-${S.seed}.mp4`, new Blob([muxer.target.buffer], { type: 'video/mp4' }));
+      download(`pixel-waves-${S.motion === 'hand' ? 'a-mano' : 'horizontal'}-${S.seed}-${fps}fps${sc > 1 ? '@2x' : ''}.mp4`, new Blob([muxer.target.buffer], { type: 'video/mp4' }));
     }
   } catch (err) { console.error(err); toast(png ? 'No se pudo exportar la secuencia.' : 'No se pudo exportar el video.'); }
-  finally { X = keepX; Y = keepY; filming = false; btn.disabled = false; btn.textContent = label; flowT0 = performance.now(); wake(); }
+  finally { X = keepX; Y = keepY; filming = false; btn.disabled = false; btn.textContent = label; flowT0 = performance.now(); shownFi = -1; wake(); }
 });
-function setFlowAt(t) { wavesAt(t); const src = edit.src; for (let i = 0; i < gen.n; i++) if (!moved[i]) { X[i] = flowX[src[i]]; Y[i] = flowY[src[i]]; } }
 
 // ---------- Export ----------
 let toastT = 0;
