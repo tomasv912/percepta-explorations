@@ -207,12 +207,12 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section id="motion-sec">
         <h2>Movimiento</h2>
         <div class="seg tall" data-key="motion" aria-label="Movimiento">
-          <button data-v="still">Quieta</button><button data-v="hand">A mano</button><button data-v="horiz" id="mv-horiz">Desplazamiento horizontal</button>
+          <button data-v="still">Quieta</button><button data-v="horiz" id="mv-horiz">Desplazamiento horizontal</button>
         </div>
         <p class="hint" id="motion-hint"></p>
         <div id="sl-wThresh"></div>
         <div id="motion-controls">
-          <label class="check" id="hand-check"><input type="checkbox" data-check="handJit"> A mano: un saltito en cada dibujo</label>
+          <label class="check" id="hand-check"><input type="checkbox" data-check="handJit"> A mano: mientras avanzan, un saltito en cada dibujo</label>
           <div id="sl-jitter"></div>
           <span class="hint">Dibujos por segundo</span>
           <div class="seg fps" data-key="vidFps" aria-label="Dibujos por segundo"><button data-v="8">8</button><button data-v="9">9</button><button data-v="12">12</button><button data-v="15">15</button><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button></div>
@@ -944,11 +944,11 @@ function sync() {
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   const waves = S.source === 'waves', image = S.source === 'image', mono = S.style === 'mono';
   $('#wave-controls').hidden = !waves && S.source !== 'bloom';
-  if (S.motion === 'horiz' && !waves) S.motion = 'still';
+  if (S.motion !== 'still' && !waves) S.motion = 'still';
   $('#mv-horiz').hidden = $('#sl-wThresh').hidden = !waves; $('#motion-controls').hidden = S.motion === 'still';
-  $('#hand-check').hidden = S.motion !== 'horiz'; $('#sl-jitter').hidden = !handOn();
+  $('#sl-jitter').hidden = !handOn();
   $('#motion-hint').hidden = S.motion === 'still';
-  $('#motion-hint').textContent = S.motion === 'hand' ? 'Como dibujado a mano: en cada dibujo los cubos dan un saltito, y los dibujos se repiten en loop.' : 'Los cubos recorren la ola de izquierda a derecha: entran por un borde del cuadro y salen por el otro, en loop.';
+  $('#motion-hint').textContent = 'Los cubos recorren la ola de izquierda a derecha, entran por un borde del cuadro y salen por el otro, en loop; A mano les suma un saltito en cada dibujo, como stop motion.';
   if (!$('#motion-export').disabled) $('#motion-export').textContent = S.vidFmt === 'png' ? 'Exportar PNG (.zip)' : 'Exportar video';
   $('#image-controls').hidden = !image; $('#refract-controls').hidden = S.source !== 'refract'; $('#bloom-controls').hidden = S.source !== 'bloom';
   $('#source-hint').textContent = image ? 'Más cubos en las zonas oscuras, menos en las claras.' : 'También podés arrastrar o pegar una imagen: más cubos en lo oscuro, menos en lo claro.';
@@ -1184,12 +1184,12 @@ addEventListener('paste', e => {
 // ---------- Movimiento ----------
 // The loop is Duración del loop seconds of drawings, Dibujos por segundo of them a second, each held until the next.
 // Desplazamiento horizontal: every cube's along-rank runs round once a loop, so it rides its sheet left to right, in at
-// one edge of the frame and out at the other. A mano: in every drawing each cube sits a little off its place (up to
+// one edge of the frame and out at the other. A mano, on top: in every drawing each cube sits a little off its place (up to
 // Temblor on each axis, a different jump each drawing, the same ones every loop). The last drawing leads back into
 // the first. Cubes dispersed by hand stay put.
 let flowPlaying = true, flowT0 = performance.now(), flowX = null, flowY = null, shownFi = -1;
-const handOn = () => S.motion === 'hand' || (S.motion === 'horiz' && S.handJit);
-const animMode = () => S.motion === 'hand' || (S.motion === 'horiz' && S.source === 'waves' && !!gen0?.wv);
+const handOn = () => S.motion === 'horiz' && S.handJit;
+const animMode = () => S.motion === 'horiz' && S.source === 'waves' && !!gen0?.wv;
 const animating = () => animMode() && flowPlaying && !filming;
 const drawings = () => Math.max(2, Math.round(S.loopDur * +S.vidFps));
 function wavesAt(t) {
@@ -1274,7 +1274,7 @@ $('#motion-export').addEventListener('click', async () => {
         btn.textContent = `Renderizando ${i + 1} / ${N}`;
       }
       btn.textContent = 'Armando el .zip…'; await new Promise(r => setTimeout(r, 0));
-      download(`pixel-waves-${S.motion === 'hand' ? 'a-mano' : 'horizontal'}-${S.seed}-${fps}fps${sc > 1 ? '@2x' : ''}.zip`, zipStored(files));
+      download(`pixel-waves-horizontal${handOn() ? '-a-mano' : ''}-${S.seed}-${fps}fps${sc > 1 ? '@2x' : ''}.zip`, zipStored(files));
     } else {
       let config = null, kind = '';
       search: for (const br of [120e6, 80e6, 50e6])
@@ -1301,7 +1301,7 @@ $('#motion-export').addEventListener('click', async () => {
       await enc.flush(); enc.close();
       if (failed) throw failed;
       muxer.finalize();
-      download(`pixel-waves-${S.motion === 'hand' ? 'a-mano' : 'horizontal'}-${S.seed}-${fps}fps${sc > 1 ? '@2x' : ''}.mp4`, new Blob([muxer.target.buffer], { type: 'video/mp4' }));
+      download(`pixel-waves-horizontal${handOn() ? '-a-mano' : ''}-${S.seed}-${fps}fps${sc > 1 ? '@2x' : ''}.mp4`, new Blob([muxer.target.buffer], { type: 'video/mp4' }));
     }
   } catch (err) { console.error(err); toast(png ? 'No se pudo exportar la secuencia.' : 'No se pudo exportar el video.'); }
   finally { X = keepX; Y = keepY; filming = false; btn.disabled = false; btn.textContent = label; flowT0 = performance.now(); shownFi = -1; wake(); }
