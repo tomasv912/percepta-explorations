@@ -191,6 +191,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-edge"></div>
         <div id="sl-jitter"></div>
         <label class="check" title="Los píxeles se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
+        <div id="sl-cell"></div>
         <div class="row">
           <span>Semilla</span>
           <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
@@ -239,7 +240,7 @@ const DEFAULTS = {
   count: 40000, size: 3, contrast: 1.6, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
-  colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false, expScale: '1', snap: false, handJit: 1,
+  colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false, expScale: '1', snap: false, cell: 6, handJit: 1,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -294,7 +295,7 @@ function build(fast, yaw) {
   // Cantidad is a density: the count for a model that would fill a third of the frame, scaled by the area it
   // actually covers, so a slender model is not crammed darker than a broad one.
   let area = 0; for (let i = 0; i < buf.mask.length; i++) area += buf.mask[i];
-  const want = Math.round(S.count * Math.min(2, area / buf.mask.length * 3));
+  const want = Math.round(count() * Math.min(2, area / buf.mask.length * 3));
   const sc = { buf, e, box };
   if (yaw === undefined) scene = sc;
   return stipple(fast ? Math.min(want, 15000) : want, r, sc);
@@ -319,14 +320,16 @@ function colorOf(p) {
 // Pixels are drawn where they are now: home plus the animation's offset (p.dx, p.dy).
 // Engrillar: every pixel moved to the middle of its cell on a grid of the pixel size, one per cell (the last one drawn
 // there), so they sit side by side and never on top of each other.
+// The density sampled: the slider's, or with Engrillar enough to fill cells of Tamaño de la celda.
+const count = () => S.snap ? PerceptaCells(S.count, S.size, S.cell, 400000) : S.count;
 function snapList(list) {
-  const sn = PerceptaSnap(list.length, i => list[i].x + (list[i].dx || 0), i => list[i].y + (list[i].dy || 0), S.size), out = [];
+  const sn = PerceptaSnap(list.length, i => list[i].x + (list[i].dx || 0), i => list[i].y + (list[i].dy || 0), S.cell), out = [];
   for (let i = 0; i < list.length; i++) if (sn.keep[i]) out.push({ x: sn.x[i], y: sn.y[i], tone: list[i].tone, pick: list[i].pick });
   return out;
 }
 function draw(ctx, list, ox = 0, oy = 0, q = RES) {
   if (S.snap) list = snapList(list);
-  const groups = new Map(), s = S.size;
+  const groups = new Map(), s = S.snap ? S.cell : S.size;
   for (const p of list) { const c = colorOf(p); let l = groups.get(c); if (!l) groups.set(c, l = []); l.push(p); }
   for (const [c, l] of groups) {
     ctx.fillStyle = c; ctx.beginPath();
@@ -336,7 +339,7 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
 }
 function bounds(list) {
   if (S.snap) list = snapList(list);
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, s = S.size / 2;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, s = (S.snap ? S.cell : S.size) / 2;
   for (const p of list) { const x = p.x + (p.dx || 0), y = p.y + (p.dy || 0); x0 = Math.min(x0, x - s); y0 = Math.min(y0, y - s); x1 = Math.max(x1, x + s); y1 = Math.max(y1, y + s); }
   return x0 > x1 ? null : { x0: Math.floor(Math.max(0, x0)), y0: Math.floor(Math.max(0, y0)), x1: Math.ceil(Math.min(AW, x1)), y1: Math.ceil(Math.min(AH, y1)) };
 }
@@ -354,6 +357,7 @@ const SLIDERS = {
   lightEl: { label: 'Altura', min: 0, max: 85, step: 1, fmt: deg },
   ambient: { label: 'Luz ambiente', min: 0, max: .8, step: .01, fmt: pct },
   shadow: { label: 'Sombras proyectadas', min: 0, max: 1, step: .01, fmt: pct },
+  cell: { label: 'Tamaño de la celda', min: 2, max: 40, step: 1, fmt: v => v + ' px', emph: true },
   count: { label: 'Densidad', min: 2000, max: 200000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño del píxel', min: 1, max: 24, step: .5, fmt: v => v + ' px', emph: true },
   threshold: { label: 'Umbral', min: 0, max: .9, step: .01, fmt: v => v ? Math.round(v * 100) + '%' : 'sin umbral' },
@@ -407,13 +411,14 @@ function sync(fast) {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink'; markPalette();
+  $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = !S.snap;
   document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn'))); });
   $('#turn').setAttribute('aria-pressed', S.turn);
   document.querySelectorAll('[data-p]').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === preset && !modelName.includes('.')));
   if (preset && !modelName.includes('.') && presetSeed !== S.seed && !fast) loadPreset();
   updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
-  const k = JSON.stringify([modelName, presetSeed, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, S.count, S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
+  const k = JSON.stringify([modelName, presetSeed, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
   if (k !== key || (!fast && fastNext)) { fastNext = !!fast; pts = build(fast); key = k; ptsPan = [S.panX, S.panY]; }
   // Moved in the frame (Shift + drag): the same pixels, shifted; nothing is re-sampled.
   if (ptsPan[0] !== S.panX || ptsPan[1] !== S.panY) { const dx = S.panX - ptsPan[0], dy = S.panY - ptsPan[1]; for (const p of pts) { p.x += dx; p.y += dy; } ptsPan = [S.panX, S.panY]; }
@@ -520,7 +525,7 @@ function hoverStep(list, ptr, dt) {
 // once, by the side its surface faces most; its place on the model is stored, so a turn only moves and hides
 // pixels. Hidden: behind something nearer, by a quick depth render of the frame.
 let ring = null;
-const ringKey = () => JSON.stringify([modelName, presetSeed, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, S.count, S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
+const ringKey = () => JSON.stringify([modelName, presetSeed, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
 function viewBoxNow() { const ar = AW / AH, h = 1.15 / S.zoom; return { x0: -h * ar, y0: -h, x1: h * ar, y1: h }; }
 function buildRing() {
   const K = 8, box = viewBoxNow(), k = AW / (box.x1 - box.x0), p = S.pitch * Math.PI / 180, cp = Math.cos(p), sp = Math.sin(p), list = [];
@@ -529,7 +534,7 @@ function buildRing() {
     const yaw = v * 360 / K, y = yaw * Math.PI / 180, cy = Math.cos(y), sy = Math.sin(y), r = rng(S.seed * 977 + v);
     const buf = Stipple3D.render(viewTris(yaw), box, 700, L, { ambient: S.ambient, shadowDim: 1 - S.shadow }), e = Stipple3D.edges(buf, .02 / S.zoom);
     let area = 0; for (let i = 0; i < buf.mask.length; i++) area += buf.mask[i];
-    const raw = Stipple3D.sample(buf, e, Math.round(S.count * Math.min(2, area / buf.mask.length * 3)), r, { gamma: S.contrast, edge: S.edge, floor: .01, gain: 1.2, threshold: S.threshold });
+    const raw = Stipple3D.sample(buf, e, Math.round(count() * Math.min(2, area / buf.mask.length * 3)), r, { gamma: S.contrast, edge: S.edge, floor: .01, gain: 1.2, threshold: S.threshold });
     // view → model: undo the pitch, then the yaw (x right, y down in view; y up in the model)
     const back = (X, Y, Z) => { const y1 = -Y, yy = y1 * cp + Z * sp, z1 = -y1 * sp + Z * cp; return [X * cy - z1 * sy, yy, X * sy + z1 * cy]; };
     for (let i = 0; i < raw.length; i += 3) {
@@ -698,11 +703,11 @@ $('#png').addEventListener('click', async () => {
 });
 $('#svg').addEventListener('click', () => {
   const b = bounds(pts); if (!b) return;
-  const k = expRes(), w = (b.x1 - b.x0) * k, h = (b.y1 - b.y0) * k, n = v => Math.round(v * k * 100) / 100, s = S.size * k, out = [];
+  const k = expRes(), w = (b.x1 - b.x0) * k, h = (b.y1 - b.y0) * k, n = v => Math.round(v * k * 100) / 100, z = S.snap ? S.cell : S.size, s = z * k, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
   if (S.bgExport) out.push(`<rect width="${w}" height="${h}" fill="${S.bg}"/>`);
   const groups = new Map();
-  for (const p of S.snap ? snapList(pts) : pts) { const c = colorOf(p); groups.set(c, (groups.get(c) || '') + `M${n(p.x + (p.dx || 0) - S.size / 2 - b.x0)} ${n(p.y + (p.dy || 0) - S.size / 2 - b.y0)}h${s}v${s}h${-s}z`); }
+  for (const p of S.snap ? snapList(pts) : pts) { const c = colorOf(p); groups.set(c, (groups.get(c) || '') + `M${n(p.x + (p.dx || 0) - z / 2 - b.x0)} ${n(p.y + (p.dy || 0) - z / 2 - b.y0)}h${s}v${s}h${-s}z`); }
   for (const [c, d] of groups) out.push(`<path fill="${c}" d="${d}"/>`);
   out.push('</svg>');
   download(`pixel-model-${S.seed}${S.expScale === '1' ? '' : `@${S.expScale}x`}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));

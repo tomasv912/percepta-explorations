@@ -89,6 +89,9 @@
   // Engrillar: cubes on a grid of their own size (cell), one per cell, side by side and never on top of each other.
   // x(i), y(i) give cube i's place (NaN for one that is not drawn); later cubes are drawn over earlier ones, so a cell
   // keeps the last cube that falls in it. Returns which cubes stay (keep) and their places at their cells' middles.
+  // With Engrillar the cell size is what sets the picture: as many cubes as cover, at that size, twice the area the
+  // free cubes (count of them, size each) covered, so the cells fill; capped at max.
+  window.PerceptaCells = (count, size, cell, max) => Math.max(100, Math.min(max, Math.round(count * (size / cell) ** 2 * 2)));
   window.PerceptaSnap = (n, x, y, cell) => {
     const keep = new Uint8Array(n), sx = new Float32Array(n), sy = new Float32Array(n), taken = new Set();
     for (let i = n - 1; i >= 0; i--) {

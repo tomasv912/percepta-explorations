@@ -144,6 +144,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-depthSize"></div>
         <div id="sl-thresh"></div>
         <label class="check" title="Los cubos se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
+        <div id="sl-cell"></div>
       </section>
 
       <section>
@@ -203,7 +204,7 @@ const AW = 3840, AH = 2160;
 const DEFAULTS = {
   seed: 1, layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25,
   count: 500, size: 24, depthSize: .5,
-  fps: '8', dur: 4, travel: 1, flow: 0, cross: false, thresh: 0, jitter: .5, snap: false,
+  fps: '8', dur: 4, travel: 1, flow: 0, cross: false, thresh: 0, jitter: .5, snap: false, cell: 30,
   palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'random', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
   vidFps: '8', vidFmt: 'mp4', fullFrame: false,
 };
@@ -231,7 +232,8 @@ function build() {
     base: (l - (S.layers - 1) / 2) * .35 + (r() - .5) * .15, tilt: (r() - .5) * .3,
   }));
   const cubes = [];
-  for (let tries = 0; cubes.length < S.count && tries < S.count * 30; tries++) {
+  const want = S.snap ? PerceptaCells(S.count, S.size, S.cell, 4000) : S.count;
+  for (let tries = 0; cubes.length < want && tries < want * 30; tries++) {
     const u = r(), v = r(), L = r() * layers.length | 0;
     // A cube keeps only its ranks on the sheet, u along and qv into the depth: where it sits is worked out each
     // drawing (see placeAt), so it can gather where the sheet curves.
@@ -312,8 +314,8 @@ function colorOf(pal) { return onBg(S.colorMode === 'ink' ? S.ink : S.palette[pa
 // one), all at that size, so they sit side by side and never on top of each other.
 function snapped(list) {
   if (!S.snap) return list;
-  const sn = PerceptaSnap(list.length, i => list[i][0], i => list[i][1], S.size), out = [];
-  for (let i = 0; i < list.length; i++) if (sn.keep[i]) out.push([sn.x[i], sn.y[i], S.size, list[i][3], list[i][4]]);
+  const sn = PerceptaSnap(list.length, i => list[i][0], i => list[i][1], S.cell), out = [];
+  for (let i = 0; i < list.length; i++) if (sn.keep[i]) out.push([sn.x[i], sn.y[i], S.cell, list[i][3], list[i][4]]);
   return out;
 }
 function draw(ctx, list, ox = 0, oy = 0) {
@@ -338,6 +340,7 @@ const SLIDERS = {
   complexity: { label: 'Complejidad', min: 1, max: 6, step: 1, fmt: String },
   persp: { label: 'Perspectiva', min: 0, max: 1, step: .01, fmt: pct },
   thickness: { label: 'Grosor', min: 0, max: 1, step: .01, fmt: pct },
+  cell: { label: 'Tamaño de la celda', min: 6, max: 80, step: 2, fmt: v => v + ' px', emph: true },
   count: { label: 'Cubos', min: 20, max: 700, step: 10, fmt: String, emph: true },
   size: { label: 'Tamaño', min: 10, max: 50, step: 2, fmt: v => v + ' px', emph: true },
   depthSize: { label: 'Más chicos al fondo', min: 0, max: 1, step: .01, fmt: pct },
@@ -347,7 +350,7 @@ const SLIDERS = {
   travel: { label: 'Recorrido de la onda', min: 0, max: 4, step: 1, fmt: v => v === 0 ? 'quieta' : v + (v === 1 ? ' vuelta' : ' vueltas') },
   jitter: { label: 'Temblor a mano', min: 0, max: 1, step: .01, fmt: v => v ? pct(v) : 'sin temblor' },
 };
-const REBUILD = ['layers', 'amp', 'freq', 'complexity', 'persp', 'thickness', 'count', 'size', 'depthSize', 'travel', 'flow', 'thresh'];
+const REBUILD = ['layers', 'amp', 'freq', 'complexity', 'persp', 'thickness', 'count', 'size', 'depthSize', 'travel', 'flow', 'thresh', 'cell'];
 for (const [key, d] of Object.entries(SLIDERS)) {
   const host = $('#sl-' + key);
   host.className = 'slider' + (d.emph ? ' emph' : '');
@@ -362,7 +365,7 @@ $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-in
 const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.palette = colors; renderInks(); sync(); });
 const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => S.palette, () => S.bg, v => { S.bg = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
 document.querySelectorAll('.seg[data-key]').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = b.dataset.v; sync(); } }));
-document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; fitT = null; sync(); }));
+document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; if (inp.dataset.check === 'snap') build(); fitT = null; sync(); }));
 // Presets: Olas, the waves rolling in place; Desplazamiento horizontal, the wave held still and the cubes, gathered on
 // its curves, carried along it left to right across the whole frame, in at the left edge and out at the right, once a loop.
 const PRESETS = {
@@ -387,6 +390,7 @@ function sync() {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink';
   document.querySelectorAll('[data-preset]').forEach(b => b.setAttribute('aria-pressed', Object.entries(PRESETS[b.dataset.preset]).every(([k, v]) => S[k] === v)));
+  $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = !S.snap;
   markPalette(); updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   shown = -1; paint();

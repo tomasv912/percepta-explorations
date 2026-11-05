@@ -137,6 +137,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-sizeTone"></div>
         <div id="sl-sizeVel"></div>
         <label class="check" title="Los cubos se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
+        <div id="sl-cell"></div>
       </section>
 
       <section>
@@ -202,7 +203,7 @@ const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 const AW = 1920;
 const DEFAULTS = {
   contrast: 1.3, threshold: .08, invert: false, dur: 6,
-  count: 9000, size: 6, sizeTone: .35, sizeVel: 0, snap: false,
+  count: 9000, size: 6, sizeTone: .35, sizeVel: 0, snap: false, cell: 8,
   order: .7, follow: .5, agitate: .1, fade: .35, trail: 0, seed: 1,
   palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'ink', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
   fps: '24', expScale: '1', vidFmt: 'mp4',
@@ -274,11 +275,11 @@ function cdfPick() {
 }
 function spacing() {
   const area = Math.max(Dsum / D.length, .02) * AW * AH;
-  return Math.sqrt(2 * area / (Math.sqrt(3) * S.count));
+  return Math.sqrt(2 * area / (Math.sqrt(3) * P.n));
 }
 function initSim(t) {
   rand = rng(S.seed); readSource(t);
-  const n = S.count;
+  const n = S.snap ? PerceptaCells(S.count, S.size, S.cell, 40000) : S.count;
   P = { n, crowd: new Uint8Array(n), dying: new Uint8Array(n), x: new Float32Array(n), y: new Float32Array(n), vx: new Float32Array(n), vy: new Float32Array(n), life: new Float32Array(n), tone: new Float32Array(n), pick: new Float32Array(n) };
   for (let i = 0; i < n; i++) { [P.x[i], P.y[i]] = cdfPick(); P.life[i] = 1; P.pick[i] = rand(); }
   // settled before the first drawing
@@ -384,11 +385,11 @@ function colorOf(i, sp) {
 function render(ctx, k = 1) {
   const s = spacing(), vmax = s * 3, groups = new Map();
   // Engrillar: on a grid of Tamaño, one cube per cell (the last drawn), all at that size, side by side; no streaks.
-  const sn = S.snap ? PerceptaSnap(P.n, i => P.life[i] <= .02 ? NaN : P.x[i], i => P.y[i], S.size) : null;
+  const sn = S.snap ? PerceptaSnap(P.n, i => P.life[i] <= .02 ? NaN : P.x[i], i => P.y[i], S.cell) : null;
   for (let i = 0; i < P.n; i++) {
     if (P.life[i] <= .02 || (sn && !sn.keep[i])) continue;
     const sp = clamp(Math.hypot(P.vx[i], P.vy[i]) / vmax);
-    const size = sn ? S.size : S.size * ((1 - S.sizeTone) + S.sizeTone * Math.sqrt(P.tone[i]) * 1.4) * (1 + S.sizeVel * sp * 1.5) * Math.min(1, P.life[i] * 1.5);
+    const size = sn ? S.cell : S.size * ((1 - S.sizeTone) + S.sizeTone * Math.sqrt(P.tone[i]) * 1.4) * (1 + S.sizeVel * sp * 1.5) * Math.min(1, P.life[i] * 1.5);
     if (size < .6) continue;
     const c = colorOf(i, sp); let g = groups.get(c); if (!g) groups.set(c, g = []); g.push(i, size);
   }
@@ -413,6 +414,7 @@ const SLIDERS = {
   contrast: { label: 'Contraste', min: .5, max: 3, step: .01, fmt: v => v.toFixed(2) },
   threshold: { label: 'Umbral', min: 0, max: .9, step: .01, fmt: pct },
   dur: { label: 'Duración (imagen y ejemplo)', min: 2, max: 30, step: .5, fmt: v => v + ' s' },
+  cell: { label: 'Tamaño de la celda', min: 3, max: 40, step: 1, fmt: v => v + ' px', emph: true },
   count: { label: 'Cubos', min: 1000, max: 30000, step: 500, fmt: v => (v / 1000).toFixed(1).replace('.0', '') + 'k', emph: true },
   size: { label: 'Tamaño', min: 2, max: 30, step: 1, fmt: v => v + ' px', emph: true },
   sizeTone: { label: 'Tamaño por tono', min: 0, max: 1, step: .01, fmt: pct },
@@ -424,7 +426,7 @@ const SLIDERS = {
   trail: { label: 'Estela', min: 0, max: 1, step: .01, fmt: pct },
 };
 // Settings that change what the cubes are made of start the simulation over; the rest apply as it runs.
-const RESTART = ['count', 'seed'];
+const RESTART = ['count', 'seed', 'cell'];
 for (const [key, d] of Object.entries(SLIDERS)) {
   const host = $('#sl-' + key);
   host.className = 'slider' + (d.emph ? ' emph' : '');
@@ -439,7 +441,7 @@ $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-in
 const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.palette = colors; renderInks(); sync(); });
 const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => S.palette, () => S.bg, v => { S.bg = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
 document.querySelectorAll('.seg[data-key]').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = b.dataset.v; sync(); } }));
-document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
+document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; if (inp.dataset.check === 'snap') restart(); sync(); }));
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); restart(); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); restart(); sync(); };
 $('#reseed').addEventListener('click', reseed);
@@ -458,6 +460,7 @@ function sync() {
   $('#inks').hidden = S.colorMode !== 'ink';
   $('#sl-dur').hidden = src.kind === 'video';
   if (!busy) $('#export').textContent = S.vidFmt === 'png' ? 'Exportar PNG (.zip)' : 'Exportar video';
+  $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = !S.snap;
   markPalette(); updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   paint();

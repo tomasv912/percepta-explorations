@@ -236,6 +236,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-variation"></div>
         <div id="sl-grain"></div>
         <label class="check" title="Los cubos se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
+        <div id="sl-cell"></div>
       </section>
 
       <section>
@@ -310,7 +311,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2, snap: false,
+  dof: 0, focus: 0, focusBand: .2, snap: false, cell: 8,
   motion: 'still', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
@@ -401,7 +402,7 @@ function generate(st) {
   // Vertical: the frame turns on its side, and the composition (except an image) flows bottom to top.
   const [W, H] = st.orient === 'v' ? [...SIZES[st.aspect]].reverse() : SIZES[st.aspect], r = rng(st.seed), rand = r, mono = st.style === 'mono', image = st.source === 'image' && img;
   const gridRows = image ? Math.max(1, Math.round(st.gridCols / img.ar)) : 0, grid = image && st.grid;
-  const n = grid ? st.gridCols * gridRows : st.count;
+  const n = grid ? st.gridCols * gridRows : st.snap ? PerceptaCells(st.count, st.size, st.cell, 300000) : st.count;
   const px = new Float32Array(n), py = new Float32Array(n), size = new Float32Array(n), shade = new Uint8Array(n);
   const pal = new Uint8Array(n), rgb = new Uint32Array(n), tlen = new Float32Array(n), dep = new Float32Array(n);
   let got = 0;
@@ -754,7 +755,7 @@ function step(dt) {
 const TRAIL_BANDS = 8;
 // Engrillar: worked out once per drawing (see draw / toSvg): every cube on a grid of the cube size, one per cell.
 let SNAP = null;
-const snapFor = st => st.snap ? PerceptaSnap(gen.n, i => gone[i] || gen.del[i] ? NaN : X[i], i => Y[i], st.size) : null;
+const snapFor = st => st.snap ? PerceptaSnap(gen.n, i => gone[i] || gen.del[i] ? NaN : X[i], i => Y[i], st.cell) : null;
 function groupsOf(st) {
   const g = new Map();
   for (let i = 0; i < gen.n; i++) {
@@ -799,7 +800,7 @@ function eachShape(st, fn, lev = null, grow = 0) {
       }
       if (polys.length) fn(color, (1 - (b - .5) / TRAIL_BANDS) * fade, polys);
     }
-    fn(color, fade, idx.map(i => { const h = (SNAP ? st.size : gen.size[i]) / 2 + grow, x = SNAP ? SNAP.x[i] : X[i], y = SNAP ? SNAP.y[i] : Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }));
+    fn(color, fade, idx.map(i => { const h = (SNAP ? st.cell : gen.size[i]) / 2 + grow, x = SNAP ? SNAP.x[i] : X[i], y = SNAP ? SNAP.y[i] : Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }));
   }
 }
 // Filled in small batches: one huge path of overlapping polygons rasterizes far slower than many small ones.
@@ -904,6 +905,7 @@ const SLIDERS = {
   rfOrder: { label: 'Orden', min: 0, max: 1, step: .01, fmt: pct },
   contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
   threshold: { label: 'Umbral', min: 0, max: .99, step: .01, fmt: pct, emph: true },
+  cell: { label: 'Tamaño de la celda', min: 2, max: 60, step: 1, fmt: v => v + ' px', emph: true },
   count: { label: 'Cubos', values: steps(10, [10, 100], [100, 200], [200, 2000], [1000, 150000]), fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño', values: steps(1, [.5, 50], [10, 200]), fmt: v => v + ' px' },
   mod: { label: 'Tamaño según profundidad o tono', min: 0, max: 1, step: .01, fmt: pct },
@@ -998,13 +1000,13 @@ function sync() {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase())); $('#palette-box').hidden = S.colorMode !== 'random';
   $('#blModel').value = S.blModel; $('#sl-blFlorets').hidden = S.blModel !== 'hortensia';
   updateBg(S.bgFlip);
-  $('#sl-gridCols').hidden = !S.grid; $('#sl-count').hidden = image && S.grid;
+  $('#sl-gridCols').hidden = !S.grid; $('#sl-count').hidden = (image && S.grid) || S.snap; $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = !S.snap;
   $('.rt-bar [data-tool="rotate"]').hidden = !image; if (!image && tools.tool === 'rotate') tools.setTool('scatter');
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   markPalette();
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
   const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz', S.wThresh, S.contrast, S.threshold, S.invert,
-    S.style, S.count, S.size, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
+    S.style, S.count, S.size, S.snap && S.cell, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {
     gen0 = generate(S); genKey = key; placeKey = pkey; rebuild(true);

@@ -185,6 +185,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-size"></div>
         <div id="sl-depthSize"></div>
         <label class="check" title="Los píxeles se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
+        <div id="sl-cell"></div>
         <div class="row">
           <span>Semilla</span>
           <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
@@ -229,7 +230,7 @@ const DEFAULTS = {
   disp: .3, start: .35, soft: .7, rise: .35, thin: .35, fadeA: .5,
   cut: false, mdens: 3.5, cull: true, cityN: 16, cityGreen: .35, citySeed: 1, wave: .5, waveScale: .5, depth: 2.4,
   pitch: 24, yaw: 0, persp: .55, zoom: 1.3, frameY: .02,
-  count: 45000, size: 2.5, depthSize: .6, seed: 1, snap: false,
+  count: 45000, size: 2.5, depthSize: .6, seed: 1, snap: false, cell: 5,
   palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'ink', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -583,8 +584,8 @@ function modelPoints(o, i, per) {
 // bases and, with Recortar, what lies outside the group is just a filter.
 let planeAll = { key: '', pts: [] };
 function planePoints() {
-  const { nx, nz, X0, Z0, h } = field, perCell = S.count / (PW * S.depth) * CELL * CELL;
-  const key = JSON.stringify([nx, nz, S.count, S.seed, S.wave, S.waveScale]);
+  const { nx, nz, X0, Z0, h } = field, perCell = count() / (PW * S.depth) * CELL * CELL;
+  const key = JSON.stringify([nx, nz, count(), S.seed, S.wave, S.waveScale]);
   if (planeAll.key === key) return planeAll.pts;
   const out = [];
   for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
@@ -596,8 +597,8 @@ function planePoints() {
   return out;
 }
 function buildPoints() {
-  const { nx, base, front } = field, per = S.count / (PW * S.depth);
-  const key = JSON.stringify([fieldKey, S.count, S.seed, S.cut]);
+  const { nx, base, front } = field, per = count() / (PW * S.depth);
+  const key = JSON.stringify([fieldKey, count(), S.seed, S.cut]);
   if (key !== ptsKey || !field.plane) {
     ptsKey = key;
     // Recortar: the plane only from the group's front edge back, and only as wide as the group.
@@ -660,10 +661,12 @@ function colorOf(p) {
 }
 // Engrillar: every pixel moved to the middle of its cell on a grid of the pixel size (Tamaño del píxel), one per cell
 // (the front one), all at that size, so they sit side by side and never on top of each other.
+// The pixels sampled: Cantidad, or with Engrillar enough to fill cells of Tamaño de la celda.
+const count = () => S.snap ? PerceptaCells(S.count, S.size, S.cell, 250000) : S.count;
 function snapped(items) {
   if (!S.snap) return items;
-  const sn = PerceptaSnap(items.length, i => items[i][0], i => items[i][1], S.size), out = [];
-  for (let i = 0; i < items.length; i++) if (sn.keep[i]) out.push([sn.x[i], sn.y[i], S.size, items[i][3], items[i][4], items[i][5]]);
+  const sn = PerceptaSnap(items.length, i => items[i][0], i => items[i][1], S.cell), out = [];
+  for (let i = 0; i < items.length; i++) if (sn.keep[i]) out.push([sn.x[i], sn.y[i], S.cell, items[i][3], items[i][4], items[i][5]]);
   return out;
 }
 function draw(ctx, items) {
@@ -694,6 +697,7 @@ const SLIDERS = {
   persp: { label: 'Perspectiva', min: 0, max: 1, step: .01, fmt: pct },
   zoom: { label: 'Escala', min: .3, max: 4, step: .01, fmt: v => '×' + v.toFixed(2) },
   frameY: { label: 'Encuadre', min: -.6, max: .6, step: .01, fmt: pct },
+  cell: { label: 'Tamaño de la celda', min: 2, max: 30, step: 1, fmt: v => v + ' px', emph: true },
   count: { label: 'Cantidad', min: 5000, max: 150000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño del píxel', min: 1, max: 12, step: .5, fmt: v => v + ' px', emph: true },
   depthSize: { label: 'Más chicos al fondo', min: 0, max: 1, step: .01, fmt: pct },
@@ -765,6 +769,7 @@ function sync() {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink';
   $('#cut-hint').hidden = !S.cut;
+  $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = !S.snap;
   markPalette(); updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   cancelAnimationFrame(raf); raf = requestAnimationFrame(render);
