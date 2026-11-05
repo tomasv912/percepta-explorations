@@ -161,6 +161,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <div id="sl-persp"></div>
           <div id="sl-thickness"></div>
           <div id="sl-fade"></div>
+          <label class="check" title="La ola sigue un eje horizontal recto y queda centrada en el cuadro"><input type="checkbox" data-check="waveCenter"> Eje recto y centrado</label>
         </div>
         <div id="refract-controls">
           <div id="sl-rfChannels"></div>
@@ -300,7 +301,7 @@ const WHITE = '#F6F6F6', INK = '#272727';
 const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 const DEFAULTS = {
   seed: 1, aspect: '3:2', source: 'waves',
-  layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5,
+  layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5, waveCenter: true,
   rfChannels: 3, rfFocus: .42, rfChaos: .7, rfSpread: .6, rfAmp: .5, rfFreq: 1, rfOrder: .7, rfWaist: 0,
   blModel: 'hortensia', blYaw: 0, blPitch: 0, blTravel: .5, blStem: .3, blLength: 1, blChannel: .45, blFlowers: 1, blSize: .5, blFlorets: 32, blShare: .5, orient: 'h',
   contrast: 1.2, threshold: .1, invert: false, grid: false, gridCols: 140, rotX: 0, rotY: 0, rotZ: 0,
@@ -420,7 +421,8 @@ function generate(st) {
         f: st.freq * (k === 0 ? 1 : 1 + k * .7) * (.7 + r() * .6) * Math.PI * 2,
         th: (r() - .5) * 1.1, ph: r() * Math.PI * 2, a: 1 / (1 + k * 1.1),
       })),
-      base: (l - (st.layers - 1) / 2) * .35 + (r() - .5) * .15, tilt: (r() - .5) * .3,
+      // Eje recto y centrado: no slant and no odd offset per sheet (the draws are still made, so the waves stay the same)
+      base: (l - (st.layers - 1) / 2) * .35 + (r() - .5) * .15 * (st.waveCenter ? 0 : 1), tilt: (r() - .5) * .3 * (st.waveCenter ? 0 : 1),
     }));
     const height = (L, u, v) => {
       let h = 0, norm = 0;
@@ -644,6 +646,13 @@ function generate(st) {
     else for (let i = 0; i < got; i++) if (wr.uu[i] > .1 && wr.uu[i] < .9) { const a = vert ? py[i] : px[i]; a0 = Math.min(a0, a); a1 = Math.max(a1, a); }
     if (vert) { y0 = a0; y1 = a1; Y0 = 0; Y1 = H; X0 = .14 * W + half; X1 = .86 * W - half; }
     else { x0 = a0; x1 = a1; X0 = 0; X1 = W; }
+  }
+  if (st.source === 'waves' && st.waveCenter) {
+    // Eje recto y centrado: the picture's middle (across the flow: up and down in Horizontal, across in Vertical) lands
+    // on the frame's middle line, the box widened on its short side so nothing is cut.
+    const vert = st.orient === 'v';
+    let m = 0; for (let i = 0; i < got; i++) m += vert ? px[i] : py[i]; m /= got || 1;
+    if (vert) { const h = Math.max(m - x0, x1 - m); x0 = m - h; x1 = m + h; } else { const h = Math.max(m - y0, y1 - m); y0 = m - h; y1 = m + h; }
   }
   if (st.source === 'bloom') {
     // Flowers keep their proportions: one scale for both axes, centred in the box.
@@ -994,7 +1003,7 @@ function sync() {
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   markPalette();
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
-  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.motion === 'horiz', S.wThresh, S.contrast, S.threshold, S.invert,
+  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz', S.wThresh, S.contrast, S.threshold, S.invert,
     S.style, S.count, S.size, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {
