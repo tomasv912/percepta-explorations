@@ -8,6 +8,7 @@
     { name: 'Pixel Model', path: 'pixel-model/' },
     { name: 'Pixel Motion', path: 'pixel-motion/' },
     { name: 'Pixel Depth', path: 'pixel-depth/' },
+    { name: 'Pixel Stipple', path: 'pixel-stipple/' },
     {
       name: 'Descartes', path: 'descartes/', children: [
         { name: 'Pixel Rise', path: 'pixel-rise/' },
