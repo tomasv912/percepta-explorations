@@ -86,6 +86,20 @@
   const lum = h => { const n = parseInt(h.slice(1), 16); return .2126 * lin(n >> 16 & 255) + .7152 * lin(n >> 8 & 255) + .0722 * lin(n & 255); };
   const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
   const same = (a, b) => a.toLowerCase() === b.toLowerCase();
+  // Engrillar: cubes on a grid of their own size (cell), one per cell, side by side and never on top of each other.
+  // x(i), y(i) give cube i's place (NaN for one that is not drawn); later cubes are drawn over earlier ones, so a cell
+  // keeps the last cube that falls in it. Returns which cubes stay (keep) and their places at their cells' middles.
+  window.PerceptaSnap = (n, x, y, cell) => {
+    const keep = new Uint8Array(n), sx = new Float32Array(n), sy = new Float32Array(n), taken = new Set();
+    for (let i = n - 1; i >= 0; i--) {
+      const px = x(i), py = y(i);
+      if (px !== px || py !== py) continue;
+      const cx = Math.floor(px / cell), cy = Math.floor(py / cell), key = (cx + 32768) * 65536 + (cy + 32768);
+      if (taken.has(key)) continue;
+      taken.add(key); keep[i] = 1; sx[i] = (cx + .5) * cell; sy[i] = (cy + .5) * cell;
+    }
+    return { keep, x: sx, y: sy };
+  };
   window.PerceptaBg = {
     WHITE, INK,
     pick(bg, flip) { const best = contrast(WHITE, bg) >= contrast(INK, bg) ? WHITE : INK; return flip ? (best === WHITE ? INK : WHITE) : best; },

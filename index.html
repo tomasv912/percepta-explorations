@@ -234,6 +234,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-mod"></div>
         <div id="sl-variation"></div>
         <div id="sl-grain"></div>
+        <label class="check" title="Los cubos se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
       </section>
 
       <section>
@@ -308,7 +309,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2,
+  dof: 0, focus: 0, focusBand: .2, snap: false,
   motion: 'still', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
@@ -742,10 +743,13 @@ function step(dt) {
 // Cubes are batched per colour. A trail is drawn as TRAIL_BANDS segments behind each cube, from full
 // opacity next to it down to nothing at the end, in the chosen direction.
 const TRAIL_BANDS = 8;
+// Engrillar: worked out once per drawing (see draw / toSvg): every cube on a grid of the cube size, one per cell.
+let SNAP = null;
+const snapFor = st => st.snap ? PerceptaSnap(gen.n, i => gone[i] || gen.del[i] ? NaN : X[i], i => Y[i], st.size) : null;
 function groupsOf(st) {
   const g = new Map();
   for (let i = 0; i < gen.n; i++) {
-    if (gone[i] || gen.del[i]) continue;
+    if (gone[i] || gen.del[i] || (SNAP && !SNAP.keep[i])) continue;
     const c = colorOf(i, st);
     let l = g.get(c); if (!l) g.set(c, l = []); l.push(i);
   }
@@ -781,12 +785,12 @@ function eachShape(st, fn, lev = null, grow = 0) {
       for (const i of idx) {
         const L = st.trail * gen.tlen[i] * (gen.dp ? gen.dp[i] : 1), s0 = (b - 1) / TRAIL_BANDS * L, s1 = b / TRAIL_BANDS * L, h = gen.size[i] / 2 + grow;
         if (L <= 0) continue;
-        const cx = X[i], cy = Y[i], nx = -dy * h, ny = dx * h;
+        const cx = SNAP ? SNAP.x[i] : X[i], cy = SNAP ? SNAP.y[i] : Y[i], nx = -dy * h, ny = dx * h;
         polys.push([cx + dx * s0 + nx, cy + dy * s0 + ny, cx + dx * s1 + nx, cy + dy * s1 + ny, cx + dx * s1 - nx, cy + dy * s1 - ny, cx + dx * s0 - nx, cy + dy * s0 - ny]);
       }
       if (polys.length) fn(color, (1 - (b - .5) / TRAIL_BANDS) * fade, polys);
     }
-    fn(color, fade, idx.map(i => { const h = gen.size[i] / 2 + grow, x = X[i], y = Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }));
+    fn(color, fade, idx.map(i => { const h = (SNAP ? st.size : gen.size[i]) / 2 + grow, x = SNAP ? SNAP.x[i] : X[i], y = SNAP ? SNAP.y[i] : Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }));
   }
 }
 // Filled in small batches: one huge path of overlapping polygons rasterizes far slower than many small ones.
@@ -808,6 +812,7 @@ function fill(ctx, st, lev, grow) {
 const canBlur = (() => { try { return 'filter' in document.createElement('canvas').getContext('2d'); } catch { return false; } })();
 let blurLayer = null;
 function draw(ctx, st) {
+  SNAP = snapFor(st);
   const D = dofLevels(st);
   if (!D) return fill(ctx, st);
   const soft = canBlur, T = ctx.getTransform(), scale = Math.hypot(T.a, T.b);
@@ -824,6 +829,7 @@ function draw(ctx, st) {
   }
 }
 function toSvg(st) {
+  SNAP = snapFor(st);
   const r = v => Math.round(v * 10) / 10, out = [], v = viewBox(), c = gen.W / v.w, D = dofLevels(st), soft = true;
   // Cubes outside the recorte are left out of the file.
   const inView = p => p[4] + panX >= v.x && p[0] + panX <= v.x + v.w && p[5] + panY >= v.y && p[1] + panY <= v.y + v.h;
@@ -868,7 +874,7 @@ const SLIDERS = {
   thickness: { label: 'Grosor', min: 0, max: 1, step: .01, fmt: pct },
   fade: { label: 'Desvanecer bordes', min: 0, max: 1, step: .01, fmt: pct },
   wThresh: { label: 'Umbral (se juntan en las curvas)', min: 0, max: .95, step: .01, fmt: pct },
-  jitter: { label: 'Temblor', min: .5, max: 12, step: .5, fmt: v => v + ' px' },
+  jitter: { label: 'Temblor', min: 0, max: 12, step: .5, fmt: v => v ? v + ' px' : 'sin temblor' },
   loopDur: { label: 'Duración del loop', min: 2, max: 30, step: .5, fmt: v => v + ' s', emph: true },
   rfChannels: { label: 'Complejidad', min: 1, max: 6, step: 1, fmt: String, emph: true },
   rfFocus: { label: 'Punto de encauce', min: .1, max: .9, step: .01, fmt: pct },
@@ -971,7 +977,7 @@ function sync() {
   const flows = waves || S.source === 'refract';
   if (S.motion !== 'still' && !flows) S.motion = 'still';
   $('#motion-sec').hidden = !flows; $('#sl-wThresh').hidden = !waves; $('#motion-controls').hidden = S.motion === 'still';
-  $('#sl-jitter').hidden = !handOn();
+  $('#sl-jitter').hidden = !(S.motion === 'horiz' && S.handJit);
   $('#motion-hint').hidden = S.motion === 'still';
   $('#motion-hint').textContent = S.source === 'refract' ? 'Los cubos avanzan de izquierda a derecha: entran por el borde como nube, se encauzan en el foco y salen abiertos por el otro borde, en loop; A mano les suma un saltito en cada dibujo, como stop motion.' : 'Los cubos recorren la ola de izquierda a derecha, entran por un borde del cuadro y salen por el otro, en loop; A mano les suma un saltito en cada dibujo, como stop motion.';
   if (!$('#motion-export').disabled) $('#motion-export').textContent = S.vidFmt === 'png' ? 'Exportar PNG (.zip)' : 'Exportar video';
@@ -1213,7 +1219,7 @@ addEventListener('paste', e => {
 // Temblor on each axis, a different jump each drawing, the same ones every loop). The last drawing leads back into
 // the first. Cubes dispersed by hand stay put.
 let flowPlaying = true, flowT0 = performance.now(), flowX = null, flowY = null, shownFi = -1;
-const handOn = () => S.motion === 'horiz' && S.handJit;
+const handOn = () => S.motion === 'horiz' && S.handJit && S.jitter > 0;
 const animMode = () => S.motion === 'horiz' && (S.source === 'waves' || S.source === 'refract') && !!gen0?.wv;
 const animating = () => animMode() && flowPlaying && !filming;
 const drawings = () => Math.max(2, Math.round(S.loopDur * +S.vidFps));

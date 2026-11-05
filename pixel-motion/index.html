@@ -98,6 +98,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .inks button[aria-pressed="true"] { box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text); }
 .btns { display: flex; gap: 6px; } .btns .btn { flex: 1; }
 .btn:disabled { opacity: .5; cursor: default; }
+.seg.fps button { padding: 0; min-width: 0; }
+.hint { margin: 0; color: var(--text-3); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -141,11 +143,13 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-size"></div>
         <div id="sl-depthSize"></div>
         <div id="sl-thresh"></div>
+        <label class="check" title="Los cubos se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
       </section>
 
       <section>
         <h2>Movimiento</h2>
-        <div id="sl-fps"></div>
+        <span class="hint">Dibujos por segundo</span>
+        <div class="seg fps" data-key="fps" aria-label="Dibujos por segundo"><button data-v="8">8</button><button data-v="9">9</button><button data-v="12">12</button><button data-v="15">15</button><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button></div>
         <div id="sl-dur"></div>
         <div id="sl-travel"></div>
         <div id="sl-flow"></div>
@@ -171,7 +175,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section>
         <h2>Video</h2>
         <div class="seg" data-key="vidFps" aria-label="Cuadros por segundo del archivo">
-          <button data-v="8" title="Un cuadro por dibujo">8 fps</button><button data-v="24" title="Cada dibujo sostenido 3 cuadros, para plataformas que piden 24">24 fps</button>
+          <button data-v="8" title="Un cuadro por dibujo: el archivo va a los mismos fps que los dibujos">Uno por dibujo</button><button data-v="24" title="Cada dibujo sostenido varios cuadros, para plataformas que piden 24 (o más, si los dibujos son más)">24 fps o más</button>
         </div>
         <div class="seg" data-key="vidFmt" aria-label="Formato">
           <button data-v="mp4">MP4</button><button data-v="png" title="Cada cuadro como PNG, sin pérdida, en un .zip">PNG (.zip)</button>
@@ -199,7 +203,7 @@ const AW = 3840, AH = 2160;
 const DEFAULTS = {
   seed: 1, layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25,
   count: 500, size: 24, depthSize: .5,
-  fps: 8, dur: 4, travel: 1, flow: 0, cross: false, thresh: 0, jitter: .5,
+  fps: '8', dur: 4, travel: 1, flow: 0, cross: false, thresh: 0, jitter: .5, snap: false,
   palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'random', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
   vidFps: '8', vidFmt: 'mp4', fullFrame: false,
 };
@@ -304,10 +308,20 @@ function placeAt(cdfs, li, qv, q, t) {
 }
 function cubesRaw(i) { const keep = fitT; fitT = { k: 1, ox: 0, oy: 0 }; const j = S.jitter; S.jitter = 0; const o = cubesAt(i).map(c => c); S.jitter = j; fitT = keep; return o; }
 function colorOf(pal) { return onBg(S.colorMode === 'ink' ? S.ink : S.palette[pal % S.palette.length], S.bg); }
+// Engrillar: every cube moved to the middle of its cell on a grid of the cube size (Tamaño), one per cell (the front
+// one), all at that size, so they sit side by side and never on top of each other.
+function snapped(list) {
+  if (!S.snap) return list;
+  const sn = PerceptaSnap(list.length, i => list[i][0], i => list[i][1], S.size), out = [];
+  for (let i = 0; i < list.length; i++) if (sn.keep[i]) out.push([sn.x[i], sn.y[i], S.size, list[i][3], list[i][4]]);
+  return out;
+}
 function draw(ctx, list, ox = 0, oy = 0) {
+  list = snapped(list);
   for (const [x, y, s, pal] of list) { ctx.fillStyle = colorOf(pal); ctx.fillRect(Math.round(x - s / 2 - ox), Math.round(y - s / 2 - oy), s, s); }
 }
 function bounds(list) {
+  list = snapped(list);
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const [x, y, s] of list) { x0 = Math.min(x0, x - s / 2); y0 = Math.min(y0, y - s / 2); x1 = Math.max(x1, x + s / 2); y1 = Math.max(y1, y + s / 2); }
   return { x0: Math.floor(Math.max(0, x0)), y0: Math.floor(Math.max(0, y0)), x1: Math.ceil(Math.min(AW, x1)), y1: Math.ceil(Math.min(AH, y1)) };
@@ -327,12 +341,11 @@ const SLIDERS = {
   count: { label: 'Cubos', min: 20, max: 700, step: 10, fmt: String, emph: true },
   size: { label: 'Tamaño', min: 10, max: 50, step: 2, fmt: v => v + ' px', emph: true },
   depthSize: { label: 'Más chicos al fondo', min: 0, max: 1, step: .01, fmt: pct },
-  fps: { label: 'Dibujos por segundo', min: 2, max: 24, step: 1, fmt: String, emph: true },
   dur: { label: 'Duración del loop', min: 1, max: 20, step: .5, fmt: v => v + ' s', emph: true },
   thresh: { label: 'Umbral (se juntan en las curvas)', min: 0, max: .95, step: .01, fmt: pct },
   flow: { label: 'Viaje de los cubos', min: -4, max: 4, step: 1, fmt: v => v === 0 ? 'quietos' : (v > 0 ? '→ ' : '← ') + Math.abs(v) + (Math.abs(v) === 1 ? ' vuelta' : ' vueltas') },
   travel: { label: 'Recorrido de la onda', min: 0, max: 4, step: 1, fmt: v => v === 0 ? 'quieta' : v + (v === 1 ? ' vuelta' : ' vueltas') },
-  jitter: { label: 'Temblor a mano', min: 0, max: 1, step: .01, fmt: pct },
+  jitter: { label: 'Temblor a mano', min: 0, max: 1, step: .01, fmt: v => v ? pct(v) : 'sin temblor' },
 };
 const REBUILD = ['layers', 'amp', 'freq', 'complexity', 'persp', 'thickness', 'count', 'size', 'depthSize', 'travel', 'flow', 'thresh'];
 for (const [key, d] of Object.entries(SLIDERS)) {
@@ -422,7 +435,7 @@ $('#png').addEventListener('click', () => {
 $('#svg').addEventListener('click', () => {
   const out = [`<svg xmlns="http://www.w3.org/2000/svg" width="${AW}" height="${AH}" viewBox="0 0 ${AW} ${AH}">`];
   if (S.bgExport) out.push(`<rect width="${AW}" height="${AH}" fill="${S.bg}"/>`);
-  for (const [x, y, s, pal] of cubesAt(cur)) out.push(`<rect x="${Math.round(x - s / 2)}" y="${Math.round(y - s / 2)}" width="${s}" height="${s}" fill="${colorOf(pal)}"/>`);
+  for (const [x, y, s, pal] of snapped(cubesAt(cur))) out.push(`<rect x="${Math.round(x - s / 2)}" y="${Math.round(y - s / 2)}" width="${s}" height="${s}" fill="${colorOf(pal)}"/>`);
   out.push('</svg>');
   download(`pixel-motion-${S.seed}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));
 });

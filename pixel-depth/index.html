@@ -184,6 +184,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-count"></div>
         <div id="sl-size"></div>
         <div id="sl-depthSize"></div>
+        <label class="check" title="Los píxeles se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
         <div class="row">
           <span>Semilla</span>
           <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
@@ -228,7 +229,7 @@ const DEFAULTS = {
   disp: .3, start: .35, soft: .7, rise: .35, thin: .35, fadeA: .5,
   cut: false, mdens: 3.5, cull: true, cityN: 16, cityGreen: .35, citySeed: 1, wave: .5, waveScale: .5, depth: 2.4,
   pitch: 24, yaw: 0, persp: .55, zoom: 1.3, frameY: .02,
-  count: 45000, size: 2.5, depthSize: .6, seed: 1,
+  count: 45000, size: 2.5, depthSize: .6, seed: 1, snap: false,
   palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'ink', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -657,7 +658,16 @@ function colorOf(p) {
   const c = S.colorMode === 'height' ? [INK, ...P][clamp(Math.floor(p.lift / field.top * (P.length + 1) * .999), 0, P.length)] : S.colorMode === 'random' ? P[Math.floor(p.pick * P.length)] : S.ink;
   return onBg(c, S.bg);
 }
+// Engrillar: every pixel moved to the middle of its cell on a grid of the pixel size (Tamaño del píxel), one per cell
+// (the front one), all at that size, so they sit side by side and never on top of each other.
+function snapped(items) {
+  if (!S.snap) return items;
+  const sn = PerceptaSnap(items.length, i => items[i][0], i => items[i][1], S.size), out = [];
+  for (let i = 0; i < items.length; i++) if (sn.keep[i]) out.push([sn.x[i], sn.y[i], S.size, items[i][3], items[i][4], items[i][5]]);
+  return out;
+}
 function draw(ctx, items) {
+  items = snapped(items);
   for (const [x, y, s, p, a] of items) { ctx.globalAlpha = a; ctx.fillStyle = colorOf(p); ctx.fillRect(x - s / 2, y - s / 2, s, s); }
   ctx.globalAlpha = 1;
 }
@@ -887,7 +897,7 @@ $('#svg').addEventListener('click', () => {
   const n = v => Math.round(v * RES * 100) / 100, out = [`<svg xmlns="http://www.w3.org/2000/svg" width="${AW * RES}" height="${AH * RES}" viewBox="0 0 ${AW * RES} ${AH * RES}">`];
   if (S.bgExport) out.push(`<rect width="${AW * RES}" height="${AH * RES}" fill="${S.bg}"/>`);
   const groups = new Map();
-  for (const [x, y, s, p, a] of list) {
+  for (const [x, y, s, p, a] of snapped(list)) {
     const key = colorOf(p) + '|' + Math.max(1, Math.round(a * 10)) / 10;
     groups.set(key, (groups.get(key) || '') + `M${n(x - s / 2)} ${n(y - s / 2)}h${n(s)}v${n(s)}h${-n(s)}z`);
   }
