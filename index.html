@@ -194,6 +194,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <div id="depth-controls">
             <p class="hint" id="depth-status"></p>
             <div id="sl-dGap"></div>
+            <div id="sl-dPx"></div>
             <div id="sl-dRelief"></div>
             <label class="check" title="Los píxeles se achican con la luz hasta desaparecer; apagado, se juntan más en lo oscuro"><input type="checkbox" data-check="dAM"> Modular el tamaño con la luz</label>
           </div>
@@ -319,7 +320,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2,
+  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2,
   motion: 'still', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
@@ -441,7 +442,7 @@ function generate(st) {
   const [W, H] = st.orient === 'v' ? [...SIZES[st.aspect]].reverse() : SIZES[st.aspect], r = rng(st.seed), rand = r, mono = st.style === 'mono', image = st.source === 'image' && img;
   const gridRows = image ? Math.max(1, Math.round(st.gridCols / img.ar)) : 0, grid = image && st.grid;
   const lines = image && st.imgLines && img.depth;
-  const n = lines ? img.gw * img.gh : grid ? st.gridCols * gridRows : st.snap ? PerceptaCells(st.count, st.size, st.cell, 300000) : st.count;
+  const n = lines ? Math.min(4e6, (Math.ceil(W / (st.size + st.dPx)) + 2) * (Math.ceil(H / st.dGap) + 2) * 3) : grid ? st.gridCols * gridRows : st.snap ? PerceptaCells(st.count, st.size, st.cell, 300000) : st.count;
   const px = new Float32Array(n), py = new Float32Array(n), size = new Float32Array(n), shade = new Uint8Array(n);
   const pal = new Uint8Array(n), rgb = new Uint32Array(n), tlen = new Float32Array(n), dep = new Float32Array(n);
   let got = 0;
@@ -487,29 +488,35 @@ function generate(st) {
     // in the dark; never on top of one another (the darkest are placed first, with a sliver of space all round).
     if (lines) {
       // Espacio entre líneas is in the frame's pixels: the picture is fitted at kImg of them per unit of its height
-      const m = .06 * Math.min(W, H) + st.size / 2, kImg = Math.min((W - 2 * m) / img.ar, H - 2 * m), sz = st.size / kImg, sep = sz * .12;
-      const Dm = img.depth, R = st.dRelief * .3, gap = st.dGap / kImg, lev = new Float32Array(cells), cand = [];
+      const m = .06 * Math.min(W, H) + st.size / 2, kImg = Math.min((W - 2 * m) / img.ar, H - 2 * m), sz = st.size / kImg;
+      let sep;
+      // Along a line the cubes sit at a regular pitch, Tamaño + Espacio entre píxeles across the frame: at each such
+      // column the line's height is found where the level crosses between two cells of the same surface (more than one
+      // place where the line folds). So the cubes line up in columns too, and on one line they can never touch.
+      const Dm = img.depth, R = st.dRelief * .3, gap = st.dGap / kImg, lev = new Float32Array(cells), cand = [], pitch = (st.size + st.dPx) / kImg;
       for (let k = 0; k < cells; k++) lev[k] = ((Math.floor(k / gw) + .5) / gh - R * Dm[k]) / gap;
-      for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
-        const k = j * gw + i;
-        for (const q of [i + 1 < gw ? k + 1 : -1, j + 1 < gh ? k + gw : -1]) {
-          if (q < 0 || Math.abs(Dm[q] - Dm[k]) > .12) continue;
-          const a = lev[k], b = lev[q], la = Math.floor(a), lb = Math.floor(b); if (la === lb) continue;
-          const tt = (Math.max(la, lb) - a) / (b - a || 1), xi = q === k + 1 ? i + tt : i, yi = q === k + 1 ? j : j + tt;
-          const tone = M[k] + (M[q] - M[k]) * tt;
-          cand.push([(xi + .5) / gw * img.ar, (yi + .5) / gh, tone, k]);
-          break;
+      for (let x = pitch / 2; x < img.ar; x += pitch) {
+        const gx = Math.min(gw - 1.001, Math.max(0, x / img.ar * gw - .5)), i0 = Math.floor(gx), fx = gx - i0, at = (A, j) => A[j * gw + i0] * (1 - fx) + A[j * gw + i0 + 1] * fx;
+        for (let j = 0; j < gh - 1; j++) {
+          const a = at(lev, j), b = at(lev, j + 1); if (Math.floor(a) === Math.floor(b)) continue;
+          if (Math.abs(at(Dm, j + 1) - at(Dm, j)) > .12) continue;
+          for (let L = Math.floor(Math.min(a, b)) + 1; L <= Math.max(a, b); L++) {
+            const tt = (L - a) / (b - a), tone = at(M, j) + (at(M, j + 1) - at(M, j)) * tt;
+            cand.push([x, (j + tt + .5) / gh, tone, Math.min(gh - 1, j + Math.round(tt)) * gw + Math.min(gw - 1, Math.round(gx))]);
+          }
         }
       }
+      sep = st.dPx / kImg;
       const dens = clamp(st.count / 45000, .05, 1), scOf = tn => st.dAM ? Math.pow(tn, .75) : 1, cellS = sz + sep, taken = new Map(), keyOf = (x, y) => x * 100003 + y;
       cand.sort((a, b) => b[2] - a[2]);
       for (const [x, y, tn, k] of cand) {
+        if (got >= n) break;
         if (tn <= 0) continue;
         if (!st.dAM && r() > Math.min(1, Math.pow(tn, 1.2) * dens * 1.5)) continue;
         const sc = scOf(tn); if (sc < .08) continue;
         const half = sc * sz / 2, cx = Math.floor(x / cellS), cy = Math.floor(y / cellS);
         let ok = true;
-        for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = taken.get(keyOf(cx + a, cy + b)); if (l) for (const [ox, oy, oh] of l) if (Math.abs(ox - x) < half + oh + sep && Math.abs(oy - y) < half + oh + sep) { ok = false; break; } }
+        for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = taken.get(keyOf(cx + a, cy + b)); if (l) for (const [ox, oy, oh] of l) if (Math.abs(ox - x) < half + oh + sep - 1e-7 && Math.abs(oy - y) < half + oh + sep - 1e-7) { ok = false; break; } }
         if (!ok) continue;
         const kk = keyOf(cx, cy); (taken.get(kk) || taken.set(kk, []).get(kk)).push([x, y, half]);
         add(x, y, 1, col[k]); size[got - 1] = st.size * sc; shade[got - 1] = 0;
@@ -956,6 +963,7 @@ const SLIDERS = {
   complexity: { label: 'Complejidad', min: 1, max: 6, step: 1, fmt: String },
   persp: { label: 'Perspectiva', min: 0, max: 1, step: .01, fmt: pct },
   thickness: { label: 'Grosor', min: 0, max: 1, step: .01, fmt: pct },
+  dPx: { label: 'Espacio entre píxeles', values: steps(.1, [.1, 1], [.25, 20]), fmt: v => v.toLocaleString('es') + ' px', emph: true },
   dGap: { label: 'Espacio entre líneas', min: 3, max: 80, step: 1, fmt: v => v + ' px', emph: true },
   dRelief: { label: 'Relieve', min: 0, max: 1.5, step: .01, fmt: v => Math.round(v * 100) + '%' },
   fade: { label: 'Desvanecer bordes', min: 0, max: 1, step: .01, fmt: pct },
@@ -1083,7 +1091,7 @@ function sync() {
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   markPalette();
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
-  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz', S.wThresh, S.contrast, S.threshold, S.invert, S.imgLines && depthId, S.dGap, S.dRelief, S.dAM,
+  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz', S.wThresh, S.contrast, S.threshold, S.invert, S.imgLines && depthId, S.dGap, S.dPx, S.dRelief, S.dAM,
     S.style, S.count, S.size, S.snap && S.cell, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {
