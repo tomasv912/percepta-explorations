@@ -193,7 +193,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <label class="check" title="Calcula la profundidad de la foto (en el navegador) y dibuja líneas horizontales que siguen su volumen"><input type="checkbox" data-check="imgLines"> Líneas que siguen la profundidad</label>
           <div id="depth-controls">
             <p class="hint" id="depth-status"></p>
-            <div id="sl-dLines"></div>
+            <div id="sl-dGap"></div>
             <div id="sl-dRelief"></div>
             <label class="check" title="Los píxeles se achican con la luz hasta desaparecer; apagado, se juntan más en lo oscuro"><input type="checkbox" data-check="dAM"> Modular el tamaño con la luz</label>
           </div>
@@ -319,7 +319,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2, imgLines: false, dLines: 90, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2,
+  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2,
   motion: 'still', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
@@ -486,8 +486,9 @@ function generate(st) {
     // picture's tone sets the cubes: sized by it, down to nothing in the light (Modular el tamaño), or closer together
     // in the dark; never on top of one another (the darkest are placed first, with a sliver of space all round).
     if (lines) {
-      const Dm = img.depth, R = st.dRelief * .3, gap = 1 / st.dLines, lev = new Float32Array(cells), cand = [];
+      // Espacio entre líneas is in the frame's pixels: the picture is fitted at kImg of them per unit of its height
       const m = .06 * Math.min(W, H) + st.size / 2, kImg = Math.min((W - 2 * m) / img.ar, H - 2 * m), sz = st.size / kImg, sep = sz * .12;
+      const Dm = img.depth, R = st.dRelief * .3, gap = st.dGap / kImg, lev = new Float32Array(cells), cand = [];
       for (let k = 0; k < cells; k++) lev[k] = ((Math.floor(k / gw) + .5) / gh - R * Dm[k]) / gap;
       for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
         const k = j * gw + i;
@@ -955,7 +956,7 @@ const SLIDERS = {
   complexity: { label: 'Complejidad', min: 1, max: 6, step: 1, fmt: String },
   persp: { label: 'Perspectiva', min: 0, max: 1, step: .01, fmt: pct },
   thickness: { label: 'Grosor', min: 0, max: 1, step: .01, fmt: pct },
-  dLines: { label: 'Cantidad de líneas', min: 15, max: 300, step: 1, fmt: String, emph: true },
+  dGap: { label: 'Espacio entre líneas', min: 3, max: 80, step: 1, fmt: v => v + ' px', emph: true },
   dRelief: { label: 'Relieve', min: 0, max: 1.5, step: .01, fmt: v => Math.round(v * 100) + '%' },
   fade: { label: 'Desvanecer bordes', min: 0, max: 1, step: .01, fmt: pct },
   wThresh: { label: 'Umbral (se juntan en las curvas)', min: 0, max: .95, step: .01, fmt: pct },
@@ -1082,7 +1083,7 @@ function sync() {
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   markPalette();
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
-  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz', S.wThresh, S.contrast, S.threshold, S.invert, S.imgLines && depthId, S.dLines, S.dRelief, S.dAM,
+  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz', S.wThresh, S.contrast, S.threshold, S.invert, S.imgLines && depthId, S.dGap, S.dRelief, S.dAM,
     S.style, S.count, S.size, S.snap && S.cell, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {
