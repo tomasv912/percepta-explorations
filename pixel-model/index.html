@@ -120,6 +120,13 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 #building-controls { display: flex; flex-direction: column; gap: 10px; }
 #building-controls .seg { flex-wrap: wrap; }
 #building-controls .seg button { flex: 1 0 30%; }
+.crop-hud { position: absolute; bottom: 72px; left: 14px; flex-direction: column; align-items: stretch; display: flex; gap: 4px; align-items: center; white-space: nowrap; z-index: 4; padding: 4px; border-radius: 10px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); font-size: 12px; color: var(--text-2); }
+.crop-hud b { color: var(--text); font-weight: 500; margin: 4px 6px; }
+.crop-hud button { height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: var(--fill); color: var(--text); font: 500 12px var(--font); cursor: pointer; }
+.crop-hud button:hover { background: var(--line); }
+.crop-hud button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+.crop-box { position: absolute; z-index: 5; pointer-events: none; border: 1px solid #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / .55), 0 0 0 9999px rgb(0 0 0 / .18); }
+.frame.cropping, .frame.cropping:active { cursor: crosshair; }
 </style>
 </head>
 <body>
@@ -131,6 +138,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Un modelo 3D dibujado con píxeles"></canvas></div>
     <div class="drop" id="drop" hidden>Soltá el modelo (.obj, .fbx, .glb, .gltf)</div>
     <div class="hud" id="stats">—</div>
+    <div class="crop-hud" id="crop-hud"><button id="crop-tool" aria-pressed="false" title="Recortar (C): arrastrá un recuadro sobre el modelo, o clic para acercar ×2. Las flechas lo desplazan">Recortar</button><b id="crop-label" hidden>Recorte</b><button id="crop-back" hidden title="Vuelve al recorte anterior">Vista anterior</button><button id="crop-clear" hidden title="Muestra el cuadro entero">Quitar recorte</button></div>
     <div class="tt" role="toolbar" aria-label="Animación">
       <div class="seg" data-key="anim" aria-label="Animación">
         <button data-v="none">Quieta</button><button data-v="boil">A mano</button><button data-v="float">Flotar</button><button data-v="hover">Hover</button><button data-v="reveal">Reveal</button><button data-v="enter">Entrada</button>
@@ -667,7 +675,7 @@ function sync(fast) {
   if (!model) { $('#stats').textContent = 'Cargando el modelo…'; return; }
   updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
-  if (S.aspect + S.orient !== artKey) { artKey = S.aspect + S.orient; setArtboard(); S.panX = S.panY = 0; }
+  if (S.aspect + S.orient !== artKey) { artKey = S.aspect + S.orient; setArtboard(); S.panX = S.panY = 0; if (typeof crop !== 'undefined') { crop = null; cropStack = []; cropUI(); } }
   const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow, S.lineAM]);
   if (k !== key || (!fast && fastNext)) { fastNext = !!fast; pts = build(fast); key = k; ptsPan = [S.panX, S.panY]; }
   // Moved in the frame (Shift + drag): the same pixels, shifted; nothing is re-sampled.
@@ -684,7 +692,8 @@ function render() {
   const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
   if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
   const ctx = cv.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, pw, ph);
-  ctx.setTransform(cv.width / AW, 0, 0, cv.height / AH, 0, 0);
+  const v = viewBox(), z = AW / v.w;
+  ctx.setTransform(cv.width / AW * z, 0, 0, cv.height / AH * z, -v.x * cv.width / AW * z, -v.y * cv.height / AH * z);
   const list = shown || pts;
   if (!list) return;
   draw(ctx, list);
@@ -692,15 +701,65 @@ function render() {
 }
 new ResizeObserver(() => pts && schedule()).observe(stage);
 
+// ---------- Recorte ----------
+// As in Pixel Waves: with Recortar (C) on, drag a box over the picture (it keeps the frame's proportions) or click to
+// get twice as close there; the view then shows that part filling the frame, the arrows move it, Vista anterior
+// goes back a step and Quitar recorte shows it all. Exports are what the recorte shows, at the whole frame's size.
+// Nothing is re-sampled: the same pixels, closer.
+let crop = null, cropStack = [], cropMode = false, cropDrag = null;
+const viewBox = () => crop || { x: 0, y: 0, w: AW, h: AH };
+const boardOf = e => { const r = frame.getBoundingClientRect(), v = viewBox(); return [v.x + (e.clientX - r.left) / r.width * v.w, v.y + (e.clientY - r.top) / r.height * v.h]; };
+const fitCrop = c => { const w = clamp(c.w, AW / 64, AW), h = w * AH / AW; return { w, h, x: clamp(c.x, 0, AW - w), y: clamp(c.y, 0, AH - h) }; };
+function setCrop(c, push = true) { if (push) cropStack.push(crop); crop = c && c.w < AW - .5 ? fitCrop(c) : null; cropUI(); schedule(); }
+function cropUI() {
+  $('#crop-tool').setAttribute('aria-pressed', cropMode); frame.classList.toggle('cropping', cropMode);
+  $('#crop-label').hidden = $('#crop-clear').hidden = !crop; $('#crop-back').hidden = !cropStack.length || !crop;
+  if (crop) $('#crop-label').textContent = `Recorte ×${(AW / crop.w).toFixed(1)}`;
+}
+function cropBox(a, b) {
+  const w0 = Math.abs(b[0] - a[0]), h0 = Math.abs(b[1] - a[1]);
+  if (Math.max(w0, h0) < AW / 200) return null;
+  const w = Math.max(w0, h0 * AW / AH), h = w * AH / AW;
+  return fitCrop({ x: b[0] >= a[0] ? a[0] : a[0] - w, y: b[1] >= a[1] ? a[1] : a[1] - h, w, h });
+}
+function showCropBox(c) {
+  let el = document.querySelector('.crop-box');
+  if (!c) { el?.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.className = 'crop-box'; stage.append(el); }
+  const r = frame.getBoundingClientRect(), st = stage.getBoundingClientRect(), v = viewBox(), kx = r.width / v.w, ky = r.height / v.h;
+  Object.assign(el.style, { left: r.left - st.left + (c.x - v.x) * kx + 'px', top: r.top - st.top + (c.y - v.y) * ky + 'px', width: c.w * kx + 'px', height: c.h * ky + 'px' });
+}
+function cropDown(e) {
+  frame.setPointerCapture(e.pointerId); cropDrag = { a: boardOf(e) };
+  const mv = ev => showCropBox(cropBox(cropDrag.a, boardOf(ev)));
+  const up = ev => {
+    frame.removeEventListener('pointermove', mv); frame.removeEventListener('pointerup', up);
+    const a = cropDrag.a, c = cropBox(a, boardOf(ev)), v = viewBox(); cropDrag = null; showCropBox(null);
+    setCrop(c || { x: a[0] - v.w / 4, y: a[1] - v.h / 4, w: v.w / 2, h: v.h / 2 });
+  };
+  frame.addEventListener('pointermove', mv); frame.addEventListener('pointerup', up);
+}
+$('#crop-tool').addEventListener('click', () => { cropMode = !cropMode; cropUI(); });
+$('#crop-back').addEventListener('click', () => { crop = cropStack.pop() ?? null; cropUI(); schedule(); });
+$('#crop-clear').addEventListener('click', () => { if (crop) setCrop(null); });
+addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea, select')) return;
+  if (e.key.toLowerCase() === 'c') { cropMode = !cropMode; cropUI(); return; }
+  if (e.key === 'Escape' && cropMode) { cropMode = false; cropUI(); return; }
+  const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (!crop || !d) return;
+  e.preventDefault(); const k = e.shiftKey ? .5 : .1;
+  crop = fitCrop({ ...crop, x: crop.x + d[0] * crop.w * k, y: crop.y + d[1] * crop.h * k }); cropUI(); schedule();
+});
 // Drag turns the model; the final frame renders in full when the drag ends. Shift + drag moves it in the frame instead
 // (the same pixels, shifted); a double click puts it back in the middle.
 let turn = null;
-frame.addEventListener('pointerdown', e => { frame.setPointerCapture(e.pointerId); turn = { x: e.clientX, y: e.clientY, yaw: S.yaw, pitch: S.pitch, px: S.panX, py: S.panY, move: e.shiftKey }; frame.classList.toggle('moving', e.shiftKey); });
+frame.addEventListener('pointerdown', e => { if (cropMode) return cropDown(e); frame.setPointerCapture(e.pointerId); turn = { x: e.clientX, y: e.clientY, yaw: S.yaw, pitch: S.pitch, px: S.panX, py: S.panY, move: e.shiftKey }; frame.classList.toggle('moving', e.shiftKey); });
 frame.addEventListener('pointermove', e => {
   if (!turn) return;
   if (turn.move) {
     const r = frame.getBoundingClientRect();
-    S.panX = Math.round(turn.px + (e.clientX - turn.x) * AW / r.width); S.panY = Math.round(turn.py + (e.clientY - turn.y) * AH / r.height);
+    S.panX = Math.round(turn.px + (e.clientX - turn.x) * viewBox().w / r.width); S.panY = Math.round(turn.py + (e.clientY - turn.y) * viewBox().h / r.height);
     return sync();
   }
   S.yaw = ((turn.yaw + (e.clientX - turn.x) * .5 + 540) % 360) - 180; S.pitch = clamp(turn.pitch + (e.clientY - turn.y) * .4, -89, 89);
@@ -980,7 +1039,7 @@ function tick(now) {
   render();
   if (moving || hover) animate(); else lastT = 0; // settled: sleep until the pointer comes back
 }
-const toBoard = e => { const r = frame.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * AW, (e.clientY - r.top) / r.height * AH]; };
+const toBoard = e => boardOf(e);
 frame.addEventListener('pointermove', e => { if (S.anim === 'hover' && !turn) { hover = toBoard(e); animate(); } });
 frame.addEventListener('pointerleave', () => { hover = null; animate(); });
 
@@ -1045,10 +1104,17 @@ async function stripPNG(W, H, paint) {
   const ihdr = new Uint8Array(13), v = new DataView(ihdr.buffer); v.setUint32(0, W); v.setUint32(4, H); ihdr.set([8, 6, 0, 0, 0], 8);
   return new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), ...chunk('IHDR', ihdr), ...chunk('IDAT', z), ...chunk('IEND', new Uint8Array(0))], { type: 'image/png' });
 }
+// With a recorte, exports are the recorte at the size of the whole frame (cropped to the pixels inside it).
+function exportBox() {
+  const b = bounds(pts); if (!b) return null;
+  if (!crop) return { b, z: 1 };
+  const c = { x0: Math.max(b.x0, Math.floor(crop.x)), y0: Math.max(b.y0, Math.floor(crop.y)), x1: Math.min(b.x1, Math.ceil(crop.x + crop.w)), y1: Math.min(b.y1, Math.ceil(crop.y + crop.h)) };
+  return c.x1 > c.x0 && c.y1 > c.y0 ? { b: c, z: AW / crop.w } : null;
+}
 $('#png').addEventListener('click', async () => {
-  const b = bounds(pts); if (!b) return;
-  const k = expRes(), W = (b.x1 - b.x0) * k, H = (b.y1 - b.y0) * k, suffix = S.expScale === '1' ? '' : `@${S.expScale}x`;
-  const paint = (ctx, y) => { ctx.setTransform(k, 0, 0, k, 0, -y); if (S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, b.x1 - b.x0, b.y1 - b.y0); } draw(ctx, pts, b.x0, b.y0, k); };
+  const eb = exportBox(); if (!eb) return toast('No hay píxeles en el recorte.');
+  const b = eb.b, k = expRes() * eb.z, W = (b.x1 - b.x0) * k, H = (b.y1 - b.y0) * k, suffix = S.expScale === '1' ? '' : `@${S.expScale}x`;
+  const paint = (ctx, y) => { ctx.setTransform(k, 0, 0, k, 0, -y); ctx.save(); ctx.beginPath(); ctx.rect(0, 0, b.x1 - b.x0, b.y1 - b.y0); ctx.clip(); if (S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, b.x1 - b.x0, b.y1 - b.y0); } draw(ctx, pts, b.x0, b.y0, k); ctx.restore(); };
   toast(`Generando PNG ${W} × ${H}…`);
   try {
     let blob;
@@ -1059,8 +1125,8 @@ $('#png').addEventListener('click', async () => {
   } catch (err) { toast('No se pudo generar el PNG.'); }
 });
 $('#svg').addEventListener('click', () => {
-  const b = bounds(pts); if (!b) return;
-  const k = expRes(), w = (b.x1 - b.x0) * k, h = (b.y1 - b.y0) * k, n = v => Math.round(v * k * 100) / 100, z = S.snap ? S.cell : S.size, s = z * k, out = [];
+  const eb = exportBox(); if (!eb) return toast('No hay píxeles en el recorte.');
+  const b = eb.b, k = expRes() * eb.z, w = (b.x1 - b.x0) * k, h = (b.y1 - b.y0) * k, n = v => Math.round(v * k * 100) / 100, z = S.snap ? S.cell : S.size, s = z * k, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
   if (S.bgExport) out.push(`<rect width="${w}" height="${h}" fill="${S.bg}"/>`);
   const groups = new Map();
@@ -1132,7 +1198,8 @@ $('#video').addEventListener('click', async () => {
       for (let i = 0; i < N; i++) { const b = bounds(frameAt(i)); if (b) { x0 = Math.min(x0, b.x0); y0 = Math.min(y0, b.y0); x1 = Math.max(x1, b.x1); y1 = Math.max(y1, b.y1); } }
       if (S.anim === 'hover') sim = hoverSim();
     }
-    const b = { x0: Math.max(0, x0 - pad), y0: Math.max(0, y0 - pad), x1: Math.min(AW, x1 + pad), y1: Math.min(AH, y1 + pad) };
+    const b0 = crop ? { x0: crop.x, y0: crop.y, x1: crop.x + crop.w, y1: crop.y + crop.h } : { x0: 0, y0: 0, x1: AW, y1: AH };
+    const b = { x0: Math.max(b0.x0, x0 - pad), y0: Math.max(b0.y0, y0 - pad), x1: Math.min(b0.x1, x1 + pad), y1: Math.min(b0.y1, y1 + pad) };
     // 4K: the crop drawn as large as fits 3840 × 2160 (or 2160 × 3840 when it stands up), every pixel redrawn at
     // that size so it stays sharp; even dimensions (H.264).
     const bw = b.x1 - b.x0, bh = b.y1 - b.y0, sc = Math.min(3840 / Math.max(bw, bh), 2160 / Math.min(bw, bh)), W = Math.round((b.x1 - b.x0) * sc / 2) * 2, H = Math.round((b.y1 - b.y0) * sc / 2) * 2;
