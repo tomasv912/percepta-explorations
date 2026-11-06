@@ -210,6 +210,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <label class="check" title="En vez de salpicados, los píxeles corren en líneas horizontales que siguen la forma del modelo: más juntos donde es oscuro (frecuencia modulada)"><input type="checkbox" data-check="lines"> Líneas horizontales (frecuencia modulada)</label>
         <div id="sl-lineGap"></div>
         <div id="sl-lineFollow"></div>
+        <label class="check" id="lineAM-row" title="Los píxeles quedan parejos sobre la línea y se achican con la luz hasta desaparecer"><input type="checkbox" data-check="lineAM"> Modular el tamaño con la luz</label>
         <label class="check" title="Los píxeles se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
         <div id="sl-cell"></div>
         <div class="row">
@@ -279,7 +280,7 @@ const DEFAULTS = {
   count: 40000, size: 3, contrast: 1.6, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
-  colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, snap: false, cell: 6, handJit: 1,
+  colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, snap: false, cell: 6, handJit: 1,
   revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -343,27 +344,57 @@ function build(fast, yaw) {
 // n pixels from the last render: into artboard units, square, never rotated, each a little off its sample
 // (Superposición).
 let scene = null;
-// Líneas horizontales: the pixels run in rows, one pixel thick, Separación apart; along a row they sit closer where
-// the model is dark (frequency modulation). A row is a level of the picture's height (flat, as on the screen) or of
-// the model's own height (Seguir la forma), so with it the rows wrap round the form like contour lines. Done by
-// sampling more and keeping the samples that fall on a row, moved onto it.
-const lineBand = () => Math.min(1, S.size * 1.1 / S.lineGap);
-function onLine(c, gap, d = 1) {
-  const f = c / gap - Math.round(c / gap);
-  return Math.abs(f) * gap <= gap * lineBand() / 2 ? -f * gap / d : null;
+// Líneas horizontales: the pixels run along level lines of the model, like the rings of a wireframe torus without its
+// meridians: each line is a level of the model's own height (Seguir la forma; at 0, of the screen's height), traced on
+// the rendered surface (where the level steps between two neighbouring pixels of the same surface), so it wraps the
+// form and stops where the surface turns away or is hidden. Separación is the distance between levels. Along a line
+// the light sets the pixels: closer together where dark (frequency modulation) or, with Modular el tamaño, evenly
+// spaced and smaller the lighter it is, down to nothing.
+// contour(buf, …) → [x, y, z, dark, …] in view units, one point per crossing.
+function contour(buf, cp, spn, fo, gap) {
+  const { W, H, k, box, depth, mask, lit } = buf, out = [], jump = 6 / k;
+  const lev = new Float32Array(W * H);
+  for (let i = 0; i < W * H; i++) if (mask[i]) { const Y = box.y0 + (Math.floor(i / W) + .5) / k; lev[i] = (Y * (1 - fo) + (Y * cp - depth[i] * spn) * fo) / gap; }
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x; if (!mask[i]) continue;
+    for (const j of [x + 1 < W ? i + 1 : -1, y + 1 < H ? i + W : -1]) {
+      if (j < 0 || !mask[j] || Math.abs(depth[j] - depth[i]) > jump) continue;
+      const a = lev[i], b = lev[j], la = Math.floor(a), lb = Math.floor(b);
+      if (la === lb) continue;
+      const L = Math.max(la, lb), t = (L - a) / (b - a || 1), xi = j === i + 1 ? x + t : x, yi = j === i + 1 ? y : y + t;
+      out.push(box.x0 + (xi + .5) / k, box.y0 + (yi + .5) / k, depth[i] + (depth[j] - depth[i]) * t, 1 - (lit[i] + (lit[j] - lit[i]) * t));
+      break;
+    }
+  }
+  return out;
+}
+// The level-line points kept and how big: dense where dark (FM), or one per pixel's length, sized by the dark (AM).
+function linePick(raw, kA, r, at) {
+  const out = [], t = S.threshold, dens = clamp(count() / 40000, .03, 1), cell = Math.max(1, S.size * 1.05), taken = new Set();
+  for (let i = 0; i < raw.length; i += 4) {
+    const dark = raw[i + 3], dk = t ? (dark < t ? 0 : (dark - t) / (1 - t)) : dark;
+    if (S.lineAM) {
+      const sc = Math.pow(dk, .75 * S.contrast / 1.6); if (sc < .08) continue;
+      const ax = (raw[i] - at.x0) * kA, ay = (raw[i + 1] - at.y0) * kA, key = Math.round(ax / cell) * 100003 + Math.round(ay / cell);
+      if (taken.has(key)) continue; taken.add(key);
+      out.push([i, sc]);
+    } else {
+      const pr = Math.min(1, (Math.pow(dk, S.contrast) * 1.25 + .01) * dens);
+      if (r() < pr) out.push([i, undefined]);
+    }
+  }
+  return out;
+}
+function lineStipple(sc, r) {
+  const { buf, box } = sc, kA = AW / (box.x1 - box.x0), p = S.pitch * Math.PI / 180;
+  const raw = contour(buf, Math.cos(p), Math.sin(p), S.lineFollow, S.lineGap / kA);
+  return linePick(raw, kA, r, box).map(([i, s]) => ({ x: (raw[i] - box.x0) * kA + (r() - .5) * S.size * S.jitter * .3 + S.panX, y: (raw[i + 1] - box.y0) * kA + S.panY, tone: raw[i + 3], pick: r(), sc: s }));
 }
 function stipple(n, r, sc = scene) {
-  const { buf, e, box } = sc, L = S.lines, raw = Stipple3D.sample(buf, e, L ? Math.min(900000, Math.round(n / lineBand())) : n, r, { gamma: S.contrast, edge: S.edge, floor: .01, gain: 1.2, threshold: S.threshold });
-  const k = AW / (box.x1 - box.x0), out = [], p = S.pitch * Math.PI / 180, cp = Math.cos(p), spn = Math.sin(p), fo = S.lineFollow, gap = S.lineGap / k;
+  if (S.lines) return lineStipple(sc, r);
+  const { buf, e, box } = sc, raw = Stipple3D.sample(buf, e, n, r, { gamma: S.contrast, edge: S.edge, floor: .01, gain: 1.2, threshold: S.threshold });
+  const k = AW / (box.x1 - box.x0), out = [];
   for (let i = 0; i < raw.length; i += 3) {
-    if (L) {
-      // the row coordinate: screen height, or the model's height seen from here (view y undone of the pitch)
-      const ix = Math.min(buf.W - 1, Math.floor((raw[i] - box.x0) * buf.k)), iy = Math.min(buf.H - 1, Math.floor((raw[i + 1] - box.y0) * buf.k)), z = buf.depth[iy * buf.W + ix];
-      const Y = raw[i + 1], c = Y * (1 - fo) + (Y * cp - (z > -1e9 ? z : 0) * spn) * fo, dy = onLine(c, gap, (1 - fo) + fo * cp || 1);
-      if (dy === null) continue;
-      out.push({ x: (raw[i] - box.x0) * k + (r() - .5) * S.size * S.jitter + S.panX, y: (Y + dy - box.y0) * k + S.panY, tone: raw[i + 2], pick: r() });
-      continue;
-    }
     const x = (raw[i] - box.x0) * k + (r() - .5) * S.size * S.jitter + S.panX, y = (raw[i + 1] - box.y0) * k + (r() - .5) * S.size * S.jitter + S.panY;
     out.push({ x, y, tone: raw[i + 2], pick: r() });
   }
@@ -482,7 +513,7 @@ function sync(fast) {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink'; markPalette();
   $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = !S.snap;
-  $('#sl-lineGap').hidden = $('#sl-lineFollow').hidden = !S.lines;
+  $('#sl-lineGap').hidden = $('#sl-lineFollow').hidden = $('#lineAM-row').hidden = !S.lines;
   document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn'))); });
   if (S.anim === 'enter') { $('#sl-revHold').hidden = S.entInf; $('#sl-entStay').hidden = !S.entInf; }
   if (!filming) $('#video').textContent = S.vidFmt === 'png' ? 'Exportar secuencia (.zip)' : 'Exportar video';
@@ -492,7 +523,7 @@ function sync(fast) {
   updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   if (S.aspect + S.orient !== artKey) { artKey = S.aspect + S.orient; setArtboard(); S.panX = S.panY = 0; }
-  const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow]);
+  const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow, S.lineAM]);
   if (k !== key || (!fast && fastNext)) { fastNext = !!fast; pts = build(fast); key = k; ptsPan = [S.panX, S.panY]; }
   // Moved in the frame (Shift + drag): the same pixels, shifted; nothing is re-sampled.
   if (ptsPan[0] !== S.panX || ptsPan[1] !== S.panY) { const dx = S.panX - ptsPan[0], dy = S.panY - ptsPan[1]; for (const p of pts) { p.x += dx; p.y += dy; } ptsPan = [S.panX, S.panY]; }
@@ -564,7 +595,7 @@ const noise = (() => {
 const wrapDeg = v => ((v + 540) % 360 + 360) % 360 - 180;
 const boilCount = () => Math.max(1, Math.round(S.ttDur * S.fps));
 function boilFrame(i) {
-  const r = rng(S.seed * 131 + i + 1), out = pts.map(p => ({ x: p.x, y: p.y, tone: p.tone, pick: p.pick }));
+  const r = rng(S.seed * 131 + i + 1), out = pts.map(p => ({ x: p.x, y: p.y, tone: p.tone, pick: p.pick, sc: p.sc }));
   for (const q of stipple(Math.round(pts.length * S.boil), r)) out[Math.floor(r() * out.length)] = q;
   // And every pixel shifts 1 to 3 px on x and on y, either way, as if redrawn by hand (× Temblor; 0, none).
   const j = () => (1 + r() * 2) * (r() < .5 ? -1 : 1) * S.handJit;
@@ -599,7 +630,7 @@ function hoverStep(list, ptr, dt) {
 // once, by the side its surface faces most; its place on the model is stored, so a turn only moves and hides
 // pixels. Hidden: behind something nearer, by a quick depth render of the frame.
 let ring = null;
-const ringKey = () => JSON.stringify([modelName, presetSeed, AW, AH, S.lines, S.lineGap, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
+const ringKey = () => JSON.stringify([modelName, presetSeed, AW, AH, S.lines, S.lineGap, S.lineAM, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
 function buildRing() {
   const K = 8, box = viewBoxNow(), k = AW / (box.x1 - box.x0), p = S.pitch * Math.PI / 180, cp = Math.cos(p), sp = Math.sin(p), list = [];
   const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180, L = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.abs(-Math.cos(el) * Math.sin(az)) + .35];
@@ -607,7 +638,19 @@ function buildRing() {
     const yaw = v * 360 / K, y = yaw * Math.PI / 180, cy = Math.cos(y), sy = Math.sin(y), r = rng(S.seed * 977 + v);
     const buf = Stipple3D.render(viewTris(yaw), box, 700, L, { ambient: S.ambient, shadowDim: 1 - S.shadow }), e = Stipple3D.edges(buf, .02 / S.zoom);
     let area = 0; for (let i = 0; i < buf.mask.length; i++) area += buf.mask[i];
-    const raw = Stipple3D.sample(buf, e, Math.min(900000, Math.round(count() * Math.min(2, area / buf.mask.length * 3) / (S.lines ? lineBand() : 1))), r, { gamma: S.contrast, edge: S.edge, floor: .01, gain: 1.2, threshold: S.threshold });
+    if (S.lines) {
+      // level lines of the model's height, traced in this view, kept on the side this view owns
+      const raw = contour(buf, cp, sp, 1, S.lineGap / k);
+      for (const [i, s2] of linePick(raw, k, r, box)) {
+        const ix = Math.min(buf.W - 1, Math.floor((raw[i] - box.x0) * buf.k)), iy = Math.min(buf.H - 1, Math.floor((raw[i + 1] - box.y0) * buf.k)), o = iy * buf.W + ix;
+        let n = [buf.nrm[o * 3], buf.nrm[o * 3 + 1], buf.nrm[o * 3 + 2]]; if (n[2] < 0) n = n.map(c => -c);
+        const nm = back(...n), side = ((Math.round(-Math.atan2(nm[0], nm[2]) * 180 / Math.PI / (360 / K)) % K) + K) % K;
+        if (side !== v) continue;
+        list.push({ m: back(raw[i], raw[i + 1], raw[i + 2]), jx: 0, jy: 0, tone: raw[i + 3], pick: r(), sc: s2 });
+      }
+      continue;
+    }
+    const raw = Stipple3D.sample(buf, e, Math.round(count() * Math.min(2, area / buf.mask.length * 3)), r, { gamma: S.contrast, edge: S.edge, floor: .01, gain: 1.2, threshold: S.threshold });
     // view → model: undo the pitch, then the yaw (x right, y down in view; y up in the model)
     const back = (X, Y, Z) => { const y1 = -Y, yy = y1 * cp + Z * sp, z1 = -y1 * sp + Z * cp; return [X * cy - z1 * sy, yy, X * sy + z1 * cy]; };
     for (let i = 0; i < raw.length; i += 3) {
@@ -616,10 +659,7 @@ function buildRing() {
       let n = [buf.nrm[o * 3], buf.nrm[o * 3 + 1], buf.nrm[o * 3 + 2]]; if (n[2] < 0) n = n.map(c => -c);
       const nm = back(...n), side = ((Math.round(-Math.atan2(nm[0], nm[2]) * 180 / Math.PI / (360 / K)) % K) + K) % K;
       if (side !== v) continue;
-      const m = back(raw[i], raw[i + 1], buf.depth[o]);
-      // Líneas horizontales, turning: rows are levels of the model's height (so they turn with it)
-      if (S.lines) { const d = onLine(-m[1], S.lineGap / k); if (d === null) continue; m[1] -= d; }
-      list.push({ m, jx: (r() - .5) * S.size * S.jitter, jy: S.lines ? 0 : (r() - .5) * S.size * S.jitter, tone: raw[i + 2], pick: r() });
+      list.push({ m: back(raw[i], raw[i + 1], buf.depth[o]), jx: (r() - .5) * S.size * S.jitter, jy: (r() - .5) * S.size * S.jitter, tone: raw[i + 2], pick: r() });
     }
   }
   return { key: ringKey(), list, box, k };
@@ -635,7 +675,7 @@ function ringFrame(yaw) {
     let near = -Infinity; // the nearest surface around it, so pixels on an edge don't flicker
     for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const u = ix + a, v = iy + b; if (u >= 0 && v >= 0 && u < zb.W && v < zb.H) near = Math.max(near, zb.depth[v * zb.W + u]); }
     if (z2 < near - eps) continue;
-    out.push({ x: (X - box.x0) * k + q.jx, y: (Y - box.y0) * k + q.jy, tone: q.tone, pick: q.pick });
+    out.push({ x: (X - box.x0) * k + q.jx, y: (Y - box.y0) * k + q.jy, tone: q.tone, pick: q.pick, sc: q.sc });
   }
   return out;
 }
@@ -650,7 +690,7 @@ function turnFrame(ph, fast) {
 function boilOver(list, i) {
   const r = rng(S.seed * 131 + i + 1), j = () => (1 + r() * 2) * (r() < .5 ? -1 : 1) * S.handJit, out = [];
   for (const p of list) if (r() >= S.boil * .6) out.push(p);
-  while (out.length < list.length && list.length) { const q = list[Math.floor(r() * list.length)]; out.push({ x: q.x + (r() - .5) * S.size * 4, y: q.y + (r() - .5) * S.size * 4, tone: q.tone, pick: r() }); }
+  while (out.length < list.length && list.length) { const q = list[Math.floor(r() * list.length)]; out.push({ x: q.x + (r() - .5) * S.size * 4, y: q.y + (r() - .5) * S.size * 4, tone: q.tone, pick: r(), sc: q.sc }); }
   for (const p of out) { p.dx = j(); p.dy = j(); }
   return out;
 }
@@ -714,7 +754,7 @@ function revealFrame(ph, list = pts) {
     const a = clamp((P - order[i]) / soft);
     if (a <= 0) return;
     if (!S.revScale) { out.push({ ...p }); return; }
-    out.push({ ...p, sc: Math.max(0, E(a)) });
+    out.push({ ...p, sc: Math.max(0, E(a)) * (p.sc ?? 1) });
   });
   return out;
 }
@@ -740,7 +780,7 @@ function enterFrame(ph, list = pts) {
       if (f < travel) { const [sx, sy] = off(p, i, sgn), e = E(f / travel); x = sx + (p.x - sx) * e; y = sy + (p.y - sy) * e; }
       else if (f >= 1 - travel) { const [ex, ey] = off(p, i + 7919, -sgn), e = E((f - (1 - travel)) / travel); x = p.x + (ex - p.x) * e; y = p.y + (ey - p.y) * e; }
     }
-    out.push({ x, y, tone: p.tone, pick: p.pick, dx: 0, dy: 0 });
+    out.push({ x, y, tone: p.tone, pick: p.pick, sc: p.sc, dx: 0, dy: 0 });
   });
   return out;
 }
@@ -878,7 +918,7 @@ $('#svg').addEventListener('click', () => {
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
   if (S.bgExport) out.push(`<rect width="${w}" height="${h}" fill="${S.bg}"/>`);
   const groups = new Map();
-  for (const p of S.snap ? snapList(pts) : pts) { const c = colorOf(p); groups.set(c, (groups.get(c) || '') + `M${n(p.x + (p.dx || 0) - z / 2 - b.x0)} ${n(p.y + (p.dy || 0) - z / 2 - b.y0)}h${s}v${s}h${-s}z`); }
+  for (const p of S.snap ? snapList(pts) : pts) { const zz = p.sc === undefined ? z : z * p.sc, ss = n(zz); if (zz <= .05) continue; const c = colorOf(p); groups.set(c, (groups.get(c) || '') + `M${n(p.x + (p.dx || 0) - zz / 2 - b.x0)} ${n(p.y + (p.dy || 0) - zz / 2 - b.y0)}h${ss}v${ss}h${-ss}z`); }
   for (const [c, d] of groups) out.push(`<path fill="${c}" d="${d}"/>`);
   out.push('</svg>');
   download(`pixel-model-${S.seed}${S.expScale === '1' ? '' : `@${S.expScale}x`}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));
@@ -916,7 +956,7 @@ $('#video').addEventListener('click', async () => {
   // Hover: a pointer sweeps a figure of eight over the model; one loop to settle, then the loop that is kept.
   let sim = null;
   const hoverSim = () => {
-    const b = bounds(pts), list = pts.map(p => ({ x: p.x, y: p.y, tone: p.tone, pick: p.pick })), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, rx = (b.x1 - b.x0) * .4, ry = (b.y1 - b.y0) * .3;
+    const b = bounds(pts), list = pts.map(p => ({ x: p.x, y: p.y, tone: p.tone, pick: p.pick, sc: p.sc })), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, rx = (b.x1 - b.x0) * .4, ry = (b.y1 - b.y0) * .3;
     const at = i => { const a = 2 * Math.PI * i / N; return [cx + rx * Math.sin(a), cy + ry * Math.sin(2 * a)]; };
     for (let i = 0; i < N; i++) hoverStep(list, at(i), 1 / fps);
     return { list, at };
