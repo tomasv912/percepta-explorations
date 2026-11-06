@@ -722,15 +722,26 @@ const motionFrame = (ph, list = pts) => S.anim === 'reveal' ? revealFrame(ph, li
 const isMotion = () => S.anim === 'reveal' || S.anim === 'enter';
 
 // The loop on screen.
+// The timeline (toolbar.js): the loop's length, where it is, pause, and jumps; a change of settings keeps the playhead.
+let paused = false, pausedT = 0;
+const animOn = () => S.turn || S.anim === 'boil' || S.anim === 'float' || isMotion();
+const loopLen = () => S.anim === 'boil' && !S.turn ? boilCount() / S.fps : S.ttDur;
+const nowT = () => paused ? pausedT : (((performance.now() - t0) / 1000) % loopLen() + loopLen()) % loopLen();
 function play() {
-  cancelAnimationFrame(player); player = 0; shown = null; lastIdx = -1; t0 = performance.now();
-  if (S.turn || S.anim === 'boil' || S.anim === 'float' || isMotion()) player = requestAnimationFrame(step);
+  const keep = t0 ? nowT() : 0;
+  cancelAnimationFrame(player); player = 0; shown = null; lastIdx = -1; t0 = performance.now() - keep * 1000;
+  if (!animOn()) return;
+  if (paused) { pausedT = Math.min(pausedT, loopLen()); showAt(pausedT); return; }
+  player = requestAnimationFrame(step);
 }
 function step(now) {
   player = 0;
-  if (filming || !pts) return;
+  if (filming || !pts || paused) return;
   if (turn && S.turn) { shown = null; player = requestAnimationFrame(step); return; } // dragging: show Giro
-  const t = (now - t0) / 1000;
+  if (showAt((now - t0) / 1000)) player = requestAnimationFrame(step);
+}
+// The picture at time t of the loop; false when nothing animates.
+function showAt(t) {
   if (S.turn) {
     const ph = (t / S.ttDur) % 1;
     if (S.anim === 'boil') { const i = Math.floor(ph * boilCount()); if (i !== lastIdx) { lastIdx = i; shown = comboFrame(ph, true); render(); } }
@@ -740,9 +751,14 @@ function step(now) {
     if (i !== lastIdx) { lastIdx = i; shown = boilFrame(i); render(); }
   } else if (S.anim === 'float') { shown = floatFrame((t / S.ttDur) % 1); render(); }
   else if (isMotion()) { shown = motionFrame((t / S.ttDur) % 1); render(); }
-  else return;
-  player = requestAnimationFrame(step);
+  else return false;
+  return true;
 }
+PerceptaTimeline({
+  frame, active: () => animOn() && S.anim !== 'hover' && !filming, duration: loopLen, time: nowT, playing: () => !paused,
+  toggle: () => { if (paused) { paused = false; t0 = performance.now() - pausedT * 1000; player = requestAnimationFrame(step); } else { pausedT = nowT(); paused = true; cancelAnimationFrame(player); player = 0; } },
+  seek: t => { lastIdx = -1; if (paused) { pausedT = t; showAt(t); } else t0 = performance.now() - t * 1000; },
+});
 function animate() { if (S.anim === 'hover' && !S.turn && !anim) anim = requestAnimationFrame(tick); }
 function tick(now) {
   anim = 0;

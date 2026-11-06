@@ -503,6 +503,11 @@ $('#play').addEventListener('click', () => {
   if (src.kind === 'video') playing ? video.play() : video.pause();
 });
 $('#restart').addEventListener('click', restart);
+// The timeline: the source's time; a jump moves the footage and the cubes flow over to it (they are not rebuilt).
+PerceptaTimeline({
+  frame, active: () => !!P && !busy, duration: sourceDur, time: srcTime, playing: () => playing, toggle: () => $('#play').click(),
+  seek: t => { if (src.kind === 'video') video.currentTime = Math.min(t, Math.max(0, video.duration - 1e-3)); else clock = t; if (!playing) { stepTo(t, 1 / +S.fps); paint(); } },
+});
 new ResizeObserver(() => paint()).observe(stage);
 
 // ---------- Input ----------

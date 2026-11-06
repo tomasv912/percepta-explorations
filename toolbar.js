@@ -202,6 +202,59 @@
   };
   addEventListener('load', lockColors);
 
+  // Timeline: a bar along the top of the picture (inside #frame, clear of the tools' own bottom bars) for every tool with an animation: play / pause,
+  // a scrubber over the loop and the time. A tool hands it how to read and drive its own clock:
+  // { frame, active(), duration(), time(), playing(), toggle(), seek(t) } (seek optional: without it, no scrubbing).
+  window.PerceptaTimeline = o => {
+    if (!document.getElementById('ptl-style')) {
+      const st = document.createElement('style'); st.id = 'ptl-style';
+      st.textContent = `.ptl { position: absolute; left: 10px; right: 10px; top: 10px; z-index: 3; display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 6px; border-radius: 10px; background: color-mix(in srgb, var(--surface, #fbfaf8) 92%, transparent); box-shadow: 0 0 0 1px var(--line, #dcd7cf), 0 4px 14px rgb(0 0 0 / .06); font: 500 12px/1 var(--font, Inter, system-ui, sans-serif); color: var(--text-2, #5e5850); opacity: .55; transition: opacity .15s; cursor: default; touch-action: none; }
+.frame:hover .ptl, .ptl:focus-within, .ptl.drag { opacity: 1; }
+.ptl[hidden] { display: none; }
+.ptl button { flex: none; width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 7px; background: var(--fill, #efece7); color: var(--text, #1a1714); cursor: pointer; padding: 0; }
+.ptl button:hover { background: var(--line, #dcd7cf); }
+.ptl button:focus-visible { outline: 2px solid var(--accent, #1a1714); outline-offset: 1px; }
+.ptl .trk { position: relative; flex: 1; height: 22px; cursor: pointer; }
+.ptl .trk::before { content: ''; position: absolute; left: 0; right: 0; top: 9px; height: 4px; border-radius: 2px; background: var(--line, #dcd7cf); }
+.ptl .trk.ro { cursor: default; }
+.ptl .fill { position: absolute; left: 0; top: 9px; height: 4px; border-radius: 2px; background: var(--text, #1a1714); }
+.ptl .knob { position: absolute; top: 4px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--surface, #fbfaf8); border: 1.5px solid var(--text, #1a1714); box-sizing: border-box; }
+.ptl .tm { flex: none; min-width: 84px; text-align: right; font: 12px var(--mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; color: var(--text, #1a1714); }`;
+      document.head.appendChild(st);
+    }
+    const bar = document.createElement('div'); bar.className = 'ptl'; bar.setAttribute('role', 'group'); bar.setAttribute('aria-label', 'Línea de tiempo');
+    bar.innerHTML = '<button type="button" class="pp" aria-label="Reproducir"></button><div class="trk" role="slider" tabindex="0" aria-label="Tiempo"><div class="fill"></div><div class="knob"></div></div><span class="tm"></span>';
+    o.frame.appendChild(bar);
+    const pp = bar.querySelector('.pp'), trk = bar.querySelector('.trk'), fill = bar.querySelector('.fill'), knob = bar.querySelector('.knob'), tm = bar.querySelector('.tm');
+    const PLAY = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.5v9l7.5-4.5z" fill="currentColor"/></svg>';
+    const PAUSE = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="1.5" width="2.6" height="9" rx=".6" fill="currentColor"/><rect x="6.9" y="1.5" width="2.6" height="9" rx=".6" fill="currentColor"/></svg>';
+    // the bar's own pointer events stay its own (the frames below turn models, draw trails, scatter cubes…)
+    for (const t of ['pointerdown', 'pointermove', 'pointerup', 'click', 'dblclick', 'wheel', 'mousedown']) bar.addEventListener(t, e => e.stopPropagation());
+    pp.addEventListener('click', () => { o.toggle(); paint(); });
+    let drag = false;
+    const at = e => { const r = trk.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * o.duration(); };
+    trk.addEventListener('pointerdown', e => { if (!o.seek) return; drag = true; bar.classList.add('drag'); trk.setPointerCapture(e.pointerId); o.seek(at(e)); paint(); });
+    trk.addEventListener('pointermove', e => { if (drag) { o.seek(at(e)); paint(); } });
+    const end = () => { drag = false; bar.classList.remove('drag'); };
+    trk.addEventListener('pointerup', end); trk.addEventListener('pointercancel', end);
+    trk.addEventListener('keydown', e => {
+      if (!o.seek) return; const d = o.duration(), stepT = e.shiftKey ? d / 10 : d / 100;
+      if (e.key === 'ArrowRight') o.seek(Math.min(d, o.time() + stepT)); else if (e.key === 'ArrowLeft') o.seek(Math.max(0, o.time() - stepT)); else if (e.key === ' ') o.toggle(); else return;
+      e.preventDefault(); e.stopPropagation(); paint();
+    });
+    let shownPlay = null;
+    function paint() {
+      const on = !!o.active(); bar.hidden = !on; if (!on) return;
+      const d = Math.max(1e-6, o.duration()), t = Math.min(d, Math.max(0, o.time())), f = t / d * 100, playing = !!o.playing();
+      fill.style.width = f + '%'; knob.style.left = f + '%';
+      tm.textContent = `${t.toFixed(1)} / ${d.toFixed(1)} s`;
+      trk.classList.toggle('ro', !o.seek); trk.setAttribute('aria-valuenow', t.toFixed(2)); trk.setAttribute('aria-valuemax', d.toFixed(2));
+      if (shownPlay !== playing) { shownPlay = playing; pp.innerHTML = playing ? PAUSE : PLAY; pp.setAttribute('aria-label', playing ? 'Pausa' : 'Reproducir'); pp.title = playing ? 'Pausa' : 'Reproducir'; }
+    }
+    (function tick() { paint(); requestAnimationFrame(tick); })();
+    return { paint };
+  };
+
   // DialKit (vendor/dialkit, dialkit.dev): a floating panel, bottom left, with every control of the page as a dial,
   // grouped as the page groups them. Both sides stay in step: a dial sets the page's control (as if it were moved by
   // hand) and moving the page's control moves the dial. Loaded after the page, so the tools' own controls exist.

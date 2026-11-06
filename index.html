@@ -1032,6 +1032,7 @@ function frameLoop(now) {
   step(dt);
   // Animating: a new drawing Dibujos por segundo times a second, held in between (as stop motion).
   if (animating()) { const fi = Math.floor((now - flowT0) / 1000 * +S.vidFps) % drawings(); if (fi !== shownFi) { shownFi = fi; poseAt(fi); } }
+  else if (animMode() && !flowPlaying && !filming && shownFi === -1) { shownFi = -2; poseAt(fiAt(flowPausedT)); } // paused: hold its drawing
   const { w, h } = fit();
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
   // Zoomed in with the lupa, the canvas renders at the zoomed size so it stays sharp.
@@ -1270,11 +1271,20 @@ function poseAt(fi) {
   }
 }
 const setFlowAt = t => poseAt(Math.round(t * drawings()));
+// Pause holds the drawing on screen (the timeline can then move it); play goes on from there.
+let flowPausedT = 0;
+const flowTime = () => flowPlaying ? (((performance.now() - flowT0) / 1000) % S.loopDur + S.loopDur) % S.loopDur : flowPausedT;
+const fiAt = t => Math.min(drawings() - 1, Math.floor(t * +S.vidFps));
 $('#motion-play').addEventListener('click', () => {
-  flowPlaying = !flowPlaying; if (flowPlaying) { flowT0 = performance.now(); shownFi = -1; }
+  if (flowPlaying) flowPausedT = flowTime(); else flowT0 = performance.now() - flowPausedT * 1000;
+  flowPlaying = !flowPlaying; shownFi = -1;
   $('#motion-play').textContent = flowPlaying ? 'Pausa' : 'Reproducir'; $('#motion-play').setAttribute('aria-pressed', flowPlaying);
-  if (!flowPlaying) { for (let i = 0; i < gen.n; i++) if (!moved[i]) { X[i] = gen.hx[i]; Y[i] = gen.hy[i]; } }
+  if (!flowPlaying) poseAt(fiAt(flowPausedT));
   wake();
+});
+PerceptaTimeline({
+  frame, active: () => animMode() && !filming, duration: () => S.loopDur, time: flowTime, playing: () => flowPlaying, toggle: () => $('#motion-play').click(),
+  seek: t => { if (flowPlaying) { flowT0 = performance.now() - t * 1000; shownFi = -1; } else { flowPausedT = t; poseAt(fiAt(t)); } wake(); },
 });
 function zipStored(files) {
   const crcT = new Uint32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });

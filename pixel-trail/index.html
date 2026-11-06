@@ -756,6 +756,8 @@ function drawAnim(ctx, ph, st, lut) {
   for (const lv of [...behind.keys()].sort((a, b) => b - a)) layerPass(behind.get(lv), lv);
   for (const lv of [...front.keys()].sort((a, b) => a - b)) layerPass(front.get(lv), lv);
 }
+// The timeline (toolbar.js): pause holds the loop where it is; jumps move the start.
+const animTime = (now = performance.now()) => anim.paused ? anim.at : (((now - anim.t0) / 1000) % S.animDur + S.animDur) % S.animDur;
 function setAnim(on) {
   anim = on ? { t0: performance.now() } : null;
   if (on) { select(null); if (!S.permanent) { S.permanent = true; sync(); } }
@@ -765,6 +767,11 @@ function setAnim(on) {
 // Wired once the page's helpers ($, toast, download) exist.
 function wireAnim() {
 $('#anim-play').addEventListener('click', () => setAnim(!anim));
+PerceptaTimeline({
+  frame, active: () => !!anim, duration: () => S.animDur, time: () => animTime(), playing: () => !!anim && !anim.paused,
+  toggle: () => { if (anim.paused) { anim.t0 = performance.now() - anim.at * 1000; anim.paused = false; } else { anim.at = animTime(); anim.paused = true; } cancelAnimationFrame(raf); raf = 0; wake(); },
+  seek: t => { if (anim.paused) anim.at = t; else anim.t0 = performance.now() - t * 1000; cancelAnimationFrame(raf); raf = 0; wake(); },
+});
 // The loop as an MP4 at 4K (the artboard at 2×), background included, at a high constant bitrate; or as a sequence of
 // 4K PNGs in a .zip (numbered from 0001, the background only with Incluir el fondo, so they can go over anything).
 $('#anim-video').addEventListener('click', async () => {
@@ -1048,7 +1055,7 @@ function render(now) {
   const ctx = cv.getContext('2d');
   ctx.setTransform(pw / AW, 0, 0, ph / AH, 0, 0);
   ctx.clearRect(0, 0, AW, AH);
-  if (anim) { drawAnim(ctx, ((now - anim.t0) / 1000 / S.animDur) % 1, S, lut); raf = requestAnimationFrame(render); return; }
+  if (anim) { drawAnim(ctx, animTime(now) / S.animDur % 1, S, lut); if (!anim.paused) raf = requestAnimationFrame(render); return; }
   draw(ctx, now, S, lut);
   $('#stats').textContent = cubes.length ? `${cubes.length.toLocaleString('es')} cubos · ${AW} × ${AH} · exporta a ${AW * RES} × ${AH * RES} px` : 'Hacé clic y arrastrá sobre la mesa';
   if (!S.permanent && cubes.length) raf = requestAnimationFrame(render);

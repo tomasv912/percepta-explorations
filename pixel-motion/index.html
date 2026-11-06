@@ -419,6 +419,10 @@ function loop(now) {
 }
 $('#play').addEventListener('click', () => { playing = !playing; $('#play').textContent = playing ? 'Pausa' : 'Reproducir'; $('#play').setAttribute('aria-pressed', playing); if (playing) t0 = performance.now() - cur / S.fps * 1000; });
 new ResizeObserver(() => scene && paint()).observe(stage);
+PerceptaTimeline({
+  frame, active: () => !!scene && !filming, duration: () => frames() / +S.fps, time: () => cur / +S.fps, playing: () => playing, toggle: () => $('#play').click(),
+  seek: t => { cur = Math.min(frames() - 1, Math.floor(t * S.fps)); shown = cur; t0 = performance.now() - cur / S.fps * 1000; paint(); },
+});
 
 // ---------- Export ----------
 let toastT = 0, filming = false;
