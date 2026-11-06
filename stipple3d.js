@@ -201,5 +201,101 @@
     for (const ni of scene.nodes) visit(ni, I4);
     return new Float32Array(out);
   }
-  window.Stipple3D = { render, edges, sample, withNormals, parseOBJ, parseGLB };
+  // FBX, binary or ASCII: every mesh (Geometry) with the transforms of the models it hangs from (Lcl Translation,
+  // Rotation in X then Y then Z, Scaling, parent to child). Polygons are fanned into triangles. Async, since binary
+  // arrays are often zlib-compressed.
+  async function parseFBX(buffer) {
+    const u8 = new Uint8Array(buffer), head = new TextDecoder().decode(u8.subarray(0, 20));
+    const root = head.startsWith('Kaydara FBX Binary') ? await fbxBinary(buffer) : fbxAscii(new TextDecoder().decode(u8));
+    const child = (n, name) => n.children.find(c => c.name === name);
+    const objects = child(root, 'Objects'), conns = child(root, 'Connections');
+    if (!objects) throw new Error('no objects');
+    const geoms = new Map(), models = new Map(), parent = new Map();
+    for (const o of objects.children) {
+      if (o.name === 'Geometry') {
+        const v = child(o, 'Vertices'), ix = child(o, 'PolygonVertexIndex');
+        if (v && ix) geoms.set(o.props[0], { v: v.props[0], ix: ix.props[0] });
+      } else if (o.name === 'Model') {
+        const t = { T: [0, 0, 0], R: [0, 0, 0], S: [1, 1, 1] }, p70 = child(o, 'Properties70');
+        if (p70) for (const P of p70.children) {
+          const k = P.props[0], val = P.props.slice(-3).map(Number);
+          if (k === 'Lcl Translation') t.T = val; else if (k === 'Lcl Rotation') t.R = val; else if (k === 'Lcl Scaling') t.S = val;
+        }
+        models.set(o.props[0], t);
+      }
+    }
+    if (conns) for (const c of conns.children) if (c.props[0] === 'OO') parent.set(c.props[1], c.props[2]);
+    const apply = (t, p) => {
+      let [x, y, z] = [p[0] * t.S[0], p[1] * t.S[1], p[2] * t.S[2]];
+      const [a, b, c] = t.R.map(d => d * Math.PI / 180);
+      [y, z] = [y * Math.cos(a) - z * Math.sin(a), y * Math.sin(a) + z * Math.cos(a)];
+      [x, z] = [x * Math.cos(b) + z * Math.sin(b), -x * Math.sin(b) + z * Math.cos(b)];
+      [x, y] = [x * Math.cos(c) - y * Math.sin(c), x * Math.sin(c) + y * Math.cos(c)];
+      return [x + t.T[0], y + t.T[1], z + t.T[2]];
+    };
+    const out = [];
+    for (const [id, g] of geoms) {
+      const chain = []; for (let m = parent.get(id), k = 0; m !== undefined && models.has(m) && k < 64; m = parent.get(m), k++) chain.push(models.get(m));
+      const P = i => { let q = [g.v[i * 3], g.v[i * 3 + 1], g.v[i * 3 + 2]]; for (const t of chain) q = apply(t, q); return q; };
+      let poly = [];
+      for (let k = 0; k < g.ix.length; k++) {
+        let i = Number(g.ix[k]); const end = i < 0; if (end) i = ~i;
+        poly.push(i);
+        if (end) { for (let j = 1; j + 1 < poly.length; j++) for (const q of [poly[0], poly[j], poly[j + 1]]) out.push(...P(q)); poly = []; }
+      }
+    }
+    return new Float32Array(out);
+  }
+  async function fbxBinary(buffer) {
+    const dv = new DataView(buffer), version = dv.getUint32(23, true), wide = version >= 7500, td = new TextDecoder();
+    const inflate = async bytes => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
+    const ARR = { f: [Float32Array, 4], d: [Float64Array, 8], i: [Int32Array, 4], l: [BigInt64Array, 8], b: [Uint8Array, 1] };
+    async function node(o) {
+      const end = wide ? Number(dv.getBigUint64(o, true)) : dv.getUint32(o, true);
+      const nProps = wide ? Number(dv.getBigUint64(o + 8, true)) : dv.getUint32(o + 4, true);
+      let p = o + (wide ? 24 : 12); const nameLen = dv.getUint8(p); p++;
+      if (end === 0) return null;
+      const n = { name: td.decode(new Uint8Array(buffer, p, nameLen)), props: [], children: [] }; p += nameLen;
+      for (let k = 0; k < nProps; k++) {
+        const t = String.fromCharCode(dv.getUint8(p)); p++;
+        if (t === 'Y') { n.props.push(dv.getInt16(p, true)); p += 2; }
+        else if (t === 'C') { n.props.push(dv.getUint8(p)); p += 1; }
+        else if (t === 'I') { n.props.push(dv.getInt32(p, true)); p += 4; }
+        else if (t === 'F') { n.props.push(dv.getFloat32(p, true)); p += 4; }
+        else if (t === 'D') { n.props.push(dv.getFloat64(p, true)); p += 8; }
+        else if (t === 'L') { n.props.push(dv.getBigInt64(p, true)); p += 8; }
+        else if (t === 'S' || t === 'R') { const len = dv.getUint32(p, true); p += 4; n.props.push(t === 'S' ? td.decode(new Uint8Array(buffer, p, len)) : null); p += len; }
+        else if (ARR[t]) {
+          const len = dv.getUint32(p, true), enc = dv.getUint32(p + 4, true), clen = dv.getUint32(p + 8, true); p += 12;
+          let bytes = new Uint8Array(buffer, p, clen); p += clen;
+          if (enc === 1) bytes = await inflate(bytes); else bytes = bytes.slice();
+          const [T, sz] = ARR[t]; n.props.push(new T(bytes.buffer, bytes.byteOffset, len));
+        } else throw new Error('fbx prop ' + t);
+      }
+      while (p < end) { const c = await node(p); if (!c) break; n.children.push(c.n); p = c.end; }
+      return { n, end };
+    }
+    const root = { name: '', props: [], children: [] };
+    for (let o = 27; o < buffer.byteLength - 13;) { const c = await node(o); if (!c) break; root.children.push(c.n); o = c.end; }
+    return root;
+  }
+  // ASCII FBX: Name: prop, prop { children }, with arrays written as *N { a: 1,2,3 }.
+  function fbxAscii(text) {
+    const root = { name: '', props: [], children: [] }, stack = [root];
+    const toks = text.replace(/;[^\n]*/g, '').match(/"[^"]*"|[A-Za-z_][\w|]*:|[{}]|[-+]?[\d.]+(?:[eE][-+]?\d+)?|\*\d+|[A-Za-z_]\w*|,/g) || [];
+    let cur = null;
+    for (let i = 0; i < toks.length; i++) {
+      const t = toks[i];
+      if (t.endsWith(':')) {
+        const name = t.slice(0, -1);
+        if (name === 'a' && cur) { const arr = []; while (i + 1 < toks.length && toks[i + 1] !== '}') { const v = toks[++i]; if (v !== ',') arr.push(Number(v)); } cur.props = [arr]; continue; }
+        cur = { name, props: [], children: [] }; stack[stack.length - 1].children.push(cur);
+      } else if (t === '{') { if (cur) stack.push(cur); }
+      else if (t === '}') { if (stack.length > 1) cur = stack.pop(); }
+      else if (t === ',' || t.startsWith('*')) continue;
+      else if (cur) cur.props.push(t[0] === '"' ? t.slice(1, -1) : /^[-+\d.]/.test(t) ? Number(t) : t);
+    }
+    return root;
+  }
+  window.Stipple3D = { render, edges, sample, withNormals, parseOBJ, parseGLB, parseFBX };
 })();

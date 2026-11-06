@@ -127,7 +127,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <div class="app">
   <main id="stage">
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Un modelo 3D dibujado con píxeles"></canvas></div>
-    <div class="drop" id="drop" hidden>Soltá el modelo (.obj, .glb, .gltf)</div>
+    <div class="drop" id="drop" hidden>Soltá el modelo (.obj, .fbx, .glb, .gltf)</div>
     <div class="hud" id="stats">—</div>
     <div class="tt" role="toolbar" aria-label="Animación">
       <div class="seg" data-key="anim" aria-label="Animación">
@@ -184,8 +184,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section>
         <h2>Modelo</h2>
         <div class="presets" id="presets" aria-label="Modelos"></div>
-        <button class="btn" id="upload">Subir .obj, .glb o .gltf</button>
-        <input type="file" id="file" accept=".obj,.glb,.gltf" hidden>
+        <button class="btn" id="upload">Subir .obj, .fbx, .glb o .gltf</button>
+        <input type="file" id="file" accept=".obj,.fbx,.glb,.gltf" hidden>
         <div id="sl-yaw"></div>
         <div id="sl-pitch"></div>
         <div id="sl-zoom"></div>
@@ -741,10 +741,10 @@ async function openFile(file) {
   if (!file) return;
   try {
     const name = file.name.toLowerCase();
-    const pos = name.endsWith('.obj') ? Stipple3D.parseOBJ(await file.text()) : Stipple3D.parseGLB(await file.arrayBuffer());
+    const pos = name.endsWith('.obj') ? Stipple3D.parseOBJ(await file.text()) : name.endsWith('.fbx') ? await Stipple3D.parseFBX(await file.arrayBuffer()) : Stipple3D.parseGLB(await file.arrayBuffer());
     if (!pos.length) throw new Error('empty');
     setModel(pos, file.name); key = ''; sync(); toast(`${file.name}: ${(pos.length / 9).toLocaleString('es')} triángulos`);
-  } catch (err) { toast('No se pudo leer el modelo (OBJ, GLB o glTF con los datos adentro).'); }
+  } catch (err) { toast('No se pudo leer el modelo (OBJ, FBX, GLB o glTF con los datos adentro).'); }
 }
 $('#upload').addEventListener('click', () => $('#file').click());
 $('#file').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
@@ -756,8 +756,8 @@ stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#dro
 // Ctrl+V: a copied .obj, .glb or .gltf file.
 addEventListener('paste', e => {
   if (e.target.closest?.('textarea, input:not([type=range]):not([type=checkbox])')) return; // typing, not a slider
-  const f = [...(e.clipboardData?.files || [])].find(f => /\.(obj|glb|gltf)$/i.test(f.name));
-  if (f) { e.preventDefault(); openFile(f); } else if (e.clipboardData?.files?.length) toast('Pegá un modelo .obj, .glb o .gltf.');
+  const f = [...(e.clipboardData?.files || [])].find(f => /\.(obj|fbx|glb|gltf)$/i.test(f.name));
+  if (f) { e.preventDefault(); openFile(f); } else if (e.clipboardData?.files?.length) toast('Pegá un modelo .obj, .fbx, .glb o .gltf.');
 });
 
 // ---------- Export ----------

@@ -117,7 +117,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <div class="app">
   <main id="stage">
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Modelos en 3D sobre un plano, hechos de píxeles que se dispersan hacia el fondo"></canvas></div>
-    <div class="drop" id="drop" hidden>Soltá el modelo (.obj, .glb, .gltf)</div>
+    <div class="drop" id="drop" hidden>Soltá el modelo (.obj, .fbx, .glb, .gltf)</div>
     <div class="hud" id="stats">—</div>
   </main>
 
@@ -127,8 +127,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <h2>Modelos</h2>
         <p class="hint">Elegí uno y hacé clic sobre el plano para ubicarlo. Arrastrá un modelo para moverlo; arrastrá el plano para girar la vista.</p>
         <div class="lib" id="lib"></div>
-        <button class="btn" id="upload">Subir .obj, .glb o .gltf</button>
-        <input type="file" id="file" accept=".obj,.glb,.gltf" hidden>
+        <button class="btn" id="upload">Subir .obj, .fbx, .glb o .gltf</button>
+        <input type="file" id="file" accept=".obj,.fbx,.glb,.gltf" hidden>
         <div id="sl-cityN"></div>
         <div id="sl-cityGreen"></div>
         <div class="btns">
@@ -859,13 +859,13 @@ async function openFile(file) {
   if (!file) return;
   try {
     const name = file.name.toLowerCase();
-    const pos = name.endsWith('.obj') ? Stipple3D.parseOBJ(await file.text()) : Stipple3D.parseGLB(await file.arrayBuffer());
+    const pos = name.endsWith('.obj') ? Stipple3D.parseOBJ(await file.text()) : name.endsWith('.fbx') ? await Stipple3D.parseFBX(await file.arrayBuffer()) : Stipple3D.parseGLB(await file.arrayBuffer());
     if (!pos.length) throw new Error('empty');
     uploads.push({ name: file.name.replace(/\.[^.]+$/, ''), mesh: finish(fitted(pos, 9)) });
     renderLib();
     objs.push({ ...newObj('up' + (uploads.length - 1), 0, -S.depth / 2 + .4), s: .45 }); sel = objs.length - 1;
     sync(); toast(`${file.name}: ${(pos.length / 9).toLocaleString('es')} triángulos`);
-  } catch (err) { toast('No se pudo leer el modelo (OBJ, GLB o glTF con los datos adentro).'); }
+  } catch (err) { toast('No se pudo leer el modelo (OBJ, FBX, GLB o glTF con los datos adentro).'); }
 }
 $('#upload').addEventListener('click', () => $('#file').click());
 $('#file').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
@@ -877,8 +877,8 @@ stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#dro
 // Ctrl+V: a copied .obj, .glb or .gltf file.
 addEventListener('paste', e => {
   if (e.target.closest?.('textarea, input:not([type=range]):not([type=checkbox])')) return;
-  const f = [...(e.clipboardData?.files || [])].find(f => /\.(obj|glb|gltf)$/i.test(f.name));
-  if (f) { e.preventDefault(); openFile(f); } else if (e.clipboardData?.files?.length) toast('Pegá un modelo .obj, .glb o .gltf.');
+  const f = [...(e.clipboardData?.files || [])].find(f => /\.(obj|fbx|glb|gltf)$/i.test(f.name));
+  if (f) { e.preventDefault(); openFile(f); } else if (e.clipboardData?.files?.length) toast('Pegá un modelo .obj, .fbx, .glb o .gltf.');
 });
 
 // ---------- Export ----------
