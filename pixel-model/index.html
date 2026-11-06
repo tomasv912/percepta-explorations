@@ -231,6 +231,16 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         </div>
         <label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label>
       </section>
+
+      <section>
+        <h2>Formato</h2>
+        <div class="seg" data-key="aspect" aria-label="Proporción">
+          <button data-v="3:2">3:2</button><button data-v="4:3">4:3</button><button data-v="1:1">1:1</button><button data-v="4:5">4:5</button><button data-v="16:9">16:9</button>
+        </div>
+        <div class="seg" data-key="orient" aria-label="Orientación">
+          <button data-v="h">Horizontal</button><button data-v="v">Vertical</button>
+        </div>
+      </section>
     </div>
     <footer>
       <div class="seg" data-key="expScale" aria-label="Resolución al exportar" title="Resolución de PNG y SVG">
@@ -251,13 +261,22 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 const BACKGROUNDS = window.PERCEPTA_BACKGROUNDS;
 const WHITE = '#F6F6F6', INK = '#272727';
 const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
-const AW = 1600, AH = 1200, RES = 2;
+// The artboard: Formato's proportion, width to height, turned on its side in Vertical (as in Pixel Waves), its long
+// side 1600.
+let AW = 1600, AH = 1200;
+const RES = 2;
+function setArtboard() {
+  const [a, b] = S.aspect.split(':').map(Number), r = S.orient === 'v' ? b / a : a / b;
+  if (r >= 1) { AW = 1600; AH = Math.round(1600 / r); } else { AH = 1600; AW = Math.round(1600 * r); }
+}
+// The view box in model units: the model fits the artboard's short side, whatever its shape.
+function viewBoxNow() { const ar = AW / AH, h = 1.15 / S.zoom, hx = ar >= 1 ? h * ar : h, hy = ar >= 1 ? h : h / ar; return { x0: -hx, y0: -hy, x1: hx, y1: hy }; }
 const DEFAULTS = {
   yaw: -20, pitch: 12, zoom: 1, panX: 0, panY: 0, lightAz: 220, lightEl: 40, ambient: .25, shadow: .65,
   count: 40000, size: 3, contrast: 1.6, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
-  colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false, expScale: '1', snap: false, cell: 6, handJit: 1,
+  colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false, aspect: '4:3', orient: 'h', expScale: '1', snap: false, cell: 6, handJit: 1,
   revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -305,7 +324,7 @@ function viewTris(yaw = S.yaw) {
 let pts = null, ptsPan = [0, 0];
 // The render at yaw (Giro unless given); only a render at Giro becomes the scene that A mano re-samples.
 function build(fast, yaw) {
-  const tris = viewTris(yaw), ar = AW / AH, h = 1.15 / S.zoom, box = { x0: -h * ar, y0: -h, x1: h * ar, y1: h };
+  const tris = viewTris(yaw), box = viewBoxNow();
   const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180;
   const light = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.cos(el) * Math.sin(az) * -1 + .0001];
   const buf = Stipple3D.render(tris, box, fast ? 420 : 900, [light[0], light[1], Math.abs(light[2]) + .35], { ambient: S.ambient, shadowDim: 1 - S.shadow });
@@ -428,6 +447,7 @@ addEventListener('keydown', e => { if (!e.metaKey && !e.ctrlKey && !e.altKey && 
 
 // Only colours and the background are cheap; anything else re-renders (quickly while dragging).
 let key = '', prevAnim = 'none';
+let artKey = '';
 function sync(fast) {
   for (const k of Object.keys(SLIDERS)) {
     const input = $('#in-' + k), d = SLIDERS[k];
@@ -448,7 +468,8 @@ function sync(fast) {
   if (preset && !modelName.includes('.') && presetSeed !== S.seed && !fast) loadPreset();
   updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
-  const k = JSON.stringify([modelName, presetSeed, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
+  if (S.aspect + S.orient !== artKey) { artKey = S.aspect + S.orient; setArtboard(); S.panX = S.panY = 0; }
+  const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
   if (k !== key || (!fast && fastNext)) { fastNext = !!fast; pts = build(fast); key = k; ptsPan = [S.panX, S.panY]; }
   // Moved in the frame (Shift + drag): the same pixels, shifted; nothing is re-sampled.
   if (ptsPan[0] !== S.panX || ptsPan[1] !== S.panY) { const dx = S.panX - ptsPan[0], dy = S.panY - ptsPan[1]; for (const p of pts) { p.x += dx; p.y += dy; } ptsPan = [S.panX, S.panY]; }
@@ -555,8 +576,7 @@ function hoverStep(list, ptr, dt) {
 // once, by the side its surface faces most; its place on the model is stored, so a turn only moves and hides
 // pixels. Hidden: behind something nearer, by a quick depth render of the frame.
 let ring = null;
-const ringKey = () => JSON.stringify([modelName, presetSeed, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
-function viewBoxNow() { const ar = AW / AH, h = 1.15 / S.zoom; return { x0: -h * ar, y0: -h, x1: h * ar, y1: h }; }
+const ringKey = () => JSON.stringify([modelName, presetSeed, AW, AH, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
 function buildRing() {
   const K = 8, box = viewBoxNow(), k = AW / (box.x1 - box.x0), p = S.pitch * Math.PI / 180, cp = Math.cos(p), sp = Math.sin(p), list = [];
   const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180, L = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.abs(-Math.cos(el) * Math.sin(az)) + .35];
