@@ -117,6 +117,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
   .controls { overflow: visible; }
   .tt { max-width: calc(100% - 16px); overflow-x: auto; }
 }
+#building-controls { display: flex; flex-direction: column; gap: 10px; }
+#building-controls .seg { flex-wrap: wrap; }
+#building-controls .seg button { flex: 1 0 30%; }
 </style>
 </head>
 <body>
@@ -183,6 +186,21 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section>
         <h2>Modelo</h2>
         <div class="presets" id="presets" aria-label="Modelos"></div>
+        <div id="building-controls">
+          <div class="seg" data-key="bKind" aria-label="Tipo de edificio">
+            <button data-v="auto" title="Según la semilla">Al azar</button><button data-v="setback">Escalonado</button><button data-v="cyl">Cilindro</button><button data-v="taper">Afinado</button><button data-v="twist">Torcido</button>
+          </div>
+          <div id="sl-bH"></div>
+          <div id="sl-bW"></div>
+          <div id="sl-bD"></div>
+          <div id="sl-bFloors"></div>
+          <div id="sl-bTiers"></div>
+          <div id="sl-bTaper"></div>
+          <div id="sl-bTwist"></div>
+          <div id="sl-bFins"></div>
+          <div id="sl-bSlab"></div>
+          <label class="check"><input type="checkbox" data-check="bCrown"> Coronamiento y aguja</label>
+        </div>
         <button class="btn" id="upload">Subir .obj, .fbx, .glb o .gltf</button>
         <input type="file" id="file" accept=".obj,.fbx,.glb,.gltf" hidden>
         <div id="sl-yaw"></div>
@@ -279,7 +297,8 @@ const DEFAULTS = {
   count: 40000, size: 3, contrast: 1.6, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
-  colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, snap: false, cell: 6, handJit: 1,
+  colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
+  bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, snap: false, cell: 6, handJit: 1,
   revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -290,9 +309,10 @@ function rng(seed) {
 }
 
 // ---------- Model ----------
-// Two built-in models, each with variations from the seed (R): a bonsai (a scan, models/bonsai.pxm, simplified) and a
-// skyscraper (built here); or an uploaded file. Positions are centred and scaled to fit a unit sphere.
-const PRESETS = [['bonsai', 'Bonsai'], ['rascacielos', 'Rascacielos']];
+// Built-in models, each with variations from the seed (R): a bonsai and a skyscraper (scans, simplified, in models/),
+// and Building, generated here and shaped by its own settings; or an uploaded file. Positions are centred and scaled
+// to fit a unit sphere.
+const PRESETS = [['bonsai', 'Bonsai'], ['rascacielos', 'Rascacielos'], ['building', 'Building']];
 let model = null, modelName = '', preset = 'bonsai', presetSeed = -1, loadingPreset = null;
 // An indexed mesh into 18-float triangles, with smooth normals (each vertex the area-weighted sum of its faces).
 function indexedTris(P, I) {
@@ -319,89 +339,99 @@ async function bonsaiMesh() {
   for (let i = 0; i < nv * 3; i++) P[i] = mn[i % 3] + q[i] / 65535 * (mx[i % 3] - mn[i % 3]);
   return bonsaiBase = { P, I: new Uint32Array(buf.slice(36 + nv * 6, 36 + nv * 6 + nt * 12)), mn, mx };
 }
-// A variation of the bonsai (seed 1 is the scan as it is): the pot as it is, the tree taller or squatter, wider one
-// way, its trunk leaning and bending, the crown twisted round the trunk, sometimes mirrored.
-function bonsaiVariant(base, seed) {
+// The skyscraper, read once from its OBJ (each face keeps its own corners, so its faces stay flat).
+let skyBase = null;
+async function skyMesh() {
+  if (skyBase) return skyBase;
+  const P = Stipple3D.parseOBJ(await (await fetch('models/skyscraper.obj')).text()), mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
+  for (let i = 0; i < P.length; i += 3) for (let c = 0; c < 3; c++) { mn[c] = Math.min(mn[c], P[i + c]); mx[c] = Math.max(mx[c], P[i + c]); }
+  return skyBase = { P, I: Uint32Array.from({ length: P.length / 3 }, (_, i) => i), mn, mx };
+}
+// A variation of a scan (seed 1 is the scan as it is). Above `keep` (the bonsai's pot; nothing for the tower) it grows
+// taller or squatter, wider one way, narrows towards the top (taper), leans and bends, twists round its axis; it may
+// be mirrored.
+function variant(base, seed, o) {
   const { P, mn, mx } = base, out = Float32Array.from(P);
   if (seed === 1) return out;
   const r = rng(seed * 7919 + 13), y0 = mn[1], H = mx[1] - mn[1], cx = (mn[0] + mx[0]) / 2, cz = (mn[2] + mx[2]) / 2;
-  const sy = .8 + r() * .45, sx = .8 + r() * .45, sz = .8 + r() * .45, bend = (r() - .5) * .9, bendZ = (r() - .5) * .6, twist = (r() - .5) * 1.6, mirror = r() < .5 ? -1 : 1;
-  // the pot (the lowest fifth) stays as it is; the tree above it changes, more so the higher up
-  const potTop = .2, wOf = h => { const t = Math.min(1, Math.max(0, (h - potTop) / .15)); return t * t * (3 - 2 * t); };
+  const sy = 1 + (r() - .5) * 2 * o.tall, sx = 1 + (r() - .5) * 2 * o.wide, sz = 1 + (r() - .5) * 2 * o.wide, bend = (r() - .5) * o.bend, bendZ = (r() - .5) * o.bend * .6;
+  const twist = (r() - .5) * o.twist, taper = r() * o.taper, mirror = r() < .5 ? -1 : 1, potTop = o.keep;
+  const wOf = h => { if (!potTop) return 1; const t = Math.min(1, Math.max(0, (h - potTop) / .15)); return t * t * (3 - 2 * t); };
   for (let i = 0; i < out.length; i += 3) {
-    const h = (P[i + 1] - y0) / H, w = wOf(h), up = Math.max(0, h - potTop);
-    let x = (P[i] - cx) * (1 + (sx - 1) * w) * mirror, z = (P[i + 2] - cz) * (1 + (sz - 1) * w); // mirrored whole, pot too
+    const h = (P[i + 1] - y0) / H, w = wOf(h), up = Math.max(0, h - potTop), tp = 1 - taper * up;
+    let x = (P[i] - cx) * (1 + (sx - 1) * w) * mirror * tp, z = (P[i + 2] - cz) * (1 + (sz - 1) * w) * tp;
     const a = twist * up * w, c = Math.cos(a), s = Math.sin(a); [x, z] = [x * c - z * s, x * s + z * c];
     out[i] = cx + x + bend * H * up * up * w; out[i + 1] = y0 + (h < potTop ? h : potTop + up * sy) * H; out[i + 2] = cz + z + bendZ * H * up * up * w;
   }
   return out;
 }
-// A skyscraper, from the seed: a podium, then a tower of one kind (setbacks, a cylinder, a slender tapering prism or a
-// twisting stack of floor plates), floor slabs standing a little proud every few storeys, vertical fins on the faces,
-// a crown and sometimes a spire. Flat faces, so it reads as architecture.
-function skyscraper(seed) {
+const BONSAI_VAR = { keep: .2, tall: .22, wide: .22, bend: .9, twist: 1.6, taper: 0 };
+const SKY_VAR = { keep: 0, tall: .3, wide: .25, bend: .25, twist: 1.4, taper: .45 };
+// Building, from its settings (Tipo, Ancho, Profundidad, Altura, Pisos, Retiros, Afinado, Torsión, Aletas, Losas,
+// Coronamiento) and the seed for what they leave open (the type, when Al azar; tier proportions; the crown).
+// Escalonado: tiers, each narrower. Cilindro: a round shaft. Afinado: a square prism narrowing to the top.
+// Torcido: a stack of floor plates, each turned a little more. Floor slabs stand proud at every floor.
+function building(seed) {
   const r = rng(seed * 104729 + 7), T = [], pick = (a, b) => a + r() * (b - a);
   const quad = (a, b, c, d) => { T.push(a, b, c, a, c, d); };
-  // a prism: an n-gon (or square) of radius rad, turned by rot, from y0 to y1, optionally narrowing to k at the top
-  const prism = (n, rad, y0, y1, rot = 0, k = 1, cx = 0, cz = 0, sq = false) => {
-    const P = (i, y, rr) => { const a = rot + (i + (sq ? .5 : 0)) / n * Math.PI * 2, f = sq ? Math.SQRT2 : 1; return [cx + Math.cos(a) * rr * f, y, cz + Math.sin(a) * rr * f]; };
+  const prism = (n, rad, y0, y1, rot = 0, k = 1, sq = false, ax = 1, az = 1) => {
+    const P = (i, y, rr) => { const a = rot + (i + (sq ? .5 : 0)) / n * Math.PI * 2, f = sq ? Math.SQRT2 : 1; return [Math.cos(a) * rr * f * ax, y, Math.sin(a) * rr * f * az]; };
     for (let i = 0; i < n; i++) {
       quad(P(i, y0, rad), P(i + 1, y0, rad), P(i + 1, y1, rad * k), P(i, y1, rad * k));
-      T.push([cx, y1, cz], P(i + 1, y1, rad * k), P(i, y1, rad * k));
-      T.push([cx, y0, cz], P(i, y0, rad), P(i + 1, y0, rad));
+      T.push([0, y1, 0], P(i + 1, y1, rad * k), P(i, y1, rad * k));
+      T.push([0, y0, 0], P(i, y0, rad), P(i + 1, y0, rad));
     }
   };
   const box = (w, d, y0, y1, cx = 0, cz = 0) => { const x0 = cx - w / 2, x1 = cx + w / 2, z0 = cz - d / 2, z1 = cz + d / 2, p = (x, y, z) => [x, y, z];
     quad(p(x0, y0, z0), p(x1, y0, z0), p(x1, y1, z0), p(x0, y1, z0)); quad(p(x1, y0, z1), p(x0, y0, z1), p(x0, y1, z1), p(x1, y1, z1));
     quad(p(x0, y0, z1), p(x0, y0, z0), p(x0, y1, z0), p(x0, y1, z1)); quad(p(x1, y0, z0), p(x1, y0, z1), p(x1, y1, z1), p(x1, y1, z0));
     quad(p(x0, y1, z0), p(x1, y1, z0), p(x1, y1, z1), p(x0, y1, z1)); quad(p(x0, y0, z1), p(x1, y0, z1), p(x1, y0, z0), p(x0, y0, z0)); };
-  const kind = Math.floor(r() * 4), W = pick(.9, 1.3), Ht = pick(5, 9), podH = pick(.4, 1);
-  box(W * pick(1.6, 2.4), W * pick(1.4, 2.2), 0, podH);
-  let y = podH, top = y, w = W, d = W * pick(.75, 1.05);
-  const floor = .14, slabEvery = 2 + Math.floor(r() * 3), slab = pick(.03, .07);
-  if (kind === 0) {
-    // setbacks: 3 to 6 tiers, each narrower
-    const tiers = 3 + Math.floor(r() * 4);
+  const kind = S.bKind === 'auto' ? ['setback', 'cyl', 'taper', 'twist'][Math.floor(r() * 4)] : S.bKind;
+  const W = S.bW, D = S.bW * S.bD, Ht = S.bH, fl = Ht / S.bFloors, slab = S.bSlab * W * .15, slabH = Math.min(fl * .35, .03 + fl * .1);
+  let top = Ht, topW = W;
+  if (kind === 'setback') {
+    const tiers = S.bTiers, hs = Array.from({ length: tiers }, () => pick(.75, 1.25)), sum = hs.reduce((a, b) => a + b, 0);
+    let y = 0, w = W, d = D;
     for (let t = 0; t < tiers; t++) {
-      const h = (Ht - podH) / tiers * pick(.7, 1.3), y1 = y + h;
+      const y1 = y + Ht * hs[t] / sum;
       box(w, d, y, y1);
-      for (let f = y + floor * slabEvery; f < y1 - .05; f += floor * slabEvery) box(w + slab * 2, d + slab * 2, f, f + .025);
-      const fins = 3 + Math.floor(r() * 4);
-      for (let i = 1; i < fins; i++) { const x = -w / 2 + w * i / fins; box(.03, d + slab * 1.5, y, y1, x, 0); }
-      y = y1; w *= pick(.66, .86); d *= pick(.66, .86);
+      if (slab > 0) for (let f = y + fl; f < y1 - fl * .5; f += fl) box(w + slab * 2, d + slab * 2, f, f + slabH);
+      for (let i = 1; i < S.bFins + 1; i++) { const x = -w / 2 + w * i / (S.bFins + 1); box(W * .025, d + slab * 2 + W * .02, y, y1, x, 0); }
+      y = y1; const k = 1 - (1 - S.bTaper) * .45 * pick(.7, 1.3); w *= k; d *= k;
     }
-    top = y;
-  } else if (kind === 1) {
-    // a cylinder with ring slabs
-    const n = 24, rad = W * .55; prism(n, rad, y, Ht, 0);
-    for (let f = y + floor * slabEvery; f < Ht - .05; f += floor * slabEvery) prism(n, rad + slab, f, f + .025);
-    prism(n, rad * .7, Ht, Ht + pick(.3, .7)); top = Ht + .5;
-  } else if (kind === 2) {
-    // a tapering square prism, slabs on the way up
-    const n = 4, rad = W * .55, k = pick(.35, .7), rot = r() * Math.PI / 4; prism(n, rad, y, Ht, rot, k, 0, 0, true);
-    for (let f = y + floor * slabEvery; f < Ht - .1; f += floor * slabEvery) { const kk = 1 - (1 - k) * (f - y) / (Ht - y); prism(n, rad * kk + slab, f, f + .025, rot, 1, 0, 0, true); }
-    top = Ht;
+    top = y; topW = w / (1 - (1 - S.bTaper) * .45);
+  } else if (kind === 'cyl') {
+    const n = 28, rad = W / 2, k = 1 - (1 - S.bTaper) * .5;
+    prism(n, rad, 0, Ht, 0, k, false, 1, S.bD);
+    if (slab > 0) for (let f = fl; f < Ht - fl * .5; f += fl) { const kk = 1 - (1 - k) * f / Ht; prism(n, rad * kk + slab, f, f + slabH, 0, 1, false, 1, S.bD); }
+    for (let i = 0; i < S.bFins; i++) { const a = i / Math.max(1, S.bFins) * Math.PI * 2, x = Math.cos(a) * rad, z = Math.sin(a) * rad * S.bD; box(W * .03, W * .03, 0, Ht * (1 - (1 - k) * .02), x, z); }
+  } else if (kind === 'taper') {
+    const rad = W / 2, k = Math.max(.1, S.bTaper);
+    prism(4, rad, 0, Ht, 0, k, true, 1, S.bD);
+    if (slab > 0) for (let f = fl; f < Ht - fl * .5; f += fl) { const kk = 1 - (1 - k) * f / Ht; prism(4, rad * kk + slab, f, f + slabH, 0, 1, true, 1, S.bD); }
   } else {
-    // a twisting tower of floor plates
-    const plates = Math.round((Ht - y) / .2), tw = pick(.4, 1.6) * (r() < .5 ? -1 : 1);
-    for (let i = 0; i < plates; i++) { const yy = y + i * .2; prism(4, W * .5, yy, yy + .17, tw * i / plates, 1, 0, 0, true); }
-    top = y + plates * .2;
+    // twisting: one plate per floor, a gap between, each turned on; narrowing with Afinado
+    const plates = Math.max(2, Math.round(S.bFloors)), tw = S.bTwist;
+    for (let i = 0; i < plates; i++) { const yy = i * fl, kk = 1 - (1 - S.bTaper) * .5 * i / plates; prism(4, W / 2 * kk, yy, yy + fl * .82, tw * i / plates, 1, true, 1, S.bD); }
   }
-  if (r() < .75) { box(w * .4, w * .4, top, top + pick(.2, .5)); prism(8, .035, top, top + pick(.8, 2.2), 0, .15); }
-  // into the indexed form the bonsai uses, faces kept flat (each triangle its own vertices)
+  if (kind === 'cyl' || kind === 'taper') topW = W * (kind === 'taper' ? Math.max(.1, S.bTaper) : 1 - (1 - S.bTaper) * .5);
+  if (kind === 'twist') topW = W * (1 - (1 - S.bTaper) * .5);
+  if (S.bCrown) { const cw = topW * .45; box(cw, cw * S.bD, top, top + fl * pick(2, 4)); prism(8, W * .025, top, top + Ht * pick(.08, .2), 0, .15); }
   const P = new Float32Array(T.length * 3), I = new Uint32Array(T.length);
   T.forEach((v, i) => { P[i * 3] = v[0]; P[i * 3 + 1] = v[1]; P[i * 3 + 2] = v[2]; I[i] = i; });
   return { P, I };
 }
+// What the current preset is made from: its seed, and Building's settings.
+const presetSig = () => preset + ':' + (preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
 function loadPreset() {
-  const seed = S.seed, which = preset;
-  if (which === 'rascacielos') { const m = skyscraper(seed); setModelTris(indexedTris(m.P, m.I), 'Rascacielos'); presetSeed = seed; return; }
+  const sig = presetSig(), which = preset;
+  if (which === 'building') { const m = building(S.seed); setModelTris(indexedTris(m.P, m.I), 'Building'); presetSeed = sig; return; }
   if (loadingPreset) return;
-  loadingPreset = bonsaiMesh().then(base => {
+  loadingPreset = (which === 'bonsai' ? bonsaiMesh() : skyMesh()).then(base => {
     loadingPreset = null;
-    if (preset !== which || modelName.includes('.')) return;
-    setModelTris(indexedTris(bonsaiVariant(base, S.seed), base.I), 'Bonsai'); presetSeed = S.seed; key = ''; sync();
-  }, () => { loadingPreset = null; toast('No se pudo cargar el bonsái.'); });
+    if (preset !== which || modelName.includes('.')) return loadPreset();
+    setModelTris(indexedTris(variant(base, S.seed, which === 'bonsai' ? BONSAI_VAR : SKY_VAR), base.I), which === 'bonsai' ? 'Bonsai' : 'Rascacielos'); presetSeed = presetSig(); key = ''; sync();
+  }, () => { loadingPreset = null; toast('No se pudo cargar el modelo.'); });
 }
 // Triangles with normals (18 per triangle): centred and scaled like setModel, normals kept.
 function setModelTris(tris, name) {
@@ -573,6 +603,15 @@ const SLIDERS = {
   entSpread: { label: 'Dispersión', min: 0, max: 1, step: .01, fmt: pct },
   entStagger: { label: 'Escalonado', min: 0, max: 1, step: .01, fmt: pct },
   entStay: { label: 'Formando el modelo', min: .1, max: .95, step: .01, fmt: pct },
+  bH: { label: 'Altura', min: 1, max: 20, step: .1, fmt: v => v.toFixed(1), emph: true },
+  bW: { label: 'Ancho', min: .3, max: 3, step: .01, fmt: v => v.toFixed(2) },
+  bD: { label: 'Profundidad', min: .2, max: 1.5, step: .01, fmt: v => '×' + v.toFixed(2) },
+  bFloors: { label: 'Pisos', min: 3, max: 160, step: 1, fmt: String, emph: true },
+  bTiers: { label: 'Retiros (escalonado)', min: 1, max: 10, step: 1, fmt: String },
+  bTaper: { label: 'Afinado arriba', min: .1, max: 1, step: .01, fmt: v => Math.round((1 - v) * 100) + '%' },
+  bTwist: { label: 'Torsión (torcido)', min: -4, max: 4, step: .05, fmt: v => Math.round(v * 180 / Math.PI) + '°' },
+  bFins: { label: 'Aletas', min: 0, max: 12, step: 1, fmt: String },
+  bSlab: { label: 'Losas salientes', min: 0, max: 1, step: .01, fmt: v => v ? Math.round(v * 100) + '%' : 'sin losas' },
   ttDur: { label: 'Duración del loop', min: 1, max: 30, step: .5, fmt: v => v + ' s', emph: true },
   lineGap: { label: 'Separación de las líneas', min: 3, max: 80, step: 1, fmt: v => v + ' px', emph: true },
   lineFollow: { label: 'Seguir la forma', min: 0, max: 1, step: .01, fmt: pct },
@@ -623,7 +662,8 @@ function sync(fast) {
   if (!filming) $('#video').textContent = S.vidFmt === 'png' ? 'Exportar secuencia (.zip)' : 'Exportar video';
   $('#turn').setAttribute('aria-pressed', S.turn);
   document.querySelectorAll('[data-p]').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === preset && !modelName.includes('.')));
-  if (preset && !modelName.includes('.') && presetSeed !== S.seed && !fast) loadPreset();
+  $('#building-controls').hidden = preset !== 'building' || modelName.includes('.');
+  if (preset && !modelName.includes('.') && presetSeed !== presetSig()) loadPreset();
   if (!model) { $('#stats').textContent = 'Cargando el modelo…'; return; }
   updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
