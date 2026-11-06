@@ -168,6 +168,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-wave"></div>
         <div id="sl-waveScale"></div>
         <div id="sl-depth"></div>
+        <label class="check" title="En vez de puntos sueltos, círculos en líneas horizontales que siguen la forma del plano y los modelos"><input type="checkbox" data-check="lines"> Líneas horizontales</label>
+        <div id="sl-lGap"></div>
+        <div id="sl-lDot"></div>
       </section>
 
       <section>
@@ -229,7 +232,7 @@ const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 const AW = 1920, AH = 1080, RES = 2, PW = 3, CELL = 1 / 150;
 const DEFAULTS = {
   disp: .3, start: .35, soft: .7, rise: .35, thin: .35, fadeA: .5,
-  cut: false, mdens: 3.5, cull: true, cityN: 16, cityGreen: .35, citySeed: 1, wave: .5, waveScale: .5, depth: 2.4,
+  cut: false, lines: false, lGap: 14, lDot: 1, mdens: 3.5, cull: true, cityN: 16, cityGreen: .35, citySeed: 1, wave: .5, waveScale: .5, depth: 2.4,
   pitch: 24, yaw: 0, persp: .55, zoom: 1.3, frameY: .02,
   count: 45000, size: 2.5, depthSize: .6, seed: 1, snap: false, cell: 5, cellGap: .2,
   palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'ink', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
@@ -597,7 +600,52 @@ function planePoints() {
   planeAll = { key, pts: out };
   return out;
 }
+// Líneas horizontales: the whole scene cut by parallel planes, Espacio entre líneas apart, each cut drawn with circles at
+// Tamaño + Espacio entre píxeles. The planes lean half-way between upright and facing the camera (their normal is half
+// up, half towards the view), so on the ground they make rows going back, on a wall facing us level lines, and the
+// lines run over the ground and up and over the buildings and plants without a break. Where a cut runs mostly across,
+// its circles sit on a grid of columns (so neighbouring rows line up); otherwise they are spaced along it. Spacings are
+// in the picture's pixels at the middle of the plane (perspective makes far lines closer); project() then keeps any
+// two circles at least Espacio entre píxeles apart.
+function linePoints() {
+  const { nx, nz, X0, Z0, base, front } = field, cam = camera(), k = cam.k, g = S.lGap / k, step = (S.size + S.lDot) / k, r = rng(S.seed * 31 + 9), out = [];
+  const a = S.yaw * Math.PI / 180, fx = -Math.sin(a) * Math.SQRT1_2, fz = Math.cos(a) * Math.SQRT1_2, fy = Math.SQRT1_2;
+  const lev = (x, y, z) => (x * fx + y * fy + z * fz) / g;
+  const inside = (i, j) => !S.cut || j >= front[i];
+  const cut = (A, B, C, base0, n, two) => {
+    const la = lev(...A), lb = lev(...B), lc = lev(...C), lo = Math.ceil(Math.min(la, lb, lc)), hi = Math.floor(Math.max(la, lb, lc));
+    for (let L = lo; L <= hi; L++) {
+      const pts2 = [];
+      for (const [P, Q, lp, lq] of [[A, B, la, lb], [B, C, lb, lc], [C, A, lc, la]]) if ((lp - L) * (lq - L) < 0 || (lp === L && lq !== L)) { const u = (L - lp) / (lq - lp); pts2.push([P[0] + (Q[0] - P[0]) * u, P[1] + (Q[1] - P[1]) * u, P[2] + (Q[2] - P[2]) * u]); }
+      if (pts2.length < 2) continue;
+      const [s0, s1] = pts2, dx = s1[0] - s0[0], len = Math.hypot(dx, s1[1] - s0[1], s1[2] - s0[2]);
+      if (len < 1e-9) continue;
+      const at = u => { const x = s0[0] + (s1[0] - s0[0]) * u, y = s0[1] + (s1[1] - s0[1]) * u, z = s0[2] + (s1[2] - s0[2]) * u; out.push(pointOf(r, x, y, z, base0 ?? y, n, two)); };
+      if (Math.abs(dx) >= len * .5) { // across: on the columns of the world grid
+        const x0 = Math.min(s0[0], s1[0]), x1 = Math.max(s0[0], s1[0]);
+        for (let c = Math.ceil((x0 - X0) / step - .5); X0 + (c + .5) * step < x1; c++) at((X0 + (c + .5) * step - s0[0]) / dx);
+      } else { const m = Math.max(1, Math.round(len / step)); for (let q = 0; q < m; q++) at((q + .5) / m); }
+    }
+  };
+  // the ground, a coarser grid of its heights, where no model stands (and inside the group with Recortar)
+  const G = 3, gn = (i, j) => [X0 + i * CELL, field.h[j * nx + i], Z0 + j * CELL];
+  for (let j = 0; j + G < nz; j += G) for (let i = 0; i + G < nx; i += G) {
+    if (base[(j + 1) * nx + i + 1] || !inside(i, j)) continue;
+    const A = gn(i, j), B = gn(i + G, j), C = gn(i + G, j + G), D = gn(i, j + G);
+    cut(A, B, C, null, null, 1); cut(A, C, D, null, null, 1);
+  }
+  for (const o of objs) {
+    const W = worldTris(o), gy = groundAt(o.x, o.z);
+    for (let t = 0; t < W.length; t += 13) cut([W[t], W[t + 1], W[t + 2]], [W[t + 3], W[t + 4], W[t + 5]], [W[t + 6], W[t + 7], W[t + 8]], gy, [W[t + 9], W[t + 10], W[t + 11]], W[t + 12]);
+  }
+  return out;
+}
 function buildPoints() {
+  if (S.lines) {
+    const key = JSON.stringify(['lines', fieldKey, S.lGap, S.lDot, S.size, S.zoom, S.yaw, S.seed, S.cut, S.depth]);
+    if (key !== ptsKey) { ptsKey = key; pts = linePoints(); }
+    return;
+  }
   const { nx, base, front } = field, per = count() / (PW * S.depth);
   const key = JSON.stringify([fieldKey, count(), S.seed, S.cut]);
   if (key !== ptsKey || !field.plane) {
@@ -653,7 +701,18 @@ function project(cam) {
     out.push([s[0], s[1], Math.max(.5, S.size * ((1 - S.depthSize) + S.depthSize * Math.min(3, s[2]))), p, 1 - S.fadeA * t, s[3]]);
   }
   out.sort((a, b) => b[5] - a[5]);
-  return out;
+  if (!S.lines) return out;
+  // Líneas horizontales: circles, the nearest placed first, none closer to another than Espacio entre píxeles
+  const keep = [], cell = S.size * 3 + S.lDot, grid = new Map(), key = (a, b) => a * 100003 + b;
+  for (let q = out.length - 1; q >= 0; q--) {
+    const [x, y, sz] = out[q], cx = Math.floor(x / cell), cy = Math.floor(y / cell), rad = sz / 2;
+    let ok = true;
+    for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = grid.get(key(cx + a, cy + b)); if (l) for (const [ox, oy, orad] of l) if (Math.hypot(ox - x, oy - y) < rad + orad + S.lDot - 1e-6) { ok = false; break; } }
+    if (!ok) continue;
+    const kk = key(cx, cy); (grid.get(kk) || grid.set(kk, []).get(kk)).push([x, y, rad]);
+    keep.push(out[q]);
+  }
+  return keep.reverse();
 }
 function colorOf(p) {
   const P = S.palette;
@@ -672,7 +731,8 @@ function snapped(items) {
 }
 function draw(ctx, items) {
   items = snapped(items);
-  for (const [x, y, s, p, a] of items) { ctx.globalAlpha = a; ctx.fillStyle = colorOf(p); ctx.fillRect(x - s / 2, y - s / 2, s, s); }
+  const round = S.lines && !S.snap;
+  for (const [x, y, s, p, a] of items) { ctx.globalAlpha = a; ctx.fillStyle = colorOf(p); if (round) { ctx.beginPath(); ctx.arc(x, y, s / 2, 0, Math.PI * 2); ctx.fill(); } else ctx.fillRect(x - s / 2, y - s / 2, s, s); }
   ctx.globalAlpha = 1;
 }
 
@@ -692,6 +752,8 @@ const SLIDERS = {
   cityGreen: { label: 'Plantas', min: 0, max: 1, step: .01, fmt: pct },
   wave: { label: 'Ondulación', min: 0, max: 1, step: .01, fmt: pct },
   waveScale: { label: 'Tamaño de las ondas', min: 0, max: 1, step: .01, fmt: pct },
+  lGap: { label: 'Espacio entre líneas', min: 3, max: 80, step: 1, fmt: v => v + ' px', emph: true },
+  lDot: { label: 'Espacio entre píxeles', min: 0, max: 23, step: 1, values: [0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5, 6, 8, 10, 15, 20], fmt: v => v.toLocaleString('es', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + ' px', emph: true },
   depth: { label: 'Profundidad del plano', min: 1, max: 5, step: .1, fmt: v => v.toFixed(1) },
   pitch: { label: 'Inclinación', min: 2, max: 89, step: 1, fmt: deg, emph: true },
   yaw: { label: 'Giro', min: -180, max: 180, step: 1, fmt: deg },
@@ -715,13 +777,13 @@ const mkSlider = (key, d, onInput, onReset) => {
   host.className = 'slider' + (d.emph ? ' emph' : '');
   host.innerHTML = `<label for="in-${key}">${d.label}</label><output id="out-${key}"></output><input type="range" id="in-${key}" min="${d.min}" max="${d.max}" step="${d.step}" title="Doble clic para restablecer">`;
   const input = host.querySelector('input');
-  input.addEventListener('input', () => onInput(+input.value));
+  input.addEventListener('input', () => onInput(d.values ? d.values[+input.value] : +input.value)); // uneven sliders move over their stops
   input.addEventListener('dblclick', onReset);
 };
 const showSlider = (key, d, v) => {
-  const input = $('#in-' + key);
-  if (+input.value !== v) input.value = v;
-  input.style.setProperty('--p', ((v - d.min) / (d.max - d.min) * 100) + '%');
+  const input = $('#in-' + key), at = d.values ? d.values.reduce((b, x, i) => Math.abs(x - v) < Math.abs(d.values[b] - v) ? i : b, 0) : v;
+  if (+input.value !== at) input.value = at;
+  input.style.setProperty('--p', ((at - d.min) / (d.max - d.min) * 100) + '%');
   $('#out-' + key).textContent = d.fmt(v);
 };
 // Cantidad de modelos and Plantas remake the city (same seed: the same city, more or fewer of its models).
@@ -771,6 +833,7 @@ function sync() {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink';
   $('#cut-hint').hidden = !S.cut;
+  $('#sl-lGap').hidden = $('#sl-lDot').hidden = !S.lines;
   $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !S.snap;
   markPalette(); updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
@@ -906,7 +969,7 @@ $('#svg').addEventListener('click', () => {
   const groups = new Map();
   for (const [x, y, s, p, a] of snapped(list)) {
     const key = colorOf(p) + '|' + Math.max(1, Math.round(a * 10)) / 10;
-    groups.set(key, (groups.get(key) || '') + `M${n(x - s / 2)} ${n(y - s / 2)}h${n(s)}v${n(s)}h${-n(s)}z`);
+    groups.set(key, (groups.get(key) || '') + (S.lines && !S.snap ? `M${n(x - s / 2)} ${n(y)}a${n(s / 2)} ${n(s / 2)} 0 1 0 ${n(s)} 0a${n(s / 2)} ${n(s / 2)} 0 1 0 ${-n(s)} 0Z` : `M${n(x - s / 2)} ${n(y - s / 2)}h${n(s)}v${n(s)}h${-n(s)}z`));
   }
   for (const [key, d] of groups) { const [c, a] = key.split('|'); out.push(`<path fill="${c}"${a < 1 ? ` fill-opacity="${a}"` : ''} d="${d}"/>`); }
   out.push('</svg>');
