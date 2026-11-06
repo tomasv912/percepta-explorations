@@ -238,6 +238,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-jitter"></div>
         <label class="check" title="En vez de salpicados, los píxeles corren en líneas horizontales que siguen la forma del modelo: más juntos donde es oscuro (frecuencia modulada)"><input type="checkbox" data-check="lines"> Líneas horizontales (frecuencia modulada)</label>
         <div id="sl-lineGap"></div>
+        <div id="sl-lineDot"></div>
         <div id="sl-lineFollow"></div>
         <label class="check" id="lineAM-row" title="Los píxeles quedan parejos sobre la línea y se achican con la luz hasta desaparecer"><input type="checkbox" data-check="lineAM"> Modular el tamaño con la luz</label>
         <label class="check" title="Los píxeles se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
@@ -311,7 +312,7 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
-  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, snap: false, cell: 6, cellGap: .2, handJit: 1,
+  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, lineDot: 1, snap: false, cell: 6, cellGap: .2, handJit: 1,
   revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -548,54 +549,59 @@ let scene = null;
 // the light sets the pixels: closer together where dark (frequency modulation) or, with Modular el tamaño, evenly
 // spaced and smaller the lighter it is, down to nothing.
 // contour(buf, …) → [x, y, z, dark, …] in view units, one point per crossing.
-function contour(buf, cp, spn, fo, gap) {
+function contour(buf, cp, spn, fo, gap, pitch) {
+  // Sampled in columns pitch apart across the picture (Tamaño + Espacio entre píxeles): in each, the line crosses
+  // between two rows of the same surface (not across a jump in depth); so along a line the pixels sit evenly, and
+  // they line up in columns.
   const { W, H, k, box, depth, mask, lit } = buf, out = [], jump = 6 / k;
   const lev = new Float32Array(W * H);
   for (let i = 0; i < W * H; i++) if (mask[i]) { const Y = box.y0 + (Math.floor(i / W) + .5) / k; lev[i] = (Y * (1 - fo) + (Y * cp - depth[i] * spn) * fo) / gap; }
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const i = y * W + x; if (!mask[i]) continue;
-    for (const j of [x + 1 < W ? i + 1 : -1, y + 1 < H ? i + W : -1]) {
-      if (j < 0 || !mask[j] || Math.abs(depth[j] - depth[i]) > jump) continue;
-      const a = lev[i], b = lev[j], la = Math.floor(a), lb = Math.floor(b);
-      if (la === lb) continue;
-      const L = Math.max(la, lb), t = (L - a) / (b - a || 1), xi = j === i + 1 ? x + t : x, yi = j === i + 1 ? y : y + t;
-      out.push(box.x0 + (xi + .5) / k, box.y0 + (yi + .5) / k, depth[i] + (depth[j] - depth[i]) * t, 1 - (lit[i] + (lit[j] - lit[i]) * t));
-      break;
+  for (let X = box.x0 + pitch / 2; X < box.x1; X += pitch) {
+    const gx = (X - box.x0) * k - .5, i0 = Math.max(0, Math.min(W - 2, Math.floor(gx))), fx = Math.min(1, Math.max(0, gx - i0));
+    const ok = y => mask[y * W + i0] && mask[y * W + i0 + 1] && Math.abs(depth[y * W + i0] - depth[y * W + i0 + 1]) <= jump;
+    const at = (A, y) => A[y * W + i0] * (1 - fx) + A[y * W + i0 + 1] * fx;
+    for (let y = 0; y < H - 1; y++) {
+      if (!ok(y) || !ok(y + 1)) continue;
+      const da = at(depth, y), db = at(depth, y + 1); if (Math.abs(db - da) > jump) continue;
+      const a = at(lev, y), b = at(lev, y + 1); if (Math.floor(a) === Math.floor(b)) continue;
+      for (let L = Math.floor(Math.min(a, b)) + 1; L <= Math.max(a, b); L++) {
+        const t = (L - a) / (b - a);
+        out.push(X, box.y0 + (y + t + .5) / k, da + (db - da) * t, 1 - (at(lit, y) + (at(lit, y + 1) - at(lit, y)) * t));
+      }
     }
   }
   return out;
 }
-// The level-line points kept and how big: dense where dark (FM), or, with Modular el tamaño, sized by the dark (AM)
-// and never touching: the darkest are placed first and a point is left out if its square would come within a sliver
-// of one already placed (on its line or the next), so they never overlap.
+// The level-line points kept and how big: dense where dark (FM), or, with Modular el tamaño, sized by the dark (AM).
+// Each is a circle, and none comes closer to another than Espacio entre píxeles (the darkest are placed first; on a
+// line the pitch already keeps them apart, between lines this check does).
 function linePick(raw, kA, r, at) {
-  const out = [], t = S.threshold, dens = clamp(count() / 40000, .03, 1);
-  const tone = dark => t ? (dark < t ? 0 : (dark - t) / (1 - t)) : dark;
-  if (!S.lineAM) {
-    for (let i = 0; i < raw.length; i += 4) if (r() < Math.min(1, (Math.pow(tone(raw[i + 3]), S.contrast) * 1.25 + .01) * dens)) out.push([i, undefined]);
-    return out;
-  }
+  const out = [], t = S.threshold, dens = clamp(count() / 40000, .03, 1), tone = dark => t ? (dark < t ? 0 : (dark - t) / (1 - t)) : dark;
   const cand = [];
-  for (let i = 0; i < raw.length; i += 4) { const sc = Math.pow(tone(raw[i + 3]), .75 * S.contrast / 1.6); if (sc >= .08) cand.push([i, sc]); }
-  cand.sort((a, b) => b[1] - a[1]);
-  const gap = Math.max(.6, S.size * .12), cell = S.size + gap, grid = new Map(), key = (cx, cy) => cx * 100003 + cy;
+  for (let i = 0; i < raw.length; i += 4) {
+    const tn = tone(raw[i + 3]);
+    if (S.lineAM) { const sc = Math.pow(tn, .75 * S.contrast / 1.6); if (sc >= .08) cand.push([i, sc, tn]); }
+    else if (r() < Math.min(1, (Math.pow(tn, S.contrast) * 1.25 + .01) * dens)) cand.push([i, undefined, tn]);
+  }
+  cand.sort((a, b) => b[2] - a[2]);
+  const gap = S.lineDot, cell = S.size + gap, grid = new Map(), key = (cx, cy) => cx * 100003 + cy;
   for (const [i, sc] of cand) {
-    const ax = (raw[i] - at.x0) * kA, ay = (raw[i + 1] - at.y0) * kA, cx = Math.floor(ax / cell), cy = Math.floor(ay / cell), half = sc * S.size / 2;
+    const ax = (raw[i] - at.x0) * kA, ay = (raw[i + 1] - at.y0) * kA, cx = Math.floor(ax / cell), cy = Math.floor(ay / cell), rad = (sc ?? 1) * S.size / 2;
     let ok = true;
     for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) {
       const l = grid.get(key(cx + a, cy + b)); if (!l) continue;
-      for (const [x, y, h] of l) if (Math.abs(x - ax) < half + h + gap && Math.abs(y - ay) < half + h + gap) { ok = false; break; }
+      for (const [x, y, h] of l) if (Math.hypot(x - ax, y - ay) < rad + h + gap - 1e-6) { ok = false; break; }
     }
     if (!ok) continue;
-    const k = key(cx, cy); (grid.get(k) || grid.set(k, []).get(k)).push([ax, ay, half]);
+    const kk = key(cx, cy); (grid.get(kk) || grid.set(kk, []).get(kk)).push([ax, ay, rad]);
     out.push([i, sc]);
   }
   return out;
 }
 function lineStipple(sc, r) {
   const { buf, box } = sc, kA = AW / (box.x1 - box.x0), p = S.pitch * Math.PI / 180;
-  const raw = contour(buf, Math.cos(p), Math.sin(p), S.lineFollow, S.lineGap / kA);
-  return linePick(raw, kA, r, box).map(([i, s]) => ({ x: (raw[i] - box.x0) * kA + (S.lineAM ? 0 : (r() - .5) * S.size * S.jitter * .3) + S.panX, y: (raw[i + 1] - box.y0) * kA + S.panY, tone: raw[i + 3], pick: r(), sc: s }));
+  const raw = contour(buf, Math.cos(p), Math.sin(p), S.lineFollow, S.lineGap / kA, (S.size + S.lineDot) / kA);
+  return linePick(raw, kA, r, box).map(([i, s]) => ({ x: (raw[i] - box.x0) * kA + S.panX, y: (raw[i + 1] - box.y0) * kA + S.panY, tone: raw[i + 3], pick: r(), sc: s }));
 }
 function stipple(n, r, sc = scene) {
   if (S.lines) return lineStipple(sc, r);
@@ -631,6 +637,8 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
     for (const p of l) {
       // Reveal: a pixel growing in is drawn at its share of the size (p.sc), from its middle
       const z = p.sc === undefined ? s : s * p.sc; if (z <= .05) continue;
+      // Líneas horizontales: circles
+      if (S.lines && !S.snap) { const cx = (p.x + (p.dx || 0) - ox), cy = (p.y + (p.dy || 0) - oy); ctx.moveTo(cx + z / 2, cy); ctx.arc(cx, cy, z / 2, 0, Math.PI * 2); continue; }
       ctx.rect(Math.round((p.x + (p.dx || 0) - z / 2 - ox) * q) / q, Math.round((p.y + (p.dy || 0) - z / 2 - oy) * q) / q, z, z);
     }
     ctx.fill();
@@ -688,6 +696,7 @@ const SLIDERS = {
   bSlab: { label: 'Losas salientes', min: 0, max: 1, step: .01, fmt: v => v ? Math.round(v * 100) + '%' : 'sin losas' },
   ttDur: { label: 'Duración del loop', min: 1, max: 30, step: .5, fmt: v => v + ' s', emph: true },
   lineGap: { label: 'Separación de las líneas', min: 3, max: 80, step: 1, fmt: v => v + ' px', emph: true },
+  lineDot: { label: 'Espacio entre píxeles', min: 0, max: 23, step: 1, values: [0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5, 6, 8, 10, 15, 20], fmt: v => v.toLocaleString('es', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + ' px', emph: true },
   lineFollow: { label: 'Seguir la forma', min: 0, max: 1, step: .01, fmt: pct },
   jitter: { label: 'Superposición', min: 0, max: 3, step: .01, fmt: pct },
 };
@@ -696,7 +705,8 @@ for (const [key, d] of Object.entries(SLIDERS)) {
   host.className = 'slider' + (d.emph ? ' emph' : '');
   host.innerHTML = `<label for="in-${key}">${d.label}</label><output id="out-${key}"></output><input type="range" id="in-${key}" min="${d.min}" max="${d.max}" step="${d.step}" title="Doble clic para restablecer">`;
   const input = host.querySelector('input');
-  input.addEventListener('input', () => { S[key] = +input.value; sync(true); });
+  // uneven sliders list their stops (d.values); the range moves over their index
+  input.addEventListener('input', () => { S[key] = d.values ? d.values[+input.value] : +input.value; sync(true); });
   input.addEventListener('change', () => sync());
   input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
 }
@@ -720,9 +730,9 @@ let key = '', prevAnim = 'none';
 let artKey = '';
 function sync(fast) {
   for (const k of Object.keys(SLIDERS)) {
-    const input = $('#in-' + k), d = SLIDERS[k];
-    if (+input.value !== S[k]) input.value = S[k];
-    input.style.setProperty('--p', ((S[k] - d.min) / (d.max - d.min) * 100) + '%');
+    const input = $('#in-' + k), d = SLIDERS[k], at = d.values ? d.values.reduce((b, v, i) => Math.abs(v - S[k]) < Math.abs(d.values[b] - S[k]) ? i : b, 0) : S[k];
+    if (+input.value !== at) input.value = at;
+    input.style.setProperty('--p', ((at - d.min) / (d.max - d.min) * 100) + '%');
     $('#out-' + k).textContent = d.fmt(S[k]);
   }
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
@@ -730,7 +740,7 @@ function sync(fast) {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink'; markPalette();
   $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !S.snap;
-  $('#sl-lineGap').hidden = $('#sl-lineFollow').hidden = $('#lineAM-row').hidden = !S.lines;
+  $('#sl-lineGap').hidden = $('#sl-lineFollow').hidden = $('#sl-lineDot').hidden = $('#lineAM-row').hidden = !S.lines;
   document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn'))); });
   if (S.anim === 'enter') { $('#sl-revHold').hidden = S.entInf; $('#sl-entStay').hidden = !S.entInf; }
   if (!filming) $('#video').textContent = S.vidFmt === 'png' ? 'Exportar secuencia (.zip)' : 'Exportar video';
@@ -743,7 +753,7 @@ function sync(fast) {
   updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   if (S.aspect + S.orient !== artKey) { artKey = S.aspect + S.orient; setArtboard(); S.panX = S.panY = 0; if (typeof crop !== 'undefined') { crop = null; cropStack = []; cropUI(); } }
-  const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow, S.lineAM]);
+  const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow, S.lineAM, S.lineDot]);
   if (k !== key || (!fast && fastNext)) { fastNext = !!fast; pts = build(fast); key = k; ptsPan = [S.panX, S.panY]; }
   // Moved in the frame (Shift + drag): the same pixels, shifted; nothing is re-sampled.
   if (ptsPan[0] !== S.panX || ptsPan[1] !== S.panY) { const dx = S.panX - ptsPan[0], dy = S.panY - ptsPan[1]; for (const p of pts) { p.x += dx; p.y += dy; } ptsPan = [S.panX, S.panY]; }
@@ -902,7 +912,7 @@ function hoverStep(list, ptr, dt) {
 // once, by the side its surface faces most; its place on the model is stored, so a turn only moves and hides
 // pixels. Hidden: behind something nearer, by a quick depth render of the frame.
 let ring = null;
-const ringKey = () => JSON.stringify([modelName, presetSeed, AW, AH, S.lines, S.lineGap, S.lineAM, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
+const ringKey = () => JSON.stringify([modelName, presetSeed, AW, AH, S.lines, S.lineGap, S.lineAM, S.lineDot, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
 function buildRing() {
   const K = 8, box = viewBoxNow(), k = AW / (box.x1 - box.x0), p = S.pitch * Math.PI / 180, cp = Math.cos(p), sp = Math.sin(p), list = [];
   const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180, L = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.abs(-Math.cos(el) * Math.sin(az)) + .35];
@@ -912,7 +922,7 @@ function buildRing() {
     let area = 0; for (let i = 0; i < buf.mask.length; i++) area += buf.mask[i];
     if (S.lines) {
       // level lines of the model's height, traced in this view, kept on the side this view owns
-      const raw = contour(buf, cp, sp, 1, S.lineGap / k);
+      const raw = contour(buf, cp, sp, 1, S.lineGap / k, (S.size + S.lineDot) / k);
       for (const [i, s2] of linePick(raw, k, r, box)) {
         const ix = Math.min(buf.W - 1, Math.floor((raw[i] - box.x0) * buf.k)), iy = Math.min(buf.H - 1, Math.floor((raw[i + 1] - box.y0) * buf.k)), o = iy * buf.W + ix;
         let n = [buf.nrm[o * 3], buf.nrm[o * 3 + 1], buf.nrm[o * 3 + 2]]; if (n[2] < 0) n = n.map(c => -c);
@@ -1197,7 +1207,8 @@ $('#svg').addEventListener('click', () => {
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
   if (S.bgExport) out.push(`<rect width="${w}" height="${h}" fill="${S.bg}"/>`);
   const groups = new Map();
-  for (const p of S.snap ? snapList(pts) : pts) { const zz = p.sc === undefined ? z : z * p.sc, ss = n(zz); if (zz <= .05) continue; const c = colorOf(p); groups.set(c, (groups.get(c) || '') + `M${n(p.x + (p.dx || 0) - zz / 2 - b.x0)} ${n(p.y + (p.dy || 0) - zz / 2 - b.y0)}h${ss}v${ss}h${-ss}z`); }
+  const round = S.lines && !S.snap;
+  for (const p of S.snap ? snapList(pts) : pts) { const zz = p.sc === undefined ? z : z * p.sc, ss = n(zz); if (zz <= .05) continue; const c = colorOf(p), X0 = p.x + (p.dx || 0) - b.x0, Y0 = p.y + (p.dy || 0) - b.y0; groups.set(c, (groups.get(c) || '') + (round ? `M${n(X0 - zz / 2)} ${n(Y0)}a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${ss} 0a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${-ss} 0Z` : `M${n(X0 - zz / 2)} ${n(Y0 - zz / 2)}h${ss}v${ss}h${-ss}z`)); }
   for (const [c, d] of groups) out.push(`<path fill="${c}" d="${d}"/>`);
   out.push('</svg>');
   download(`pixel-model-${S.seed}${S.expScale === '1' ? '' : `@${S.expScale}x`}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));

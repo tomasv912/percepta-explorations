@@ -243,7 +243,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-mod"></div>
         <div id="sl-variation"></div>
         <div id="sl-grain"></div>
-        <label class="check" title="Cada partícula es un círculo en vez de un cuadrado"><input type="checkbox" data-check="circle"> Partículas circulares</label>
+        <label class="check" id="circle-row" title="Cada partícula es un círculo en vez de un cuadrado (con las líneas de profundidad siempre lo son)"><input type="checkbox" data-check="circle"> Partículas circulares</label>
         <label class="check" title="Los cubos se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
         <div id="sl-cell"></div>
         <div id="sl-cellGap"></div>
@@ -517,7 +517,7 @@ function generate(st) {
         const sc = scOf(tn); if (sc < .08) continue;
         const half = sc * sz / 2, cx = Math.floor(x / cellS), cy = Math.floor(y / cellS);
         let ok = true;
-        for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = taken.get(keyOf(cx + a, cy + b)); if (l) for (const [ox, oy, oh] of l) if (Math.abs(ox - x) < half + oh + sep - 1e-7 && Math.abs(oy - y) < half + oh + sep - 1e-7) { ok = false; break; } }
+        for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = taken.get(keyOf(cx + a, cy + b)); if (l) for (const [ox, oy, oh] of l) if (Math.hypot(ox - x, oy - y) < half + oh + sep - 1e-7) { ok = false; break; } // circles: apart by their radii and the space }
         if (!ok) continue;
         const kk = keyOf(cx, cy); (taken.get(kk) || taken.set(kk, []).get(kk)).push([x, y, half]);
         add(x, y, 1, col[k]); size[got - 1] = st.size * sc; shade[got - 1] = 0;
@@ -773,6 +773,8 @@ function tint(hex, k, grain) {
   const t = k / (SHADES - 1) * grain * 2.5, [r, g, b] = hexToRgb(hex);
   return rgbHex(r + (255 - r) * t, g + (255 - g) * t, b + (255 - b) * t);
 }
+// Líneas que siguen la profundidad draws circles, always.
+const linesOn = st => st.source === 'image' && st.imgLines && !!img?.depth;
 const accentOf = st => PerceptaBg.pick(st.bg, st.bgFlip);
 function colorOf(i, st) {
   if (st.colorMode === 'image' && img && st.source === 'image') {
@@ -896,7 +898,7 @@ function fill(ctx, st, lev, grow) {
   // Círculos: each cube drawn as the circle inside its square (trails stay bands).
   eachShape(st, (color, alpha, polys, cube) => {
     ctx.globalAlpha = alpha; ctx.fillStyle = color;
-    const round = cube && st.circle;
+    const round = cube && (st.circle || linesOn(st));
     for (let k = 0; k < polys.length; k += BATCH) {
       ctx.beginPath();
       for (let j = k; j < Math.min(polys.length, k + BATCH); j++) {
@@ -937,7 +939,7 @@ function toSvg(st) {
   if (st.bgExport) out.push(`<rect width="${gen.W}" height="${gen.H}" fill="${st.bg}"/>`);
   out.push(`<g transform="matrix(${r(c * 1000) / 1000} 0 0 ${r(c * 1000) / 1000} ${r(-v.x * c)} ${r(-v.y * c)})">`);
   const paths = (lev, grow) => eachShape(st, (color, alpha, polys, cube) => {
-    const round = cube && st.circle, circ = p => { const rr = (p[2] - p[0]) / 2; return `M${r(p[0])} ${r(p[1] + rr)}a${r(rr)} ${r(rr)} 0 1 0 ${r(rr * 2)} 0a${r(rr)} ${r(rr)} 0 1 0 ${r(-rr * 2)} 0Z`; };
+    const round = cube && (st.circle || linesOn(st)), circ = p => { const rr = (p[2] - p[0]) / 2; return `M${r(p[0])} ${r(p[1] + rr)}a${r(rr)} ${r(rr)} 0 1 0 ${r(rr * 2)} 0a${r(rr)} ${r(rr)} 0 1 0 ${r(-rr * 2)} 0Z`; };
     const d = polys.filter(inView).map(q => q.map((v, k) => v + (k % 2 ? panY : panX))).map(p => round ? circ(p) : `M${r(p[0])} ${r(p[1])}L${r(p[2])} ${r(p[3])}L${r(p[4])} ${r(p[5])}L${r(p[6])} ${r(p[7])}Z`).join('');
     if (d) out.push(`<path fill="${color}"${alpha < 1 ? ` fill-opacity="${Math.round(alpha * 1000) / 1000}"` : ''} d="${d}"/>`);
   }, lev, grow);
@@ -1095,7 +1097,7 @@ function sync() {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase())); $('#palette-box').hidden = S.colorMode !== 'random';
   $('#blModel').value = S.blModel; $('#sl-blFlorets').hidden = S.blModel !== 'hortensia';
   updateBg(S.bgFlip);
-  $('#depth-controls').hidden = !S.imgLines; $('#grid-row').hidden = S.imgLines; if (image && S.imgLines) ensureDepth();
+  $('#depth-controls').hidden = !S.imgLines; $('#circle-row').hidden = linesOn(S); $('#grid-row').hidden = S.imgLines; if (image && S.imgLines) ensureDepth();
   $('#sl-gridCols').hidden = !S.grid || S.imgLines; $('#sl-count').hidden = (image && S.grid) || S.snap; $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !S.snap;
   $('.rt-bar [data-tool="rotate"]').hidden = !image; if (!image && tools.tool === 'rotate') tools.setTool('scatter');
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
