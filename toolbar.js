@@ -202,6 +202,81 @@
   };
   addEventListener('load', lockColors);
 
+  // DialKit (vendor/dialkit, dialkit.dev): a floating panel, bottom left, with every control of the page as a dial,
+  // grouped as the page groups them. Both sides stay in step: a dial sets the page's control (as if it were moved by
+  // hand) and moving the page's control moves the dial. Loaded after the page, so the tools' own controls exist.
+  function dialkit() {
+    if (document.querySelector('script[data-dialkit]')) return;
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('vendor/dialkit/styles.css', root).href; document.head.appendChild(css);
+    const js = document.createElement('script'); js.src = new URL('vendor/dialkit/browser.global.js', root).href; js.dataset.dialkit = '';
+    js.onload = () => { try { mirror(); } catch (e) { console.warn('DialKit:', e); } };
+    document.head.appendChild(js);
+  }
+  function mirror() {
+    const DK = window.DialKit; if (!DK) return;
+    const config = {}, links = [], used = new Map();
+    const group = el => {
+      const sec = el.closest('section'), h = sec && sec.querySelector('h2');
+      if (h) return h.textContent.trim();
+      if (el.closest('.tt, .anim, [role=toolbar]')) return 'Animación';
+      if (el.closest('footer')) return 'Exportar';
+      return 'General';
+    };
+    const add = (el, label, def, link) => {
+      const g = group(el); config[g] = config[g] || { _collapsed: true };
+      let k = (label || '').replace(/\s+/g, ' ').trim() || 'Control', n = 2;
+      while (k in config[g]) k = `${label} ${n++}`;
+      config[g][k] = def; links.push({ g, k, ...link });
+    };
+    // sliders: a range input with its label
+    for (const inp of document.querySelectorAll('input[type=range]')) {
+      if (inp.closest('.dialkit-root, [data-dialkit-root]')) continue;
+      const lab = inp.labels?.[0]?.textContent || inp.getAttribute('aria-label') || inp.id;
+      const min = +inp.min || 0, max = inp.max === '' ? 100 : +inp.max, step = inp.step === 'any' || !inp.step ? (max - min) / 100 : +inp.step;
+      add(inp, lab, [+inp.value, min, max, step], { kind: 'range', el: inp, get: () => +inp.value, set: v => { inp.value = v; inp.dispatchEvent(new Event('input', { bubbles: true })); inp.dispatchEvent(new Event('change', { bubbles: true })); } });
+    }
+    // toggles
+    for (const inp of document.querySelectorAll('input[type=checkbox]')) {
+      if (inp.disabled) continue;
+      const lab = (inp.closest('label')?.textContent || inp.getAttribute('aria-label') || inp.dataset.check || '').trim();
+      if (!lab) continue;
+      add(inp, lab, inp.checked, { kind: 'check', el: inp, get: () => inp.checked, set: v => { inp.checked = v; inp.dispatchEvent(new Event('change', { bubbles: true })); } });
+    }
+    // segmented choices: one select per group of buttons
+    for (const seg of document.querySelectorAll('.seg')) {
+      const btns = [...seg.querySelectorAll(':scope > button')].filter(b => b.dataset.v !== undefined || b.dataset.preset !== undefined);
+      if (btns.length < 2) continue;
+      const opts = btns.map(b => ({ value: b.dataset.v ?? b.dataset.preset, label: (b.textContent.trim() || b.title || b.dataset.v) + (b.title && b.textContent.trim().length <= 2 ? ` (${b.title})` : '') }));
+      const cur = () => (btns.find(b => b.getAttribute('aria-pressed') === 'true') || btns[0]);
+      add(seg, seg.getAttribute('aria-label') || seg.dataset.key || 'Opción', { type: 'select', options: opts, default: cur().dataset.v ?? cur().dataset.preset },
+        { kind: 'seg', el: seg, get: () => cur().dataset.v ?? cur().dataset.preset, set: v => btns.find(b => (b.dataset.v ?? b.dataset.preset) === v)?.click() });
+    }
+    if (!links.length) return;
+    DK.createDialRoot({ position: 'bottom-left', theme: 'system', defaultOpen: false, versions: 'menu' });
+    const kit = window.PerceptaDial = DK.createDialKit(document.title || 'Percepta', config);
+    const last = new Map(links.map(l => [l, l.get()]));
+    let quiet = false;
+    kit.subscribe(values => {
+      if (quiet) return;
+      for (const l of links) {
+        const v = values[l.g]?.[l.k];
+        if (v === undefined || v === last.get(l)) continue;
+        last.set(l, v);
+        if (v !== l.get()) l.set(v);
+      }
+    });
+    // the page's controls moved (by hand, a preset, a new seed…): the dials follow
+    let pending = 0;
+    const pull = () => {
+      pending = 0; const upd = {};
+      for (const l of links) { const v = l.get(); if (v !== last.get(l)) { last.set(l, v); (upd[l.g] = upd[l.g] || {})[l.k] = v; } }
+      if (Object.keys(upd).length) { quiet = true; try { kit.setValues(upd); } finally { quiet = false; } }
+    };
+    const soon = e => { if (e.target.closest?.('[class*="dialkit"], [class*="DialKit"]')) return; if (!pending) pending = requestAnimationFrame(pull); };
+    for (const t of ['input', 'change', 'click', 'keyup', 'pointerup']) addEventListener(t, soon, true);
+  }
+  addEventListener('load', dialkit);
+
   // Every image a tool downloads (PNG, JPG, SVG) is cropped to its pixels: whatever around them holds nothing is
   // cut away. Without a background that is what is transparent; with one, what is the background's colour (the
   // colour of all four corners). Tools hand their file to a link and click it; the click is caught here, the file
