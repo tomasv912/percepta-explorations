@@ -186,6 +186,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-depthSize"></div>
         <label class="check" title="Los píxeles se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
         <div id="sl-cell"></div>
+        <div id="sl-cellGap"></div>
         <div class="row">
           <span>Semilla</span>
           <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
@@ -230,7 +231,7 @@ const DEFAULTS = {
   disp: .3, start: .35, soft: .7, rise: .35, thin: .35, fadeA: .5,
   cut: false, mdens: 3.5, cull: true, cityN: 16, cityGreen: .35, citySeed: 1, wave: .5, waveScale: .5, depth: 2.4,
   pitch: 24, yaw: 0, persp: .55, zoom: 1.3, frameY: .02,
-  count: 45000, size: 2.5, depthSize: .6, seed: 1, snap: false, cell: 5,
+  count: 45000, size: 2.5, depthSize: .6, seed: 1, snap: false, cell: 5, cellGap: .2,
   palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'ink', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -666,7 +667,7 @@ const count = () => S.snap ? PerceptaCells(S.count, S.size, S.cell, 250000) : S.
 function snapped(items) {
   if (!S.snap) return items;
   const sn = PerceptaSnap(items.length, i => items[i][0], i => items[i][1], S.cell), out = [];
-  for (let i = 0; i < items.length; i++) if (sn.keep[i]) out.push([sn.x[i], sn.y[i], S.cell, items[i][3], items[i][4], items[i][5]]);
+  for (let i = 0; i < items.length; i++) if (sn.keep[i]) out.push([sn.x[i], sn.y[i], S.cell * (1 - S.cellGap), items[i][3], items[i][4], items[i][5]]);
   return out;
 }
 function draw(ctx, items) {
@@ -698,6 +699,7 @@ const SLIDERS = {
   zoom: { label: 'Escala', min: .3, max: 4, step: .01, fmt: v => '×' + v.toFixed(2) },
   frameY: { label: 'Encuadre', min: -.6, max: .6, step: .01, fmt: pct },
   cell: { label: 'Tamaño de la celda', min: 2, max: 30, step: 1, fmt: v => v + ' px', emph: true },
+  cellGap: { label: 'Separación entre píxeles', min: .05, max: .7, step: .01, fmt: v => Math.round(v * 100) + '%' },
   count: { label: 'Cantidad', min: 5000, max: 150000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño del píxel', min: 1, max: 12, step: .5, fmt: v => v + ' px', emph: true },
   depthSize: { label: 'Más chicos al fondo', min: 0, max: 1, step: .01, fmt: pct },
@@ -769,7 +771,7 @@ function sync() {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink';
   $('#cut-hint').hidden = !S.cut;
-  $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = !S.snap;
+  $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !S.snap;
   markPalette(); updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   cancelAnimationFrame(raf); raf = requestAnimationFrame(render);

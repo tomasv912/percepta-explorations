@@ -237,6 +237,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-grain"></div>
         <label class="check" title="Los cubos se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
         <div id="sl-cell"></div>
+        <div id="sl-cellGap"></div>
       </section>
 
       <section>
@@ -311,7 +312,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2, snap: false, cell: 8,
+  dof: 0, focus: 0, focusBand: .2, snap: false, cell: 8, cellGap: .2,
   motion: 'still', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
@@ -800,7 +801,7 @@ function eachShape(st, fn, lev = null, grow = 0) {
       }
       if (polys.length) fn(color, (1 - (b - .5) / TRAIL_BANDS) * fade, polys);
     }
-    fn(color, fade, idx.map(i => { const h = (SNAP ? st.cell : gen.size[i]) / 2 + grow, x = SNAP ? SNAP.x[i] : X[i], y = SNAP ? SNAP.y[i] : Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }));
+    fn(color, fade, idx.map(i => { const h = (SNAP ? st.cell * (1 - st.cellGap) : gen.size[i]) / 2 + grow, x = SNAP ? SNAP.x[i] : X[i], y = SNAP ? SNAP.y[i] : Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }));
   }
 }
 // Filled in small batches: one huge path of overlapping polygons rasterizes far slower than many small ones.
@@ -906,6 +907,7 @@ const SLIDERS = {
   contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
   threshold: { label: 'Umbral', min: 0, max: .99, step: .01, fmt: pct, emph: true },
   cell: { label: 'Tamaño de la celda', min: 2, max: 60, step: 1, fmt: v => v + ' px', emph: true },
+  cellGap: { label: 'Separación entre píxeles', min: .05, max: .7, step: .01, fmt: v => Math.round(v * 100) + '%' },
   count: { label: 'Cubos', values: steps(10, [10, 100], [100, 200], [200, 2000], [1000, 150000]), fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño', values: steps(1, [.5, 50], [10, 200]), fmt: v => v + ' px' },
   mod: { label: 'Tamaño según profundidad o tono', min: 0, max: 1, step: .01, fmt: pct },
@@ -1000,7 +1002,7 @@ function sync() {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase())); $('#palette-box').hidden = S.colorMode !== 'random';
   $('#blModel').value = S.blModel; $('#sl-blFlorets').hidden = S.blModel !== 'hortensia';
   updateBg(S.bgFlip);
-  $('#sl-gridCols').hidden = !S.grid; $('#sl-count').hidden = (image && S.grid) || S.snap; $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = !S.snap;
+  $('#sl-gridCols').hidden = !S.grid; $('#sl-count').hidden = (image && S.grid) || S.snap; $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !S.snap;
   $('.rt-bar [data-tool="rotate"]').hidden = !image; if (!image && tools.tool === 'rotate') tools.setTool('scatter');
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   markPalette();

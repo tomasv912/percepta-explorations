@@ -145,6 +145,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-thresh"></div>
         <label class="check" title="Los cubos se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
         <div id="sl-cell"></div>
+        <div id="sl-cellGap"></div>
       </section>
 
       <section>
@@ -204,7 +205,7 @@ const AW = 3840, AH = 2160;
 const DEFAULTS = {
   seed: 1, layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25,
   count: 500, size: 24, depthSize: .5,
-  fps: '8', dur: 4, travel: 1, flow: 0, cross: false, thresh: 0, jitter: .5, snap: false, cell: 30,
+  fps: '8', dur: 4, travel: 1, flow: 0, cross: false, thresh: 0, jitter: .5, snap: false, cell: 30, cellGap: .2,
   palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'random', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
   vidFps: '8', vidFmt: 'mp4', fullFrame: false,
 };
@@ -315,7 +316,7 @@ function colorOf(pal) { return onBg(S.colorMode === 'ink' ? S.ink : S.palette[pa
 function snapped(list) {
   if (!S.snap) return list;
   const sn = PerceptaSnap(list.length, i => list[i][0], i => list[i][1], S.cell), out = [];
-  for (let i = 0; i < list.length; i++) if (sn.keep[i]) out.push([sn.x[i], sn.y[i], S.cell, list[i][3], list[i][4]]);
+  for (let i = 0; i < list.length; i++) if (sn.keep[i]) out.push([sn.x[i], sn.y[i], Math.max(1, Math.round(S.cell * (1 - S.cellGap))), list[i][3], list[i][4]]);
   return out;
 }
 function draw(ctx, list, ox = 0, oy = 0) {
@@ -341,6 +342,7 @@ const SLIDERS = {
   persp: { label: 'Perspectiva', min: 0, max: 1, step: .01, fmt: pct },
   thickness: { label: 'Grosor', min: 0, max: 1, step: .01, fmt: pct },
   cell: { label: 'Tamaño de la celda', min: 6, max: 80, step: 2, fmt: v => v + ' px', emph: true },
+  cellGap: { label: 'Separación entre píxeles', min: .05, max: .7, step: .01, fmt: v => Math.round(v * 100) + '%' },
   count: { label: 'Cubos', min: 20, max: 700, step: 10, fmt: String, emph: true },
   size: { label: 'Tamaño', min: 10, max: 50, step: 2, fmt: v => v + ' px', emph: true },
   depthSize: { label: 'Más chicos al fondo', min: 0, max: 1, step: .01, fmt: pct },
@@ -390,7 +392,7 @@ function sync() {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink';
   document.querySelectorAll('[data-preset]').forEach(b => b.setAttribute('aria-pressed', Object.entries(PRESETS[b.dataset.preset]).every(([k, v]) => S[k] === v)));
-  $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = !S.snap;
+  $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !S.snap;
   markPalette(); updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   shown = -1; paint();

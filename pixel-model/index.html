@@ -238,6 +238,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <label class="check" id="lineAM-row" title="Los píxeles quedan parejos sobre la línea y se achican con la luz hasta desaparecer"><input type="checkbox" data-check="lineAM"> Modular el tamaño con la luz</label>
         <label class="check" title="Los píxeles se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
         <div id="sl-cell"></div>
+        <div id="sl-cellGap"></div>
         <div class="row">
           <span>Semilla</span>
           <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
@@ -306,7 +307,7 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
-  bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, snap: false, cell: 6, handJit: 1,
+  bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, snap: false, cell: 6, cellGap: .2, handJit: 1,
   revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -510,27 +511,37 @@ function contour(buf, cp, spn, fo, gap) {
   }
   return out;
 }
-// The level-line points kept and how big: dense where dark (FM), or one per pixel's length, sized by the dark (AM).
+// The level-line points kept and how big: dense where dark (FM), or, with Modular el tamaño, sized by the dark (AM)
+// and never touching: the darkest are placed first and a point is left out if its square would come within a sliver
+// of one already placed (on its line or the next), so they never overlap.
 function linePick(raw, kA, r, at) {
-  const out = [], t = S.threshold, dens = clamp(count() / 40000, .03, 1), cell = Math.max(1, S.size * 1.05), taken = new Set();
-  for (let i = 0; i < raw.length; i += 4) {
-    const dark = raw[i + 3], dk = t ? (dark < t ? 0 : (dark - t) / (1 - t)) : dark;
-    if (S.lineAM) {
-      const sc = Math.pow(dk, .75 * S.contrast / 1.6); if (sc < .08) continue;
-      const ax = (raw[i] - at.x0) * kA, ay = (raw[i + 1] - at.y0) * kA, key = Math.round(ax / cell) * 100003 + Math.round(ay / cell);
-      if (taken.has(key)) continue; taken.add(key);
-      out.push([i, sc]);
-    } else {
-      const pr = Math.min(1, (Math.pow(dk, S.contrast) * 1.25 + .01) * dens);
-      if (r() < pr) out.push([i, undefined]);
+  const out = [], t = S.threshold, dens = clamp(count() / 40000, .03, 1);
+  const tone = dark => t ? (dark < t ? 0 : (dark - t) / (1 - t)) : dark;
+  if (!S.lineAM) {
+    for (let i = 0; i < raw.length; i += 4) if (r() < Math.min(1, (Math.pow(tone(raw[i + 3]), S.contrast) * 1.25 + .01) * dens)) out.push([i, undefined]);
+    return out;
+  }
+  const cand = [];
+  for (let i = 0; i < raw.length; i += 4) { const sc = Math.pow(tone(raw[i + 3]), .75 * S.contrast / 1.6); if (sc >= .08) cand.push([i, sc]); }
+  cand.sort((a, b) => b[1] - a[1]);
+  const gap = Math.max(.6, S.size * .12), cell = S.size + gap, grid = new Map(), key = (cx, cy) => cx * 100003 + cy;
+  for (const [i, sc] of cand) {
+    const ax = (raw[i] - at.x0) * kA, ay = (raw[i + 1] - at.y0) * kA, cx = Math.floor(ax / cell), cy = Math.floor(ay / cell), half = sc * S.size / 2;
+    let ok = true;
+    for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) {
+      const l = grid.get(key(cx + a, cy + b)); if (!l) continue;
+      for (const [x, y, h] of l) if (Math.abs(x - ax) < half + h + gap && Math.abs(y - ay) < half + h + gap) { ok = false; break; }
     }
+    if (!ok) continue;
+    const k = key(cx, cy); (grid.get(k) || grid.set(k, []).get(k)).push([ax, ay, half]);
+    out.push([i, sc]);
   }
   return out;
 }
 function lineStipple(sc, r) {
   const { buf, box } = sc, kA = AW / (box.x1 - box.x0), p = S.pitch * Math.PI / 180;
   const raw = contour(buf, Math.cos(p), Math.sin(p), S.lineFollow, S.lineGap / kA);
-  return linePick(raw, kA, r, box).map(([i, s]) => ({ x: (raw[i] - box.x0) * kA + (r() - .5) * S.size * S.jitter * .3 + S.panX, y: (raw[i + 1] - box.y0) * kA + S.panY, tone: raw[i + 3], pick: r(), sc: s }));
+  return linePick(raw, kA, r, box).map(([i, s]) => ({ x: (raw[i] - box.x0) * kA + (S.lineAM ? 0 : (r() - .5) * S.size * S.jitter * .3) + S.panX, y: (raw[i + 1] - box.y0) * kA + S.panY, tone: raw[i + 3], pick: r(), sc: s }));
 }
 function stipple(n, r, sc = scene) {
   if (S.lines) return lineStipple(sc, r);
@@ -559,7 +570,7 @@ function snapList(list) {
 }
 function draw(ctx, list, ox = 0, oy = 0, q = RES) {
   if (S.snap) list = snapList(list);
-  const groups = new Map(), s = S.snap ? S.cell : S.size;
+  const groups = new Map(), s = S.snap ? S.cell * (1 - S.cellGap) : S.size;
   for (const p of list) { const c = colorOf(p); let l = groups.get(c); if (!l) groups.set(c, l = []); l.push(p); }
   for (const [c, l] of groups) {
     ctx.fillStyle = c; ctx.beginPath();
@@ -592,6 +603,7 @@ const SLIDERS = {
   ambient: { label: 'Luz ambiente', min: 0, max: .8, step: .01, fmt: pct },
   shadow: { label: 'Sombras proyectadas', min: 0, max: 1, step: .01, fmt: pct },
   cell: { label: 'Tamaño de la celda', min: 2, max: 40, step: 1, fmt: v => v + ' px', emph: true },
+  cellGap: { label: 'Separación entre píxeles', min: .05, max: .7, step: .01, fmt: v => Math.round(v * 100) + '%' },
   count: { label: 'Densidad', min: 2000, max: 200000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño del píxel', min: 1, max: 24, step: .5, fmt: v => v + ' px', emph: true },
   threshold: { label: 'Umbral', min: 0, max: .9, step: .01, fmt: v => v ? Math.round(v * 100) + '%' : 'sin umbral' },
@@ -663,7 +675,7 @@ function sync(fast) {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink'; markPalette();
-  $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = !S.snap;
+  $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !S.snap;
   $('#sl-lineGap').hidden = $('#sl-lineFollow').hidden = $('#lineAM-row').hidden = !S.lines;
   document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn'))); });
   if (S.anim === 'enter') { $('#sl-revHold').hidden = S.entInf; $('#sl-entStay').hidden = !S.entInf; }
@@ -1126,7 +1138,7 @@ $('#png').addEventListener('click', async () => {
 });
 $('#svg').addEventListener('click', () => {
   const eb = exportBox(); if (!eb) return toast('No hay píxeles en el recorte.');
-  const b = eb.b, k = expRes() * eb.z, w = (b.x1 - b.x0) * k, h = (b.y1 - b.y0) * k, n = v => Math.round(v * k * 100) / 100, z = S.snap ? S.cell : S.size, s = z * k, out = [];
+  const b = eb.b, k = expRes() * eb.z, w = (b.x1 - b.x0) * k, h = (b.y1 - b.y0) * k, n = v => Math.round(v * k * 100) / 100, z = S.snap ? S.cell * (1 - S.cellGap) : S.size, s = z * k, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
   if (S.bgExport) out.push(`<rect width="${w}" height="${h}" fill="${S.bg}"/>`);
   const groups = new Map();
