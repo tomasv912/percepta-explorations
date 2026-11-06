@@ -173,7 +173,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <button data-v="8">8</button><button data-v="9">9</button><button data-v="12">12</button><button data-v="15">15</button><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button>
       </div>
       <div class="seg" data-key="vidFmt" aria-label="Formato del video" data-for="boil float hover turn reveal enter">
-        <button data-v="mp4" title="MP4 4K, a calidad máxima">MP4</button><button data-v="png" title="Cada cuadro como PNG, sin pérdida, en un .zip (pesa mucho más)">PNG</button>
+        <button data-v="mp4" title="MP4 4K, a calidad máxima">MP4</button><button data-v="png" title="Secuencia de imágenes: cada cuadro como PNG, sin pérdida, en un .zip (pesa mucho más)">Secuencia PNG (.zip)</button>
       </div>
       <button class="btn primary" id="video" data-for="boil float hover turn reveal enter" title="MP4 4K en loop, recortado al modelo, con el fondo (MP4 no tiene transparencia)">Exportar video</button>
     </div>
@@ -442,6 +442,7 @@ function sync(fast) {
   $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = !S.snap;
   document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn'))); });
   if (S.anim === 'enter') { $('#sl-revHold').hidden = S.entInf; $('#sl-entStay').hidden = !S.entInf; }
+  if (!filming) $('#video').textContent = S.vidFmt === 'png' ? 'Exportar secuencia (.zip)' : 'Exportar video';
   $('#turn').setAttribute('aria-pressed', S.turn);
   document.querySelectorAll('[data-p]').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === preset && !modelName.includes('.')));
   if (preset && !modelName.includes('.') && presetSeed !== S.seed && !fast) loadPreset();
