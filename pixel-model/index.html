@@ -131,7 +131,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
     <div class="hud" id="stats">—</div>
     <div class="tt" role="toolbar" aria-label="Animación">
       <div class="seg" data-key="anim" aria-label="Animación">
-        <button data-v="none">Quieta</button><button data-v="boil">A mano</button><button data-v="float">Flotar</button><button data-v="hover">Hover</button>
+        <button data-v="none">Quieta</button><button data-v="boil">A mano</button><button data-v="float">Flotar</button><button data-v="hover">Hover</button><button data-v="reveal">Reveal</button><button data-v="enter">Entrada</button>
       </div>
       <button class="tt-play" id="turn" aria-pressed="false" title="Turntable: una vuelta entera, sola o junto a la animación elegida">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg>
@@ -146,19 +146,35 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <div id="sl-floatScale" data-for="float"></div>
       <div id="sl-hoverRadius" data-for="hover"></div>
       <div id="sl-hoverForce" data-for="hover"></div>
+      <div class="seg" data-key="revDir" aria-label="Dirección del reveal" data-for="reveal">
+        <button data-v="up" title="De abajo hacia arriba">↑</button><button data-v="down" title="De arriba hacia abajo">↓</button><button data-v="ltr" title="De izquierda a derecha">→</button><button data-v="rtl" title="De derecha a izquierda">←</button><button data-v="center" title="Desde el centro hacia afuera">Centro</button><button data-v="random" title="Al azar, por todo el modelo">Azar</button>
+      </div>
+      <div id="sl-revSoft" data-for="reveal"></div>
+      <label class="tt-check" data-for="reveal" title="Cada píxel crece de 0 a 100% al aparecer; apagado, aparece de golpe"><input type="checkbox" data-check="revScale"> Crecen de 0 a 100%</label>
+      <div class="seg" data-key="entDir" aria-label="Desde dónde entran" data-for="enter">
+        <button data-v="top" title="Desde arriba">↓</button><button data-v="left" title="Desde la izquierda">→</button><button data-v="bottom" title="Desde abajo">↑</button><button data-v="right" title="Desde la derecha">←</button>
+      </div>
+      <div id="sl-entSpread" data-for="enter"></div>
+      <div id="sl-entStagger" data-for="enter"></div>
+      <label class="tt-check" data-for="enter" title="El modelo se forma y los píxeles siguen entrando por un lado mientras otros tantos se van por el opuesto, en loop"><input type="checkbox" data-check="entInf"> Infinito</label>
+      <div id="sl-entStay" data-for="enter"></div>
+      <div class="seg" data-key="ease" aria-label="Curva de movimiento" data-for="reveal enter">
+        <button data-v="lin" title="Lineal">Lineal</button><button data-v="in" title="Arranca lento y acelera">Acelera</button><button data-v="out" title="Arranca rápido y frena">Frena</button><button data-v="inOut" title="Lento, rápido, lento">Suave</button><button data-v="back" title="Se pasa un poco y vuelve">Rebote</button>
+      </div>
+      <div id="sl-revHold" data-for="reveal enter"></div>
       <div class="seg" data-key="ttDir" aria-label="Sentido" data-for="turn">
         <button data-v="1" title="A la derecha" aria-label="A la derecha">→</button><button data-v="-1" title="A la izquierda" aria-label="A la izquierda">←</button>
       </div>
       <label class="tt-check" data-for="turn" title="Los píxeles quedan pegados al modelo y giran con él; apagado, cada cuadro se dibuja de nuevo"><input type="checkbox" data-check="ttFixed"> Píxeles fijos</label>
-      <div id="sl-ttDur" data-for="boil float hover turn"></div>
-      <i class="tt-sep" data-for="boil float hover turn"></i>
-      <div class="seg" data-key="ttFps" aria-label="Cuadros por segundo del video" data-for="boil float hover turn">
+      <div id="sl-ttDur" data-for="boil float hover turn reveal enter"></div>
+      <i class="tt-sep" data-for="boil float hover turn reveal enter"></i>
+      <div class="seg" data-key="ttFps" aria-label="Cuadros por segundo del video" data-for="boil float hover turn reveal enter">
         <button data-v="8">8</button><button data-v="9">9</button><button data-v="12">12</button><button data-v="15">15</button><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button>
       </div>
-      <div class="seg" data-key="vidFmt" aria-label="Formato del video" data-for="boil float hover turn">
+      <div class="seg" data-key="vidFmt" aria-label="Formato del video" data-for="boil float hover turn reveal enter">
         <button data-v="mp4" title="MP4 4K, a calidad máxima">MP4</button><button data-v="png" title="Cada cuadro como PNG, sin pérdida, en un .zip (pesa mucho más)">PNG</button>
       </div>
-      <button class="btn primary" id="video" data-for="boil float hover turn" title="MP4 4K en loop, recortado al modelo, con el fondo (MP4 no tiene transparencia)">Exportar video</button>
+      <button class="btn primary" id="video" data-for="boil float hover turn reveal enter" title="MP4 4K en loop, recortado al modelo, con el fondo (MP4 no tiene transparencia)">Exportar video</button>
     </div>
   </main>
 
@@ -241,6 +257,7 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false, expScale: '1', snap: false, cell: 6, handJit: 1,
+  revDir: 'up', revSoft: .25, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -324,7 +341,7 @@ function colorOf(p) {
 const count = () => S.snap ? PerceptaCells(S.count, S.size, S.cell, 400000) : S.count;
 function snapList(list) {
   const sn = PerceptaSnap(list.length, i => list[i].x + (list[i].dx || 0), i => list[i].y + (list[i].dy || 0), S.cell), out = [];
-  for (let i = 0; i < list.length; i++) if (sn.keep[i]) out.push({ x: sn.x[i], y: sn.y[i], tone: list[i].tone, pick: list[i].pick });
+  for (let i = 0; i < list.length; i++) if (sn.keep[i]) out.push({ x: sn.x[i], y: sn.y[i], tone: list[i].tone, pick: list[i].pick, sc: list[i].sc });
   return out;
 }
 function draw(ctx, list, ox = 0, oy = 0, q = RES) {
@@ -333,7 +350,11 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
   for (const p of list) { const c = colorOf(p); let l = groups.get(c); if (!l) groups.set(c, l = []); l.push(p); }
   for (const [c, l] of groups) {
     ctx.fillStyle = c; ctx.beginPath();
-    for (const p of l) ctx.rect(Math.round((p.x + (p.dx || 0) - s / 2 - ox) * q) / q, Math.round((p.y + (p.dy || 0) - s / 2 - oy) * q) / q, s, s);
+    for (const p of l) {
+      // Reveal: a pixel growing in is drawn at its share of the size (p.sc), from its middle
+      const z = p.sc === undefined ? s : s * p.sc; if (z <= .05) continue;
+      ctx.rect(Math.round((p.x + (p.dx || 0) - z / 2 - ox) * q) / q, Math.round((p.y + (p.dy || 0) - z / 2 - oy) * q) / q, z, z);
+    }
     ctx.fill();
   }
 }
@@ -371,6 +392,11 @@ const SLIDERS = {
   floatScale: { label: 'Escala', min: .2, max: 4, step: .05, fmt: v => '×' + v.toFixed(2) },
   hoverRadius: { label: 'Radio', min: 30, max: 500, step: 5, fmt: v => v + ' px', emph: true },
   hoverForce: { label: 'Fuerza', min: .1, max: 3, step: .01, fmt: pct },
+  revSoft: { label: 'Borde', min: .02, max: 1, step: .01, fmt: pct },
+  revHold: { label: 'Quieto al final', min: 0, max: .8, step: .01, fmt: pct },
+  entSpread: { label: 'Dispersión', min: 0, max: 1, step: .01, fmt: pct },
+  entStagger: { label: 'Escalonado', min: 0, max: 1, step: .01, fmt: pct },
+  entStay: { label: 'Formando el modelo', min: .1, max: .95, step: .01, fmt: pct },
   ttDur: { label: 'Duración del loop', min: 1, max: 30, step: .5, fmt: v => v + ' s', emph: true },
   jitter: { label: 'Superposición', min: 0, max: 3, step: .01, fmt: pct },
 };
@@ -413,6 +439,7 @@ function sync(fast) {
   $('#inks').hidden = S.colorMode !== 'ink'; markPalette();
   $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = !S.snap;
   document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn'))); });
+  if (S.anim === 'enter') { $('#sl-revHold').hidden = S.entInf; $('#sl-entStay').hidden = !S.entInf; }
   $('#turn').setAttribute('aria-pressed', S.turn);
   document.querySelectorAll('[data-p]').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === preset && !modelName.includes('.')));
   if (preset && !modelName.includes('.') && presetSeed !== S.seed && !fast) loadPreset();
@@ -591,12 +618,76 @@ function comboFrame(ph, fast, ptr) {
   const list = turnFrame(ph, fast);
   if (S.anim === 'float') return floatFrame(ph, list);
   if (S.anim === 'hover' && ptr) return pushOver(list, ptr);
+  if (isMotion()) return motionFrame(ph, list);
   return list;
 }
+// ---------- Reveal and Entrada ----------
+// Reveal: the model is built up pixel by pixel in a sweep (Dirección), the front moving on the chosen curve over the
+// loop's time less Quieto al final; Borde is how wide the front is (how many are on their way in at once) and, with
+// Crecen de 0 a 100%, each pixel grows from nothing to its size as the front passes it.
+// Entrada: the pixels come in from one side of the frame and settle into the model, each on the chosen curve, the
+// ones nearest that side first (Escalonado spreads them out in time; Dispersión, across the frame). Infinito: each
+// pixel's trip runs round the loop at its own phase, in from the side, a while in place (Formando el modelo), and out
+// across the opposite side, so as many come in as go out and the model holds while the stream runs through it.
+const EASE = {
+  lin: t => t, in: t => t * t * t, out: t => 1 - (1 - t) ** 3, inOut: t => t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2,
+  back: t => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * (t - 1) ** 3 + c1 * (t - 1) ** 2; },
+};
+const hash01 = (i, k) => { let h = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(k + 0x632be5ab, 0xc2b2ae35); h ^= h >>> 13; h = Math.imul(h, 0x27d4eb2d); h ^= h >>> 15; return (h >>> 0) / 4294967296; };
+// Where each pixel sits in the sweep, 0 (first) to 1 (last).
+function sweepOrder(list, dir) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of list) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
+  const w = x1 - x0 || 1, h = y1 - y0 || 1, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, R = Math.hypot(w, h) / 2;
+  return list.map((p, i) => {
+    const k = dir === 'up' || dir === 'bottom' ? (y1 - p.y) / h : dir === 'down' || dir === 'top' ? (p.y - y0) / h : dir === 'ltr' || dir === 'left' ? (p.x - x0) / w
+      : dir === 'rtl' || dir === 'right' ? (x1 - p.x) / w : dir === 'center' ? Math.hypot(p.x - cx, p.y - cy) / R : hash01(i, 7);
+    return clamp(k * .92 + hash01(i, 3) * .08);
+  });
+}
+function revealFrame(ph, list = pts) {
+  const order = sweepOrder(list, S.revDir), E = EASE[S.ease], soft = S.revSoft, P = E(clamp(ph / Math.max(.05, 1 - S.revHold))) * (1 + soft), out = [];
+  list.forEach((p, i) => {
+    const a = clamp((P - order[i]) / soft);
+    if (a <= 0) return;
+    if (!S.revScale) { if (a < hash01(i, 11)) return; out.push({ ...p }); return; }
+    out.push({ ...p, sc: Math.max(0, E(a)) });
+  });
+  return out;
+}
+function enterFrame(ph, list = pts) {
+  const dir = S.entDir, E = EASE[S.ease], order = sweepOrder(list, dir), out = [], pad = S.size * 4;
+  const horiz = dir === 'left' || dir === 'right', sgn = dir === 'left' || dir === 'top' ? -1 : 1;
+  // A pixel's place off the frame: past the side it comes in at (or, leaving, the opposite one), spread across.
+  const off = (p, i, side) => {
+    const far = (hash01(i, 5) * .35 + .02) * (horiz ? AW : AH), spread = (hash01(i, 9) - .5) * S.entSpread * (horiz ? AH : AW);
+    if (horiz) return [side < 0 ? -pad - far : AW + pad + far, p.y + spread];
+    return [p.x + spread, side < 0 ? -pad - far : AH + pad + far];
+  };
+  list.forEach((p, i) => {
+    let x = p.x, y = p.y;
+    if (!S.entInf) {
+      // one trip in: later the farther from the side it comes in at (Escalonado), each trip on the curve
+      const span = Math.max(.05, 1 - S.revHold), trip = Math.max(.08, 1 - S.entStagger * .85), start = (order[i] * .85 + hash01(i, 13) * .15) * (1 - trip);
+      const t = clamp((ph / span - start) / trip), e = E(t), [sx, sy] = off(p, i, sgn);
+      x = sx + (p.x - sx) * e; y = sy + (p.y - sy) * e;
+    } else {
+      // round the loop: in, in place, out the other side; the phase from the order (Escalonado) and chance
+      const travel = (1 - S.entStay) / 2, f = ((ph + order[i] * S.entStagger + hash01(i, 13) * (1 - S.entStagger)) % 1 + 1) % 1;
+      if (f < travel) { const [sx, sy] = off(p, i, sgn), e = E(f / travel); x = sx + (p.x - sx) * e; y = sy + (p.y - sy) * e; }
+      else if (f >= 1 - travel) { const [ex, ey] = off(p, i + 7919, -sgn), e = E((f - (1 - travel)) / travel); x = p.x + (ex - p.x) * e; y = p.y + (ey - p.y) * e; }
+    }
+    out.push({ x, y, tone: p.tone, pick: p.pick, dx: 0, dy: 0 });
+  });
+  return out;
+}
+const motionFrame = (ph, list = pts) => S.anim === 'reveal' ? revealFrame(ph, list) : enterFrame(ph, list);
+const isMotion = () => S.anim === 'reveal' || S.anim === 'enter';
+
 // The loop on screen.
 function play() {
   cancelAnimationFrame(player); player = 0; shown = null; lastIdx = -1; t0 = performance.now();
-  if (S.turn || S.anim === 'boil' || S.anim === 'float') player = requestAnimationFrame(step);
+  if (S.turn || S.anim === 'boil' || S.anim === 'float' || isMotion()) player = requestAnimationFrame(step);
 }
 function step(now) {
   player = 0;
@@ -611,6 +702,7 @@ function step(now) {
     const i = Math.floor(t * S.fps) % boilCount();
     if (i !== lastIdx) { lastIdx = i; shown = boilFrame(i); render(); }
   } else if (S.anim === 'float') { shown = floatFrame((t / S.ttDur) % 1); render(); }
+  else if (isMotion()) { shown = motionFrame((t / S.ttDur) % 1); render(); }
   else return;
   player = requestAnimationFrame(step);
 }
@@ -756,6 +848,7 @@ $('#video').addEventListener('click', async () => {
     if (S.anim === 'boil') return boilFrame(Math.floor(i / fps * S.fps) % boilCount());
     if (S.anim === 'float') return floatFrame(i / N);
     if (S.anim === 'hover') { hoverStep(sim.list, sim.at(i), 1 / fps); return sim.list; }
+    if (isMotion()) return motionFrame(i / N);
     return turnFrame(i / N, false);
   };
   filming = true; btn.disabled = true; cancelAnimationFrame(player);
@@ -785,7 +878,7 @@ $('#video').addEventListener('click', async () => {
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = S.bg; ctx.fillRect(0, 0, W, H);
       ctx.setTransform(sc, 0, 0, sc, 0, 0); draw(ctx, list, b.x0, b.y0);
     };
-    const name = [{ boil: 'a-mano', float: 'flotar', hover: 'hover' }[S.anim], S.turn && 'turntable'].filter(Boolean).join('-');
+    const name = [{ boil: 'a-mano', float: 'flotar', hover: 'hover', reveal: 'reveal-' + S.revDir, enter: 'entrada-' + S.entDir + (S.entInf ? '-infinito' : '') }[S.anim], S.turn && 'turntable'].filter(Boolean).join('-');
     if (png) {
       // Lossless: every frame a PNG, numbered, in a .zip (stored: PNGs don't shrink further).
       const files = [];
