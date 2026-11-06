@@ -119,7 +119,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 }
 #building-controls { display: flex; flex-direction: column; gap: 10px; }
 #building-controls .seg { flex-wrap: wrap; }
-#building-controls .seg button { flex: 1 0 30%; }
+#building-controls .seg button, #shape-controls .seg button { flex: 1 0 30%; }
+#shape-controls .seg { flex-wrap: wrap; }
 .crop-hud { position: absolute; bottom: 72px; left: 14px; flex-direction: column; align-items: stretch; display: flex; gap: 4px; align-items: center; white-space: nowrap; z-index: 4; padding: 4px; border-radius: 10px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); font-size: 12px; color: var(--text-2); }
 .crop-hud b { color: var(--text); font-weight: 500; margin: 4px 6px; }
 .crop-hud button { height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: var(--fill); color: var(--text); font: 500 12px var(--font); cursor: pointer; }
@@ -194,6 +195,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section>
         <h2>Modelo</h2>
         <div class="presets" id="presets" aria-label="Modelos"></div>
+        <div id="shape-controls">
+          <div class="seg" data-key="shape" aria-label="Forma"><button data-v="cube">Cubo</button><button data-v="sphere">Esfera</button><button data-v="ico">Icosfera</button><button data-v="cyl">Cilindro</button><button data-v="cone">Cono</button><button data-v="pyramid">Pirámide</button><button data-v="tetra">Tetraedro</button><button data-v="torus">Toro</button><button data-v="disc">Círculo</button><button data-v="wave">Ola</button></div>
+        </div>
         <div id="building-controls">
           <div class="seg" data-key="bKind" aria-label="Tipo de edificio">
             <button data-v="auto" title="Según la semilla">Al azar</button><button data-v="setback">Escalonado</button><button data-v="cyl">Cilindro</button><button data-v="taper">Afinado</button><button data-v="twist">Torcido</button>
@@ -307,7 +311,7 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
-  bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, snap: false, cell: 6, cellGap: .2, handJit: 1,
+  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, snap: false, cell: 6, cellGap: .2, handJit: 1,
   revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -321,7 +325,7 @@ function rng(seed) {
 // Built-in models, each with variations from the seed (R): a bonsai and a skyscraper (scans, simplified, in models/),
 // and Building, generated here and shaped by its own settings; or an uploaded file. Positions are centred and scaled
 // to fit a unit sphere.
-const PRESETS = [['bonsai', 'Bonsai'], ['rascacielos', 'Rascacielos'], ['building', 'Building']];
+const PRESETS = [['bonsai', 'Bonsai'], ['rascacielos', 'Rascacielos'], ['building', 'Building'], ['shapes', 'Formas']];
 let model = null, modelName = '', preset = 'bonsai', presetSeed = -1, loadingPreset = null;
 // An indexed mesh into 18-float triangles, with smooth normals (each vertex the area-weighted sum of its faces).
 function indexedTris(P, I) {
@@ -430,10 +434,60 @@ function building(seed) {
   T.forEach((v, i) => { P[i * 3] = v[0]; P[i * 3 + 1] = v[1]; P[i * 3 + 2] = v[2]; I[i] = i; });
   return { P, I };
 }
-// What the current preset is made from: its seed, and Building's settings.
-const presetSig = () => preset + ':' + (preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
+// Formas: Blender's primitives and a wave. Round ones share their vertices (smooth shading); cube, pyramid and
+// tetrahedron keep a corner per face (flat). The wave is a sheet of a few long sine waves, from the seed.
+const SHAPES = [['cube', 'Cubo'], ['sphere', 'Esfera'], ['ico', 'Icosfera'], ['cyl', 'Cilindro'], ['cone', 'Cono'], ['pyramid', 'Pirámide'], ['tetra', 'Tetraedro'], ['torus', 'Toro'], ['disc', 'Círculo'], ['wave', 'Ola']];
+function shapeMesh(kind, seed) {
+  const P = [], I = [];
+  const vert = (x, y, z) => (P.push(x, y, z), P.length / 3 - 1);
+  // a grid over (u, v) in [0, 1]², joined round in u and/or v when it closes on itself
+  const grid = (nu, nv, f, wrapU, wrapV) => {
+    const cu = wrapU ? nu : nu + 1, cv = wrapV ? nv : nv + 1, base = P.length / 3;
+    for (let j = 0; j < cv; j++) for (let i = 0; i < cu; i++) vert(...f(i / nu, j / nv));
+    for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+      const a = base + j * cu + i, b = base + j * cu + (i + 1) % cu, c = base + ((j + 1) % cv) * cu + (i + 1) % cu, d = base + ((j + 1) % cv) * cu + i;
+      I.push(a, b, c, a, c, d);
+    }
+  };
+  // flat faces: each polygon its own corners, fanned
+  const face = (...pts) => { const b = P.length / 3; pts.forEach(p => vert(...p)); for (let k = 1; k + 1 < pts.length; k++) I.push(b, b + k, b + k + 1); };
+  const disk = (y, rad, n, up) => { const b = vert(0, y, 0); for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; vert(Math.cos(a) * rad, y, Math.sin(a) * rad); } for (let i = 0; i < n; i++) up ? I.push(b, b + 1 + (i + 1) % n, b + 1 + i) : I.push(b, b + 1 + i, b + 1 + (i + 1) % n); };
+  const T = Math.PI * 2;
+  if (kind === 'cube') {
+    const c = [[-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1], [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]], q = (a, b, c2, d) => face(c[a], c[b], c[c2], c[d]);
+    q(0, 3, 2, 1); q(4, 5, 6, 7); q(0, 1, 5, 4); q(3, 7, 6, 2); q(0, 4, 7, 3); q(1, 2, 6, 5);
+  } else if (kind === 'sphere') grid(48, 32, (u, v) => { const a = u * T, b = v * Math.PI; return [Math.sin(b) * Math.cos(a), Math.cos(b), Math.sin(b) * Math.sin(a)]; }, true, false);
+  else if (kind === 'ico') {
+    const t = (1 + Math.sqrt(5)) / 2; let V = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]];
+    let F = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
+    const nrm = v => { const l = Math.hypot(...v); return v.map(c => c / l); };
+    V = V.map(nrm);
+    for (let s2 = 0; s2 < 2; s2++) {
+      const mid = new Map(), m = (a, b) => { const k = Math.min(a, b) + ':' + Math.max(a, b); if (!mid.has(k)) { V.push(nrm(V[a].map((c, i) => (c + V[b][i]) / 2))); mid.set(k, V.length - 1); } return mid.get(k); };
+      F = F.flatMap(([a, b, c]) => { const ab = m(a, b), bc = m(b, c), ca = m(c, a); return [[a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]]; });
+    }
+    // flat facets, as Blender's icosphere looks
+    for (const [a, b, c] of F) face(V[a], V[b], V[c]);
+  } else if (kind === 'cyl') { grid(48, 1, (u, v) => [Math.cos(u * T), 1 - 2 * v, Math.sin(u * T)], true, false); disk(1, 1, 48, true); disk(-1, 1, 48, false); }
+  else if (kind === 'cone') { grid(48, 16, (u, v) => [Math.cos(u * T) * v, 1 - 2 * v, Math.sin(u * T) * v], true, false); disk(-1, 1, 48, false); }
+  else if (kind === 'pyramid') { const a = [0, 1.2, 0], b = [[-1, -.8, -1], [1, -.8, -1], [1, -.8, 1], [-1, -.8, 1]]; for (let i = 0; i < 4; i++) face(a, b[(i + 1) % 4], b[i]); face(b[0], b[1], b[2], b[3]); }
+  else if (kind === 'tetra') { const v = [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, -1, -1]]; face(v[0], v[1], v[2]); face(v[0], v[3], v[1]); face(v[0], v[2], v[3]); face(v[1], v[3], v[2]); }
+  else if (kind === 'torus') grid(64, 28, (u, v) => { const a = u * T, b = v * T, rr = 1 + .38 * Math.cos(b); return [rr * Math.cos(a), .38 * Math.sin(b), rr * Math.sin(a)]; }, true, true);
+  else if (kind === 'disc') { disk(.04, 1, 64, true); disk(-.04, 1, 64, false); grid(64, 1, (u, v) => [Math.cos(u * T), .04 - .08 * v, Math.sin(u * T)], true, false); }
+  else {
+    // the wave: a sheet 2 × 2, a few long waves from the seed, its two sides (so it reads from below too)
+    const r = rng(seed * 6007 + 3), ws = Array.from({ length: 3 }, (_, k) => ({ f: (1 + k * .8) * (.7 + r() * .6) * Math.PI, th: r() * Math.PI, ph: r() * T, a: .32 / (1 + k) }));
+    const h = (x, z) => ws.reduce((s3, w) => s3 + w.a * Math.sin(w.f * (x * Math.cos(w.th) + z * Math.sin(w.th)) + w.ph), 0);
+    grid(80, 80, (u, v) => [u * 2 - 1, h(u * 2 - 1, v * 2 - 1), v * 2 - 1], false, false);
+    const n = I.length; for (let k = 0; k < n; k += 3) I.push(I[k], I[k + 2], I[k + 1]);
+  }
+  return { P: Float32Array.from(P), I: Uint32Array.from(I) };
+}
+// What the current preset is made from: its seed, and Building's settings or the shape.
+const presetSig = () => preset + ':' + (preset === 'shapes' ? S.shape + ':' + S.seed : preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
 function loadPreset() {
   const sig = presetSig(), which = preset;
+  if (which === 'shapes') { const m = shapeMesh(S.shape, S.seed); setModelTris(indexedTris(m.P, m.I), SHAPES.find(x => x[0] === S.shape)[1]); presetSeed = sig; return; }
   if (which === 'building') { const m = building(S.seed); setModelTris(indexedTris(m.P, m.I), 'Building'); presetSeed = sig; return; }
   if (loadingPreset) return;
   loadingPreset = (which === 'bonsai' ? bonsaiMesh() : skyMesh()).then(base => {
@@ -683,6 +737,7 @@ function sync(fast) {
   $('#turn').setAttribute('aria-pressed', S.turn);
   document.querySelectorAll('[data-p]').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === preset && !modelName.includes('.')));
   $('#building-controls').hidden = preset !== 'building' || modelName.includes('.');
+  $('#shape-controls').hidden = preset !== 'shapes' || modelName.includes('.');
   if (preset && !modelName.includes('.') && presetSeed !== presetSig()) loadPreset();
   if (!model) { $('#stats').textContent = 'Cargando el modelo…'; return; }
   updateBg(S.bgFlip);
