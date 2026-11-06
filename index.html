@@ -243,6 +243,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-mod"></div>
         <div id="sl-variation"></div>
         <div id="sl-grain"></div>
+        <label class="check" title="Cada partícula es un círculo en vez de un cuadrado"><input type="checkbox" data-check="circle"> Partículas circulares</label>
         <label class="check" title="Los cubos se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
         <div id="sl-cell"></div>
         <div id="sl-cellGap"></div>
@@ -320,7 +321,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2,
+  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2,
   motion: 'still', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
@@ -451,7 +452,7 @@ function generate(st) {
     px[got] = x; py[got] = y; dep[got] = depth;
     size[got] = mono ? st.size : st.size * sizeK * Math.max(.2, 1 + st.variation * (r() * 2 - 1) * .7);
     shade[got] = mono ? 0 : Math.floor(r() * SHADES);
-    pal[got] = palIdx ?? Math.floor(r() * st.palette.length); rgb[got] = color;
+    pal[got] = palIdx ?? Math.floor(r() * (st.palette.length + 1)); rgb[got] = color; // one share more: the contrast colour
     tlen[got] = Math.max(0, 1 + st.trailJitter * (r() * 2 - 1));
     got++;
   };
@@ -772,12 +773,17 @@ function tint(hex, k, grain) {
   const t = k / (SHADES - 1) * grain * 2.5, [r, g, b] = hexToRgb(hex);
   return rgbHex(r + (255 - r) * t, g + (255 - g) * t, b + (255 - b) * t);
 }
+const accentOf = st => PerceptaBg.pick(st.bg, st.bgFlip);
 function colorOf(i, st) {
   if (st.colorMode === 'image' && img && st.source === 'image') {
     const c = gen.rgb[i] & 0xF8F8F8;
     return rgbHex(c >> 16 & 255, c >> 8 & 255, c & 255);
   }
-  const base = onBg(st.colorMode === 'random' ? st.palette[gen.pal[i] % st.palette.length] : st.ink, st.bg);
+  // Al azar: the palette's colours and, with them, the background's opposite: black on a white ground, white on a black
+  // one (on a coloured ground, whichever of the two stands out more).
+  let c = st.ink;
+  if (st.colorMode === 'random') { const P = st.palette, k = gen.pal[i] % (P.length + 1); c = k < P.length ? P[k] : accentOf(st); }
+  const base = onBg(c, st.bg);
   return st.style === 'mono' ? base : tint(base, gen.shade[i], st.grain);
 }
 
@@ -881,18 +887,21 @@ function eachShape(st, fn, lev = null, grow = 0) {
       }
       if (polys.length) fn(color, (1 - (b - .5) / TRAIL_BANDS) * fade, polys);
     }
-    fn(color, fade, idx.map(i => { const h = (SNAP ? st.cell * (1 - st.cellGap) : gen.size[i]) / 2 + grow, x = SNAP ? SNAP.x[i] : X[i], y = SNAP ? SNAP.y[i] : Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }));
+    fn(color, fade, idx.map(i => { const h = (SNAP ? st.cell * (1 - st.cellGap) : gen.size[i]) / 2 + grow, x = SNAP ? SNAP.x[i] : X[i], y = SNAP ? SNAP.y[i] : Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }), true);
   }
 }
 // Filled in small batches: one huge path of overlapping polygons rasterizes far slower than many small ones.
 const BATCH = 256;
 function fill(ctx, st, lev, grow) {
-  eachShape(st, (color, alpha, polys) => {
+  // Círculos: each cube drawn as the circle inside its square (trails stay bands).
+  eachShape(st, (color, alpha, polys, cube) => {
     ctx.globalAlpha = alpha; ctx.fillStyle = color;
+    const round = cube && st.circle;
     for (let k = 0; k < polys.length; k += BATCH) {
       ctx.beginPath();
       for (let j = k; j < Math.min(polys.length, k + BATCH); j++) {
         const p = polys[j];
+        if (round) { const rr = (p[2] - p[0]) / 2, cx = p[0] + rr, cy = p[1] + rr; ctx.moveTo(cx + rr, cy); ctx.arc(cx, cy, rr, 0, Math.PI * 2); continue; }
         ctx.moveTo(p[0], p[1]); ctx.lineTo(p[2], p[3]); ctx.lineTo(p[4], p[5]); ctx.lineTo(p[6], p[7]); ctx.closePath();
       }
       ctx.fill();
@@ -927,8 +936,9 @@ function toSvg(st) {
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${gen.W}" height="${gen.H}" viewBox="0 0 ${gen.W} ${gen.H}">`);
   if (st.bgExport) out.push(`<rect width="${gen.W}" height="${gen.H}" fill="${st.bg}"/>`);
   out.push(`<g transform="matrix(${r(c * 1000) / 1000} 0 0 ${r(c * 1000) / 1000} ${r(-v.x * c)} ${r(-v.y * c)})">`);
-  const paths = (lev, grow) => eachShape(st, (color, alpha, polys) => {
-    const d = polys.filter(inView).map(q => q.map((v, k) => v + (k % 2 ? panY : panX))).map(p => `M${r(p[0])} ${r(p[1])}L${r(p[2])} ${r(p[3])}L${r(p[4])} ${r(p[5])}L${r(p[6])} ${r(p[7])}Z`).join('');
+  const paths = (lev, grow) => eachShape(st, (color, alpha, polys, cube) => {
+    const round = cube && st.circle, circ = p => { const rr = (p[2] - p[0]) / 2; return `M${r(p[0])} ${r(p[1] + rr)}a${r(rr)} ${r(rr)} 0 1 0 ${r(rr * 2)} 0a${r(rr)} ${r(rr)} 0 1 0 ${r(-rr * 2)} 0Z`; };
+    const d = polys.filter(inView).map(q => q.map((v, k) => v + (k % 2 ? panY : panX))).map(p => round ? circ(p) : `M${r(p[0])} ${r(p[1])}L${r(p[2])} ${r(p[3])}L${r(p[4])} ${r(p[5])}L${r(p[6])} ${r(p[7])}Z`).join('');
     if (d) out.push(`<path fill="${color}"${alpha < 1 ? ` fill-opacity="${Math.round(alpha * 1000) / 1000}"` : ''} d="${d}"/>`);
   }, lev, grow);
   if (!D) paths();
@@ -963,7 +973,7 @@ const SLIDERS = {
   complexity: { label: 'Complejidad', min: 1, max: 6, step: 1, fmt: String },
   persp: { label: 'Perspectiva', min: 0, max: 1, step: .01, fmt: pct },
   thickness: { label: 'Grosor', min: 0, max: 1, step: .01, fmt: pct },
-  dPx: { label: 'Espacio entre píxeles', values: steps(.1, [.1, 1], [.25, 20]), fmt: v => v.toLocaleString('es') + ' px', emph: true },
+  dPx: { label: 'Espacio entre píxeles', values: steps(0, [.1, 1], [.25, 20]), fmt: v => v.toLocaleString('es', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + ' px', emph: true },
   dGap: { label: 'Espacio entre líneas', min: 3, max: 80, step: 1, fmt: v => v + ' px', emph: true },
   dRelief: { label: 'Relieve', min: 0, max: 1.5, step: .01, fmt: v => Math.round(v * 100) + '%' },
   fade: { label: 'Desvanecer bordes', min: 0, max: 1, step: .01, fmt: pct },
