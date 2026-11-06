@@ -190,7 +190,14 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <div id="sl-contrast"></div>
           <div id="sl-threshold"></div>
           <label class="check"><input type="checkbox" data-check="invert"> Invertir luces y sombras</label>
-          <label class="check"><input type="checkbox" data-check="grid"> Puntos en cuadrícula</label>
+          <label class="check" title="Calcula la profundidad de la foto (en el navegador) y dibuja líneas horizontales que siguen su volumen"><input type="checkbox" data-check="imgLines"> Líneas que siguen la profundidad</label>
+          <div id="depth-controls">
+            <p class="hint" id="depth-status"></p>
+            <div id="sl-dLines"></div>
+            <div id="sl-dRelief"></div>
+            <label class="check" title="Los píxeles se achican con la luz hasta desaparecer; apagado, se juntan más en lo oscuro"><input type="checkbox" data-check="dAM"> Modular el tamaño con la luz</label>
+          </div>
+          <label class="check" id="grid-row"><input type="checkbox" data-check="grid"> Puntos en cuadrícula</label>
           <div id="sl-gridCols"></div>
           <div id="sl-rotX"></div>
           <div id="sl-rotY"></div>
@@ -312,7 +319,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2, snap: false, cell: 8, cellGap: .2,
+  dof: 0, focus: 0, focusBand: .2, imgLines: false, dLines: 90, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2,
   motion: 'still', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
@@ -345,7 +352,34 @@ function perlin(rand) {
 // ---------- Image source ----------
 // An uploaded image is read once into a darkness grid; dark areas get more cubes, white areas none.
 const GRID = 480;
-let img = null, imgId = 0;
+let img = null, imgId = 0, depthId = 0;
+// The depth of the picture, by Depth Anything V2 (small, 8-bit) run in the browser with transformers.js
+// (loaded from jsDelivr): the library and the model (from Hugging Face, about 27 MB) are fetched the first time and
+// stay in the browser's cache. Near is high (1), far is low (0), one value per cell of the tone grid.
+let depthPipe = null;
+async function ensureDepth() {
+  if (!img || img.depth || img.depthBusy) return;
+  const me = img; me.depthBusy = true;
+  const status = t => { const el = document.getElementById('depth-status'); if (el) el.textContent = t; };
+  status('Calculando la profundidad… (la primera vez descarga el modelo, unos 27 MB)');
+  try {
+    if (!depthPipe) {
+      const T = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2/dist/transformers.min.js');
+      T.env.allowLocalModels = false;
+      depthPipe = await T.pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', { dtype: 'q8', device: 'wasm' });
+    }
+    const out = await depthPipe(me.pic), dm = out.depth, ch = dm.channels || 1, D = new Float32Array(me.gw * me.gh);
+    let lo = Infinity, hi = -Infinity;
+    for (let j = 0; j < me.gh; j++) for (let i = 0; i < me.gw; i++) {
+      const x = Math.min(dm.width - 1, Math.floor((i + .5) / me.gw * dm.width)), y = Math.min(dm.height - 1, Math.floor((j + .5) / me.gh * dm.height)), v = dm.data[(y * dm.width + x) * ch];
+      D[j * me.gw + i] = v; lo = Math.min(lo, v); hi = Math.max(hi, v);
+    }
+    for (let k = 0; k < D.length; k++) D[k] = (D[k] - lo) / ((hi - lo) || 1);
+    me.depth = D; depthId++; status('');
+    if (img === me) sync();
+  } catch (err) { console.error(err); status('No se pudo calcular la profundidad (hace falta conexión la primera vez).'); }
+  finally { me.depthBusy = false; }
+}
 function loadImage(el) {
   const iw = el.naturalWidth || el.width, ih = el.naturalHeight || el.height;
   const gw = Math.max(2, Math.round(iw >= ih ? GRID : GRID * iw / ih)), gh = Math.max(2, Math.round(iw >= ih ? GRID * ih / iw : GRID));
@@ -365,7 +399,10 @@ function loadImage(el) {
     const r = d[k * 4], g = d[k * 4 + 1], b = d[k * 4 + 2];
     lum[k] = (.2126 * r + .7152 * g + .0722 * b) / 255; rgb[k] = r << 16 | g << 8 | b;
   }
-  img = { gw, gh, lum, rgb, ar: iw / ih }; imgId++;
+  // and a picture of it, at most 640 on its long side, for the depth model (worked out when Líneas asks for it)
+  const pk = Math.min(1, 640 / Math.max(iw, ih)), pc = document.createElement('canvas'); pc.width = Math.round(iw * pk); pc.height = Math.round(ih * pk);
+  const px2 = pc.getContext('2d'); px2.fillStyle = '#fff'; px2.fillRect(0, 0, pc.width, pc.height); px2.imageSmoothingQuality = 'high'; px2.drawImage(cur, 0, 0, pc.width, pc.height);
+  img = { gw, gh, lum, rgb, ar: iw / ih, pic: pc.toDataURL('image/jpeg', .92), depth: null }; imgId++;
 }
 
 // ---------- Generation ----------
@@ -403,7 +440,8 @@ function generate(st) {
   // Vertical: the frame turns on its side, and the composition (except an image) flows bottom to top.
   const [W, H] = st.orient === 'v' ? [...SIZES[st.aspect]].reverse() : SIZES[st.aspect], r = rng(st.seed), rand = r, mono = st.style === 'mono', image = st.source === 'image' && img;
   const gridRows = image ? Math.max(1, Math.round(st.gridCols / img.ar)) : 0, grid = image && st.grid;
-  const n = grid ? st.gridCols * gridRows : st.snap ? PerceptaCells(st.count, st.size, st.cell, 300000) : st.count;
+  const lines = image && st.imgLines && img.depth;
+  const n = lines ? img.gw * img.gh : grid ? st.gridCols * gridRows : st.snap ? PerceptaCells(st.count, st.size, st.cell, 300000) : st.count;
   const px = new Float32Array(n), py = new Float32Array(n), size = new Float32Array(n), shade = new Uint8Array(n);
   const pal = new Uint8Array(n), rgb = new Uint32Array(n), tlen = new Float32Array(n), dep = new Float32Array(n);
   let got = 0;
@@ -442,8 +480,42 @@ function generate(st) {
       M[k] = t >= 1 ? 0 : Math.max(0, (v - t) / (1 - t));
       cdf[k] = sum += M[k] ** 1.2;
     }
+    // Líneas que siguen la profundidad: level lines of the picture's height less its relief (the depth map, near = high),
+    // so each line runs across like a scan line and rises over what is near: it follows the form. Traced where the
+    // level steps between neighbouring cells of the same surface (not across a jump in depth). Along a line the
+    // picture's tone sets the cubes: sized by it, down to nothing in the light (Modular el tamaño), or closer together
+    // in the dark; never on top of one another (the darkest are placed first, with a sliver of space all round).
+    if (lines) {
+      const Dm = img.depth, R = st.dRelief * .3, gap = 1 / st.dLines, lev = new Float32Array(cells), cand = [];
+      const m = .06 * Math.min(W, H) + st.size / 2, kImg = Math.min((W - 2 * m) / img.ar, H - 2 * m), sz = st.size / kImg, sep = sz * .12;
+      for (let k = 0; k < cells; k++) lev[k] = ((Math.floor(k / gw) + .5) / gh - R * Dm[k]) / gap;
+      for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
+        const k = j * gw + i;
+        for (const q of [i + 1 < gw ? k + 1 : -1, j + 1 < gh ? k + gw : -1]) {
+          if (q < 0 || Math.abs(Dm[q] - Dm[k]) > .12) continue;
+          const a = lev[k], b = lev[q], la = Math.floor(a), lb = Math.floor(b); if (la === lb) continue;
+          const tt = (Math.max(la, lb) - a) / (b - a || 1), xi = q === k + 1 ? i + tt : i, yi = q === k + 1 ? j : j + tt;
+          const tone = M[k] + (M[q] - M[k]) * tt;
+          cand.push([(xi + .5) / gw * img.ar, (yi + .5) / gh, tone, k]);
+          break;
+        }
+      }
+      const dens = clamp(st.count / 45000, .05, 1), scOf = tn => st.dAM ? Math.pow(tn, .75) : 1, cellS = sz + sep, taken = new Map(), keyOf = (x, y) => x * 100003 + y;
+      cand.sort((a, b) => b[2] - a[2]);
+      for (const [x, y, tn, k] of cand) {
+        if (tn <= 0) continue;
+        if (!st.dAM && r() > Math.min(1, Math.pow(tn, 1.2) * dens * 1.5)) continue;
+        const sc = scOf(tn); if (sc < .08) continue;
+        const half = sc * sz / 2, cx = Math.floor(x / cellS), cy = Math.floor(y / cellS);
+        let ok = true;
+        for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = taken.get(keyOf(cx + a, cy + b)); if (l) for (const [ox, oy, oh] of l) if (Math.abs(ox - x) < half + oh + sep && Math.abs(oy - y) < half + oh + sep) { ok = false; break; } }
+        if (!ok) continue;
+        const kk = keyOf(cx, cy); (taken.get(kk) || taken.set(kk, []).get(kk)).push([x, y, half]);
+        add(x, y, 1, col[k]); size[got - 1] = st.size * sc; shade[got - 1] = 0;
+      }
+    }
     // Cuadrícula: one cube per node wherever the image is dark enough, sized by its tone.
-    if (grid) for (let j = 0; j < gridRows; j++) for (let i = 0; i < st.gridCols; i++) {
+    else if (grid) for (let j = 0; j < gridRows; j++) for (let i = 0; i < st.gridCols; i++) {
       const u = (i + .5) / st.gridCols, v = (j + .5) / gridRows, k = Math.min(gh - 1, Math.floor(v * gh)) * gw + Math.min(gw - 1, Math.floor(u * gw));
       if (M[k] > 0) add(u * img.ar, v, (1 - st.mod) + st.mod * Math.sqrt(Math.max(M[k], .04)), col[k]);
     }
@@ -883,6 +955,8 @@ const SLIDERS = {
   complexity: { label: 'Complejidad', min: 1, max: 6, step: 1, fmt: String },
   persp: { label: 'Perspectiva', min: 0, max: 1, step: .01, fmt: pct },
   thickness: { label: 'Grosor', min: 0, max: 1, step: .01, fmt: pct },
+  dLines: { label: 'Cantidad de líneas', min: 15, max: 300, step: 1, fmt: String, emph: true },
+  dRelief: { label: 'Relieve', min: 0, max: 1.5, step: .01, fmt: v => Math.round(v * 100) + '%' },
   fade: { label: 'Desvanecer bordes', min: 0, max: 1, step: .01, fmt: pct },
   wThresh: { label: 'Umbral (se juntan en las curvas)', min: 0, max: .95, step: .01, fmt: pct },
   jitter: { label: 'Temblor', min: 0, max: 12, step: .5, fmt: v => v ? v + ' px' : 'sin temblor' },
@@ -1002,12 +1076,13 @@ function sync() {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase())); $('#palette-box').hidden = S.colorMode !== 'random';
   $('#blModel').value = S.blModel; $('#sl-blFlorets').hidden = S.blModel !== 'hortensia';
   updateBg(S.bgFlip);
-  $('#sl-gridCols').hidden = !S.grid; $('#sl-count').hidden = (image && S.grid) || S.snap; $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !S.snap;
+  $('#depth-controls').hidden = !S.imgLines; $('#grid-row').hidden = S.imgLines; if (image && S.imgLines) ensureDepth();
+  $('#sl-gridCols').hidden = !S.grid || S.imgLines; $('#sl-count').hidden = (image && S.grid) || S.snap; $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !S.snap;
   $('.rt-bar [data-tool="rotate"]').hidden = !image; if (!image && tools.tool === 'rotate') tools.setTool('scatter');
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   markPalette();
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
-  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz', S.wThresh, S.contrast, S.threshold, S.invert,
+  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz', S.wThresh, S.contrast, S.threshold, S.invert, S.imgLines && depthId, S.dLines, S.dRelief, S.dAM,
     S.style, S.count, S.size, S.snap && S.cell, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {
