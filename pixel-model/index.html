@@ -149,6 +149,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <div class="seg" data-key="revDir" aria-label="Dirección del reveal" data-for="reveal">
         <button data-v="up" title="De abajo hacia arriba">↑</button><button data-v="down" title="De arriba hacia abajo">↓</button><button data-v="ltr" title="De izquierda a derecha">→</button><button data-v="rtl" title="De derecha a izquierda">←</button><button data-v="center" title="Desde el centro hacia afuera">Centro</button><button data-v="random" title="Al azar, por todo el modelo">Azar</button>
       </div>
+      <div id="sl-revOrg" data-for="reveal"></div>
       <div id="sl-revSoft" data-for="reveal"></div>
       <label class="tt-check" data-for="reveal" title="Cada píxel crece de 0 a 100% al aparecer; apagado, aparece de golpe"><input type="checkbox" data-check="revScale"> Crecen de 0 a 100%</label>
       <div class="seg" data-key="entDir" aria-label="Desde dónde entran" data-for="enter">
@@ -257,7 +258,7 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false, expScale: '1', snap: false, cell: 6, handJit: 1,
-  revDir: 'up', revSoft: .25, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
+  revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -392,7 +393,8 @@ const SLIDERS = {
   floatScale: { label: 'Escala', min: .2, max: 4, step: .05, fmt: v => '×' + v.toFixed(2) },
   hoverRadius: { label: 'Radio', min: 30, max: 500, step: 5, fmt: v => v + ' px', emph: true },
   hoverForce: { label: 'Fuerza', min: .1, max: 3, step: .01, fmt: pct },
-  revSoft: { label: 'Borde', min: .02, max: 1, step: .01, fmt: pct },
+  revOrg: { label: 'Orgánico', min: 0, max: 1, step: .01, fmt: pct, emph: true },
+  revSoft: { label: 'Duración de cada píxel', min: .01, max: .6, step: .01, fmt: pct },
   revHold: { label: 'Quieto al final', min: 0, max: .8, step: .01, fmt: pct },
   entSpread: { label: 'Dispersión', min: 0, max: 1, step: .01, fmt: pct },
   entStagger: { label: 'Escalonado', min: 0, max: 1, step: .01, fmt: pct },
@@ -622,9 +624,8 @@ function comboFrame(ph, fast, ptr) {
   return list;
 }
 // ---------- Reveal and Entrada ----------
-// Reveal: the model is built up pixel by pixel in a sweep (Dirección), the front moving on the chosen curve over the
-// loop's time less Quieto al final; Borde is how wide the front is (how many are on their way in at once) and, with
-// Crecen de 0 a 100%, each pixel grows from nothing to its size as the front passes it.
+// Reveal: the model is built up pixel by pixel, each at its own moment (see revealTimes), over the loop's time less
+// Quieto al final, on the chosen curve; with Crecen de 0 a 100% each pixel grows from nothing to its size.
 // Entrada: the pixels come in from one side of the frame and settle into the model, each on the chosen curve, the
 // ones nearest that side first (Escalonado spreads them out in time; Dispersión, across the frame). Infinito: each
 // pixel's trip runs round the loop at its own phase, in from the side, a while in place (Formando el modelo), and out
@@ -645,12 +646,27 @@ function sweepOrder(list, dir) {
     return clamp(k * .92 + hash01(i, 3) * .08);
   });
 }
+// Each pixel comes in at its own moment, one by one: the sweep (Dirección) only leans the moments, Orgánico mixes in
+// chance and patches (a slow noise over the model, so neighbours tend to come together, like something growing), and
+// each one takes Duración de cada píxel to grow in.
+let revCache = null;
+function revealTimes(list) {
+  const key = list.length + '|' + S.revDir + '|' + S.revOrg + '|' + S.seed + '|' + (list[0] && list[0].x);
+  if (revCache && revCache.key === key && revCache.list === list) return revCache.t;
+  const order = sweepOrder(list, S.revDir), o = S.revOrg, f = .006;
+  const t = list.map((p, i) => clamp(order[i] * (1 - o) + o * (.55 * hash01(i, 21) + .45 * clamp(noise(p.x * f, p.y * f, S.seed * .37) * .9 + .5))));
+  // spread evenly over the time (by rank), so the pixels keep coming at a steady pace on the chosen curve
+  const idx = t.map((_, i) => i).sort((a, b) => t[a] - t[b]), r = new Float32Array(t.length);
+  idx.forEach((i, k) => r[i] = k / Math.max(1, idx.length - 1));
+  revCache = { key, list, t: r };
+  return r;
+}
 function revealFrame(ph, list = pts) {
-  const order = sweepOrder(list, S.revDir), E = EASE[S.ease], soft = S.revSoft, P = E(clamp(ph / Math.max(.05, 1 - S.revHold))) * (1 + soft), out = [];
+  const order = revealTimes(list), E = EASE[S.ease], soft = S.revSoft, P = E(clamp(ph / Math.max(.05, 1 - S.revHold))) * (1 + soft), out = [];
   list.forEach((p, i) => {
     const a = clamp((P - order[i]) / soft);
     if (a <= 0) return;
-    if (!S.revScale) { if (a < hash01(i, 11)) return; out.push({ ...p }); return; }
+    if (!S.revScale) { out.push({ ...p }); return; }
     out.push({ ...p, sc: Math.max(0, E(a)) });
   });
   return out;
