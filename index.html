@@ -517,7 +517,7 @@ function generate(st) {
         const sc = scOf(tn); if (sc < .08) continue;
         const half = sc * sz / 2, cx = Math.floor(x / cellS), cy = Math.floor(y / cellS);
         let ok = true;
-        for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = taken.get(keyOf(cx + a, cy + b)); if (l) for (const [ox, oy, oh] of l) if (Math.hypot(ox - x, oy - y) < half + oh + sep - 1e-7) { ok = false; break; } // circles: apart by their radii and the space }
+        for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = taken.get(keyOf(cx + a, cy + b)); if (l) for (const [ox, oy, oh] of l) if (Math.hypot(ox - x, oy - y) < half + oh + sep - 1e-7) { ok = false; break; } } // circles: apart by their radii and the space
         if (!ok) continue;
         const kk = keyOf(cx, cy); (taken.get(kk) || taken.set(kk, []).get(kk)).push([x, y, half]);
         add(x, y, 1, col[k]); size[got - 1] = st.size * sc; shade[got - 1] = 0;
