@@ -142,7 +142,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
     <div class="crop-hud" id="crop-hud"><button id="crop-tool" aria-pressed="false" title="Recortar (C): arrastrá un recuadro sobre el modelo, o clic para acercar ×2. Las flechas lo desplazan">Recortar</button><b id="crop-label" hidden>Recorte</b><button id="crop-back" hidden title="Vuelve al recorte anterior">Vista anterior</button><button id="crop-clear" hidden title="Muestra el cuadro entero">Quitar recorte</button></div>
     <div class="tt" role="toolbar" aria-label="Animación">
       <div class="seg" data-key="anim" aria-label="Animación">
-        <button data-v="none">Quieta</button><button data-v="boil">A mano</button><button data-v="float">Flotar</button><button data-v="hover">Hover</button><button data-v="reveal">Reveal</button><button data-v="enter">Entrada</button>
+        <button data-v="none">Quieta</button><button data-v="boil">A mano</button><button data-v="float">Flotar</button><button data-v="hover">Hover</button><button data-v="reveal">Reveal</button><button data-v="enter">Entrada</button><button data-v="paint" title="Mantené apretado sobre el lienzo: los píxeles salen del cursor y van a su lugar">Interactivo</button>
       </div>
       <button class="tt-play" id="turn" aria-pressed="false" title="Turntable: una vuelta entera, sola o junto a la animación elegida">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg>
@@ -170,7 +170,11 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <div id="sl-entStagger" data-for="enter"></div>
       <label class="tt-check" data-for="enter" title="El modelo se forma y los píxeles siguen entrando por un lado mientras otros tantos se van por el opuesto, en loop"><input type="checkbox" data-check="entInf"> Infinito</label>
       <div id="sl-entStay" data-for="enter"></div>
-      <div class="seg" data-key="ease" aria-label="Curva de movimiento" data-for="reveal enter">
+      <div id="sl-paintRate" data-for="paint"></div>
+      <div id="sl-paintDur" data-for="paint"></div>
+      <button class="tt-play" id="paint-reset" data-for="paint" title="Vacía el lienzo para pintar de nuevo">Reiniciar</button>
+      <button class="tt-play" id="paint-all" data-for="paint" title="Completa el modelo desde el cursor (o el centro)">Completar</button>
+      <div class="seg" data-key="ease" aria-label="Curva de movimiento" data-for="reveal enter paint">
         <button data-v="lin" title="Lineal">Lineal</button><button data-v="in" title="Arranca lento y acelera">Acelera</button><button data-v="out" title="Arranca rápido y frena">Frena</button><button data-v="inOut" title="Lento, rápido, lento">Suave</button><button data-v="back" title="Se pasa un poco y vuelve">Rebote</button>
       </div>
       <div id="sl-revHold" data-for="reveal enter"></div>
@@ -314,7 +318,7 @@ const DEFAULTS = {
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
   shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, lineDot: 1, snap: false, cell: 6, cellGap: .2, onlyPal: false, dir: '1a', handJit: 1,
-  revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
+  paintRate: 4000, paintDur: .7, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -686,6 +690,8 @@ const SLIDERS = {
   hoverForce: { label: 'Fuerza', min: .1, max: 3, step: .01, fmt: pct },
   revOrg: { label: 'Orgánico', min: 0, max: 1, step: .01, fmt: pct, emph: true },
   revSoft: { label: 'Duración de cada píxel', min: .01, max: .6, step: .01, fmt: pct },
+  paintRate: { label: 'Ritmo', min: 200, max: 30000, step: 100, fmt: v => v.toLocaleString('es') + '/s' },
+  paintDur: { label: 'Vuelo', min: .1, max: 3, step: .05, fmt: v => v.toFixed(2).replace('.', ',') + ' s' },
   revHold: { label: 'Quieto al final', min: 0, max: .8, step: .01, fmt: pct },
   entSpread: { label: 'Dispersión', min: 0, max: 1, step: .01, fmt: pct },
   entStagger: { label: 'Escalonado', min: 0, max: 1, step: .01, fmt: pct },
@@ -837,8 +843,11 @@ addEventListener('keydown', e => {
 // Drag turns the model; the final frame renders in full when the drag ends. Shift + drag moves it in the frame instead
 // (the same pixels, shifted); a double click puts it back in the middle.
 let turn = null;
-frame.addEventListener('pointerdown', e => { if (cropMode) return cropDown(e); frame.setPointerCapture(e.pointerId); turn = { x: e.clientX, y: e.clientY, yaw: S.yaw, pitch: S.pitch, px: S.panX, py: S.panY, move: e.shiftKey }; frame.classList.toggle('moving', e.shiftKey); });
+frame.addEventListener('pointerdown', e => { if (cropMode) return cropDown(e); frame.setPointerCapture(e.pointerId);
+  if (S.anim === 'paint' && !e.shiftKey) { const B = brushState(); B.down = true; B.ptr = boardOf(e); B.last = performance.now(); brushLoop(); return; }
+  turn = { x: e.clientX, y: e.clientY, yaw: S.yaw, pitch: S.pitch, px: S.panX, py: S.panY, move: e.shiftKey }; frame.classList.toggle('moving', e.shiftKey); });
 frame.addEventListener('pointermove', e => {
+  if (brush && brush.down) { brush.ptr = boardOf(e); return; }
   if (!turn) return;
   if (turn.move) {
     const r = frame.getBoundingClientRect();
@@ -848,7 +857,8 @@ frame.addEventListener('pointermove', e => {
   S.yaw = ((turn.yaw + (e.clientX - turn.x) * .5 + 540) % 360) - 180; S.pitch = clamp(turn.pitch + (e.clientY - turn.y) * .4, -89, 89);
   sync(true);
 });
-const endTurn = () => { if (turn) { const moved = turn.move; turn = null; frame.classList.remove('moving'); if (!moved) sync(); } };
+const endTurn = () => { if (brush) brush.down = false;
+  if (turn) { const moved = turn.move; turn = null; frame.classList.remove('moving'); if (!moved) sync(); } };
 frame.addEventListener('dblclick', () => { if (S.panX || S.panY) { S.panX = S.panY = 0; sync(); } });
 addEventListener('keydown', e => { if (e.key === 'Shift' && !turn) frame.classList.add('moving'); });
 addEventListener('keyup', e => { if (e.key === 'Shift' && !turn) frame.classList.remove('moving'); });
@@ -1078,10 +1088,56 @@ const isMotion = () => S.anim === 'reveal' || S.anim === 'enter';
 // The loop on screen.
 // The timeline (toolbar.js): the loop's length, where it is, pause, and jumps; a change of settings keeps the playhead.
 let paused = false, pausedT = 0;
+// ---------- Interactivo ----------
+// The model is there but hidden; while the button is held on the canvas, pixels are let out at Píxeles por segundo and
+// fly from the cursor to their places on the chosen curve, taking Vuelo seconds, so the model is painted in. 1B: the
+// pixels nearest the cursor go first, straight from its tip, so the model grows out from it in order; their places
+// never overlap (they are 1B's). 1A: chosen with some chance among the nearest (the part of the model nearest the
+// cursor fills, loosely) and leaving from a little cloud round the cursor.
+let brush = null, brushRaf = 0;
+function brushState() {
+  if (!brush || brush.list !== pts) { const n = pts ? pts.length : 0; brush = { list: pts, n, fx: new Float32Array(n), fy: new Float32Array(n), t0: new Float64Array(n).fill(NaN), left: n, down: false, ptr: null, last: 0, carry: 0, rnd: rng(S.seed * 4099 + 5) }; }
+  return brush;
+}
+function brushAdd(now, from) {
+  const B = brushState(), dt = Math.min(.1, (now - B.last) / 1000); B.last = now;
+  if (!B.left || !from) return;
+  B.carry += S.paintRate * dt; let want = Math.min(B.left, Math.floor(B.carry)); B.carry -= want;
+  if (want <= 0) return;
+  const b1 = S.dir === '1b', [cx, cy] = from, idx = [], key = [];
+  for (let i = 0; i < B.n; i++) if (B.t0[i] !== B.t0[i]) { const p = B.list[i], d = Math.hypot(p.x - cx, p.y - cy); idx.push(i); key.push(b1 ? d : d * (.35 + B.rnd() * 1.3)); }
+  const ord = idx.map((_, k) => k).sort((a, b) => key[a] - key[b]).slice(0, want), spread = S.size * 18;
+  for (const k of ord) { const i = idx[k]; B.t0[i] = now; B.fx[i] = cx + (b1 ? 0 : (B.rnd() - .5) * spread); B.fy[i] = cy + (b1 ? 0 : (B.rnd() - .5) * spread); B.left--; }
+}
+function brushFrame(now) {
+  const B = brushState(), E = EASE[S.ease], D = S.paintDur * 1000, out = [];
+  B.flying = false;
+  for (let i = 0; i < B.n; i++) {
+    const t0 = B.t0[i]; if (t0 !== t0) continue;
+    const p = B.list[i], t = Math.min(1, (now - t0) / D), e = E(t); if (t < 1) B.flying = true;
+    out.push({ x: B.fx[i] + (p.x - B.fx[i]) * e, y: B.fy[i] + (p.y - B.fy[i]) * e, tone: p.tone, pick: p.pick, sc: p.sc });
+  }
+  return out;
+}
+function brushLoop() {
+  if (brushRaf) return;
+  const tick = now => {
+    brushRaf = 0;
+    if (S.anim !== 'paint' || !pts) return;
+    const B = brushState();
+    if (B.down) brushAdd(now, B.ptr); else if (B.auto) { brushAdd(now, B.auto); if (!B.left) B.auto = null; } else B.last = now;
+    shown = brushFrame(now); render();
+    if (B.down || B.auto || B.flying) brushRaf = requestAnimationFrame(tick);
+  };
+  brushRaf = requestAnimationFrame(tick);
+}
+$('#paint-reset').addEventListener('click', () => { brush = null; shown = brushFrame(performance.now()); render(); });
+$('#paint-all').addEventListener('click', () => { const B = brushState(); B.auto = B.ptr || [AW / 2, AH / 2]; B.last = performance.now(); brushLoop(); });
 const animOn = () => S.turn || S.anim === 'boil' || S.anim === 'float' || isMotion();
 const loopLen = () => S.anim === 'boil' && !S.turn ? boilCount() / S.fps : S.ttDur;
 const nowT = () => paused ? pausedT : (((performance.now() - t0) / 1000) % loopLen() + loopLen()) % loopLen();
 function play() {
+  if (S.anim === 'paint') { cancelAnimationFrame(player); player = 0; shown = brushFrame(performance.now()); brushLoop(); return; }
   const keep = t0 ? nowT() : 0;
   cancelAnimationFrame(player); player = 0; shown = null; lastIdx = -1; t0 = performance.now() - keep * 1000;
   if (!animOn()) return;
@@ -1188,8 +1244,9 @@ async function stripPNG(W, H, paint) {
   return new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), ...chunk('IHDR', ihdr), ...chunk('IDAT', z), ...chunk('IEND', new Uint8Array(0))], { type: 'image/png' });
 }
 // With a recorte, exports are the recorte at the size of the whole frame (cropped to the pixels inside it).
+const exportList = () => S.anim === 'paint' ? (shown || []) : pts;
 function exportBox() {
-  const b = bounds(pts); if (!b) return null;
+  const b = bounds(exportList()); if (!b) return null;
   if (!crop) return { b, z: 1 };
   const c = { x0: Math.max(b.x0, Math.floor(crop.x)), y0: Math.max(b.y0, Math.floor(crop.y)), x1: Math.min(b.x1, Math.ceil(crop.x + crop.w)), y1: Math.min(b.y1, Math.ceil(crop.y + crop.h)) };
   return c.x1 > c.x0 && c.y1 > c.y0 ? { b: c, z: AW / crop.w } : null;
@@ -1197,7 +1254,7 @@ function exportBox() {
 $('#png').addEventListener('click', async () => {
   const eb = exportBox(); if (!eb) return toast('No hay píxeles en el recorte.');
   const b = eb.b, k = expRes() * eb.z, W = (b.x1 - b.x0) * k, H = (b.y1 - b.y0) * k, suffix = S.expScale === '1' ? '' : `@${S.expScale}x`;
-  const paint = (ctx, y) => { ctx.setTransform(k, 0, 0, k, 0, -y); ctx.save(); ctx.beginPath(); ctx.rect(0, 0, b.x1 - b.x0, b.y1 - b.y0); ctx.clip(); if (S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, b.x1 - b.x0, b.y1 - b.y0); } draw(ctx, pts, b.x0, b.y0, k); ctx.restore(); };
+  const paint = (ctx, y) => { ctx.setTransform(k, 0, 0, k, 0, -y); ctx.save(); ctx.beginPath(); ctx.rect(0, 0, b.x1 - b.x0, b.y1 - b.y0); ctx.clip(); if (S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, b.x1 - b.x0, b.y1 - b.y0); } draw(ctx, exportList(), b.x0, b.y0, k); ctx.restore(); };
   toast(`Generando PNG ${W} × ${H}…`);
   try {
     let blob;
@@ -1214,7 +1271,7 @@ $('#svg').addEventListener('click', () => {
   if (S.bgExport) out.push(`<rect width="${w}" height="${h}" fill="${S.bg}"/>`);
   const groups = new Map();
   const round = S.lines && !S.snap;
-  for (const p of S.snap ? snapList(pts) : pts) { const zz = p.sc === undefined ? z : z * p.sc, ss = n(zz); if (zz <= .05) continue; const c = colorOf(p), X0 = p.x + (p.dx || 0) - b.x0, Y0 = p.y + (p.dy || 0) - b.y0; groups.set(c, (groups.get(c) || '') + (round ? `M${n(X0 - zz / 2)} ${n(Y0)}a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${ss} 0a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${-ss} 0Z` : `M${n(X0 - zz / 2)} ${n(Y0 - zz / 2)}h${ss}v${ss}h${-ss}z`)); }
+  for (const p of S.snap ? snapList(exportList()) : exportList()) { const zz = p.sc === undefined ? z : z * p.sc, ss = n(zz); if (zz <= .05) continue; const c = colorOf(p), X0 = p.x + (p.dx || 0) - b.x0, Y0 = p.y + (p.dy || 0) - b.y0; groups.set(c, (groups.get(c) || '') + (round ? `M${n(X0 - zz / 2)} ${n(Y0)}a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${ss} 0a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${-ss} 0Z` : `M${n(X0 - zz / 2)} ${n(Y0 - zz / 2)}h${ss}v${ss}h${-ss}z`)); }
   for (const [c, d] of groups) out.push(`<path fill="${c}" d="${d}"/>`);
   out.push('</svg>');
   download(`pixel-model-${S.seed}${S.expScale === '1' ? '' : `@${S.expScale}x`}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));
