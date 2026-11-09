@@ -236,12 +236,12 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-threshold"></div>
         <div id="sl-edge"></div>
         <div id="sl-jitter"></div>
-        <label class="check" title="En vez de salpicados, los píxeles corren en líneas horizontales que siguen la forma del modelo: más juntos donde es oscuro (frecuencia modulada)"><input type="checkbox" data-check="lines"> Líneas horizontales (frecuencia modulada)</label>
+        <label class="check" id="lines-row" title="En vez de salpicados, los píxeles corren en líneas horizontales que siguen la forma del modelo: más juntos donde es oscuro (frecuencia modulada)"><input type="checkbox" data-check="lines"> Líneas horizontales (frecuencia modulada)</label>
         <div id="sl-lineGap"></div>
         <div id="sl-lineDot"></div>
         <div id="sl-lineFollow"></div>
         <label class="check" id="lineAM-row" title="Los píxeles quedan parejos sobre la línea y se achican con la luz hasta desaparecer"><input type="checkbox" data-check="lineAM"> Modular el tamaño con la luz</label>
-        <label class="check" title="Los píxeles se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
+        <label class="check" id="snap-row" title="Los píxeles se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
         <div id="sl-cell"></div>
         <div id="sl-cellGap"></div>
         <div class="row">
@@ -313,7 +313,7 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
-  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, lineDot: 1, snap: false, cell: 6, cellGap: .2, onlyPal: false, handJit: 1,
+  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, lineDot: 1, snap: false, cell: 6, cellGap: .2, onlyPal: false, dir: '1a', handJit: 1,
   revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -582,7 +582,7 @@ function linePick(raw, kA, r, at) {
   for (let i = 0; i < raw.length; i += 4) {
     const tn = tone(raw[i + 3]);
     if (S.lineAM) { const sc = Math.pow(tn, .75 * S.contrast / 1.6); if (sc >= .08) cand.push([i, sc, tn]); }
-    else if (r() < Math.min(1, (Math.pow(tn, S.contrast) * 1.25 + .01) * dens)) cand.push([i, undefined, tn]);
+    else if (r() < Math.min(1, (Math.pow(tn, S.contrast * .55) * 1.7 + .03) * dens)) cand.push([i, undefined, tn]); // FM: dark lines nearly full, light ones broken
   }
   cand.sort((a, b) => b[2] - a[2]);
   const gap = S.lineDot, cell = S.size + gap, grid = new Map(), key = (cx, cy) => cx * 100003 + cy;
@@ -745,6 +745,7 @@ function sync(fast) {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink'; markPalette();
   $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !S.snap;
+  $('#lines-row').hidden = true; $('#snap-row').hidden = S.dir === '1b';
   $('#sl-lineGap').hidden = $('#sl-lineFollow').hidden = $('#sl-lineDot').hidden = $('#lineAM-row').hidden = !S.lines;
   document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn'))); });
   if (S.anim === 'enter') { $('#sl-revHold').hidden = S.entInf; $('#sl-entStay').hidden = !S.entInf; }
@@ -1345,6 +1346,12 @@ $('#video').addEventListener('click', async () => {
   }
 });
 
+// Dirección (toolbar.js): 1A square pixels, all one size, scattered by the light; 1B round pixels on horizontal lines
+// that follow the model, frequency modulated (closer together where dark), never overlapping.
+PerceptaDirection({
+  get: () => S.dir,
+  set: v => { S.dir = v; if (v === '1a') S.lines = false; else { S.lines = true; S.lineAM = false; S.snap = false; } sync(); },
+});
 loadPreset();
 sync();
 </script>

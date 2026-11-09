@@ -168,7 +168,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-wave"></div>
         <div id="sl-waveScale"></div>
         <div id="sl-depth"></div>
-        <label class="check" title="En vez de puntos sueltos, círculos en líneas horizontales que siguen la forma del plano y los modelos"><input type="checkbox" data-check="lines"> Líneas horizontales</label>
+        <label class="check" id="lines-row" title="En vez de puntos sueltos, círculos en líneas horizontales que siguen la forma del plano y los modelos"><input type="checkbox" data-check="lines"> Líneas horizontales</label>
         <div id="sl-lGap"></div>
         <div id="sl-lDot"></div>
       </section>
@@ -187,7 +187,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-count"></div>
         <div id="sl-size"></div>
         <div id="sl-depthSize"></div>
-        <label class="check" title="Los píxeles se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
+        <label class="check" id="snap-row" title="Los píxeles se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
         <div id="sl-cell"></div>
         <div id="sl-cellGap"></div>
         <div class="row">
@@ -232,7 +232,7 @@ const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 const AW = 1920, AH = 1080, RES = 2, PW = 3, CELL = 1 / 150;
 const DEFAULTS = {
   disp: .3, start: .35, soft: .7, rise: .35, thin: .35, fadeA: .5,
-  cut: false, lines: false, lGap: 14, lDot: 1, mdens: 3.5, cull: true, cityN: 16, cityGreen: .35, citySeed: 1, wave: .5, waveScale: .5, depth: 2.4,
+  dir: '1a', cut: false, lines: false, lGap: 14, lDot: 1, mdens: 3.5, cull: true, cityN: 16, cityGreen: .35, citySeed: 1, wave: .5, waveScale: .5, depth: 2.4,
   pitch: 24, yaw: 0, persp: .55, zoom: 1.3, frameY: .02,
   count: 45000, size: 2.5, depthSize: .6, seed: 1, snap: false, cell: 5, cellGap: .2,
   palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'ink', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
@@ -833,6 +833,7 @@ function sync() {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink';
   $('#cut-hint').hidden = !S.cut;
+  $('#lines-row').hidden = true; $('#snap-row').hidden = S.dir === '1b';
   $('#sl-lGap').hidden = $('#sl-lDot').hidden = !S.lines;
   $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !S.snap;
   markPalette(); updateBg(S.bgFlip);
@@ -977,6 +978,12 @@ $('#svg').addEventListener('click', () => {
 });
 
 objs = city(S.citySeed);
+// Dirección (toolbar.js): 1A square pixels scattered over the plane and the models; 1B round pixels on horizontal
+// lines that follow the plane and the models, never overlapping.
+PerceptaDirection({
+  get: () => S.dir,
+  set: v => { S.dir = v; S.lines = v === '1b'; if (S.lines) S.snap = false; sync(); },
+});
 sync();
 </script>
 </body>

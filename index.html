@@ -190,11 +190,10 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <div id="sl-contrast"></div>
           <div id="sl-threshold"></div>
           <label class="check"><input type="checkbox" data-check="invert"> Invertir luces y sombras</label>
-          <label class="check" title="Calcula la profundidad de la foto (en el navegador) y dibuja líneas horizontales que siguen su volumen"><input type="checkbox" data-check="imgLines"> Líneas que siguen la profundidad</label>
+          <label class="check" id="imgLines-row" title="Calcula la profundidad de la foto (en el navegador) y dibuja líneas horizontales que siguen su volumen"><input type="checkbox" data-check="imgLines"> Líneas que siguen la profundidad</label>
           <div id="depth-controls">
             <p class="hint" id="depth-status"></p>
             <div id="sl-dGap"></div>
-            <div id="sl-dPx"></div>
             <div id="sl-dRelief"></div>
             <label class="check" title="Los píxeles se achican con la luz hasta desaparecer; apagado, se juntan más en lo oscuro"><input type="checkbox" data-check="dAM"> Modular el tamaño con la luz</label>
           </div>
@@ -243,8 +242,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-mod"></div>
         <div id="sl-variation"></div>
         <div id="sl-grain"></div>
+        <div id="sl-dPx"></div>
         <label class="check" id="circle-row" title="Cada partícula es un círculo en vez de un cuadrado (con las líneas de profundidad siempre lo son)"><input type="checkbox" data-check="circle"> Partículas circulares</label>
-        <label class="check" title="Los cubos se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
+        <label class="check" id="snap-row" title="Los cubos se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
         <div id="sl-cell"></div>
         <div id="sl-cellGap"></div>
       </section>
@@ -322,7 +322,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2, onlyPal: false,
+  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2, onlyPal: false, dir: '1a',
   motion: 'still', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
@@ -437,6 +437,23 @@ function sheetGrid(L, st, flowing) {
 }
 const invertCdf = (cdf, n, q) => { let lo = 0, hi = n; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cdf[mid] < q) lo = mid; else hi = mid; } return lo + (q - cdf[lo]) / ((cdf[hi] - cdf[lo]) || 1); };
 function placeOn(g, qv, q) { const rv = invertCdf(g.vcdf, NV, qv), row = Math.min(NV - 1, Math.floor(rv)); return [invertCdf(g.rows[row], NU, q) / NU, rv / NV]; }
+// Dirección 1B: round cubes that never overlap. Taken in the order they were made (which is random), a cube stays only
+// if its circle is at least Espacio entre píxeles from every circle already kept; everything that rides along with the
+// cubes (their motion ranks) is thinned the same way.
+function apart(G, gap) {
+  const n = G.n, keep = [], maxS = G.size.reduce((a, b) => Math.max(a, b), 0), cell = maxS + gap + 1e-6, grid = new Map(), key = (a, b) => a * 100003 + b;
+  for (let i = 0; i < n; i++) {
+    const x = G.hx[i], y = G.hy[i], rad = G.size[i] / 2, cx = Math.floor(x / cell), cy = Math.floor(y / cell);
+    let ok = true;
+    for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = grid.get(key(cx + a, cy + b)); if (l) for (const [ox, oy, orad] of l) if (Math.hypot(ox - x, oy - y) < rad + orad + gap - 1e-6) { ok = false; break; } }
+    if (!ok) continue;
+    const kk = key(cx, cy); (grid.get(kk) || grid.set(kk, []).get(kk)).push([x, y, rad]); keep.push(i);
+  }
+  const thin = o => { if (!o) return; for (const k of Object.keys(o)) { const a = o[k]; if (ArrayBuffer.isView(a) && a.length >= n) { const b = new a.constructor(keep.length); keep.forEach((i, j) => b[j] = a[i]); o[k] = b; } } };
+  thin(G); if (G.wv) { thin(G.wv); thin(G.wv.refract); }
+  G.n = keep.length;
+  return G;
+}
 let wavesRanked = null;
 function generate(st) {
   wavesRanked = null;
@@ -745,7 +762,8 @@ function generate(st) {
   }
   for (let i = 0; i < got; i++) { px[i] = X0 + (px[i] - x0) / (x1 - x0 || 1) * (X1 - X0); py[i] = Y0 + (py[i] - y0) / (y1 - y0 || 1) * (Y1 - Y0); }
   if (wr) wr.fit = { x0, x1, y0, y1, X0, X1, Y0, Y1, vert: st.orient === 'v' };
-  return { wv: wr, W, H, n: got, hx: cut(px), hy: cut(py), size: cut(size), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen), dep: cut(dep) };
+  const G = { wv: wr, W, H, n: got, hx: cut(px), hy: cut(py), size: cut(size), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen), dep: cut(dep) };
+  return st.dir === '1b' ? apart(G, st.dPx) : G;
 }
 
 // An image is a flat card: fitted inside the frame unrotated (so turning it never rescales), then turned
@@ -1105,13 +1123,14 @@ function sync() {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase())); $('#palette-box').hidden = S.colorMode !== 'random';
   $('#blModel').value = S.blModel; $('#sl-blFlorets').hidden = S.blModel !== 'hortensia';
   updateBg(S.bgFlip);
-  $('#depth-controls').hidden = !S.imgLines; $('#circle-row').hidden = linesOn(S); $('#grid-row').hidden = S.imgLines; if (image && S.imgLines) ensureDepth();
+  const b1 = S.dir === '1b';
+  $('#depth-controls').hidden = !S.imgLines; $('#circle-row').hidden = $('#imgLines-row').hidden = true; $('#snap-row').hidden = b1; $('#sl-dPx').hidden = !b1; $('#grid-row').hidden = S.imgLines; if (image && S.imgLines) ensureDepth();
   $('#sl-gridCols').hidden = !S.grid || S.imgLines; $('#sl-count').hidden = (image && S.grid) || S.snap; $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !S.snap;
   $('.rt-bar [data-tool="rotate"]').hidden = !image; if (!image && tools.tool === 'rotate') tools.setTool('scatter');
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   markPalette();
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
-  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz', S.wThresh, S.contrast, S.threshold, S.invert, S.imgLines && depthId, S.dGap, S.dPx, S.dRelief, S.dAM,
+  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz', S.wThresh, S.contrast, S.threshold, S.invert, S.dir, S.imgLines && depthId, S.dGap, S.dPx, S.dRelief, S.dAM,
     S.style, S.count, S.size, S.snap && S.cell, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {
@@ -1490,6 +1509,17 @@ $('#png').addEventListener('click', () => {
 });
 $('#svg').addEventListener('click', () => download(`pixel-waves-${S.seed}.svg`, new Blob([toSvg(S)], { type: 'image/svg+xml' })));
 
+// Dirección (toolbar.js): 1A squares, all one size, overlapping, gathered by the light; 1B circles that never overlap,
+// and a photo laid out by its depth (Líneas que siguen la profundidad).
+const direction = PerceptaDirection({
+  get: () => S.dir,
+  set: v => {
+    S.dir = v;
+    if (v === '1a') { S.circle = false; S.imgLines = false; S.style = 'mono'; }
+    else { S.circle = true; S.imgLines = true; S.snap = false; }
+    sync();
+  },
+});
 sync();
 </script>
 </body>

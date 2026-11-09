@@ -4,10 +4,10 @@
 (() => {
   const EXPLORATIONS = [
     { name: 'Pixel Waves', path: '' },
-    { name: 'Pixel Trail', path: 'pixel-trail/' },
     { name: 'Pixel Model', path: 'pixel-model/' },
-    { name: 'Pixel Motion', path: 'pixel-motion/' },
     { name: 'Pixel Depth', path: 'pixel-depth/' },
+    { name: 'Pixel Trail', path: 'pixel-trail/' },
+    { name: 'Pixel Motion', path: 'pixel-motion/' },
     { name: 'Pixel Stipple', path: 'pixel-stipple/' },
     {
       name: 'Descartes', path: 'descartes/', children: [
@@ -201,6 +201,36 @@
     }
   };
   addEventListener('load', lockColors);
+
+  // Dirección: the two ways a tool can work, as two buttons on the left of the page. 1A: square pixels, all one size,
+  // overlapping, gathered by the light. 1B: round pixels that never overlap, laid by depth or form. The tool hands it
+  // get() and set(v) ('1a' or '1b'); the choice is remembered per tool in this browser.
+  window.PerceptaDirection = o => {
+    if (!document.getElementById('pdir-style')) {
+      const st = document.createElement('style'); st.id = 'pdir-style';
+      st.textContent = `.pdir { position: fixed; left: 14px; top: 50%; transform: translateY(-50%); z-index: 30; display: flex; flex-direction: column; gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface, #fbfaf8); box-shadow: 0 0 0 1px var(--line, #dcd7cf), 0 4px 16px rgb(0 0 0 / .06); font: 500 12px var(--font, Inter, system-ui, sans-serif); }
+.pdir button { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 64px; padding: 8px 4px 7px; border: 0; border-radius: 9px; background: transparent; color: var(--text-2, #5e5850); cursor: pointer; font: inherit; }
+.pdir button:hover { background: var(--fill, #efece7); }
+.pdir button[aria-pressed="true"] { background: var(--accent, #1a1714); color: var(--accent-text, #fbfaf8); }
+.pdir button:focus-visible { outline: 2px solid var(--accent, #1a1714); outline-offset: 1px; }
+.pdir b { font-size: 13px; font-weight: 600; }
+.pdir small { font-size: 10px; line-height: 1.15; opacity: .8; text-align: center; }
+.pdir i { display: block; width: 14px; height: 14px; background: currentColor; }
+.pdir [data-dir="1b"] i { border-radius: 50%; }
+@media (max-width: 767px) { .pdir { top: auto; bottom: 14px; transform: none; flex-direction: row; } }`;
+      document.head.appendChild(st);
+    }
+    const el = document.createElement('div'); el.className = 'pdir'; el.setAttribute('role', 'group'); el.setAttribute('aria-label', 'Dirección');
+    el.innerHTML = `<button type="button" data-dir="1a" title="Dirección 1A: píxeles cuadrados del mismo tamaño, que se superponen y se juntan según la luz"><i></i><b>1A</b><small>${o.labelA || 'Cuadrados'}</small></button>` +
+      `<button type="button" data-dir="1b" title="Dirección 1B: píxeles redondos que nunca se superponen, ubicados según la profundidad o la forma"><i></i><b>1B</b><small>${o.labelB || 'Círculos'}</small></button>`;
+    document.body.appendChild(el);
+    const key = 'percepta-dir:' + location.pathname, mark = () => el.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.dir === o.get()));
+    el.addEventListener('click', e => { const b = e.target.closest('[data-dir]'); if (!b) return; o.set(b.dataset.dir); try { localStorage.setItem(key, b.dataset.dir); } catch {} mark(); });
+    let saved = null; try { saved = localStorage.getItem(key); } catch {}
+    if (saved === '1a' || saved === '1b') o.set(saved);
+    mark();
+    return { mark };
+  };
 
   // Timeline: a bar along the top of the picture (inside #frame, clear of the tools' own bottom bars) for every tool with an animation: play / pause,
   // a scrubber over the loop and the time. A tool hands it how to read and drive its own clock:
