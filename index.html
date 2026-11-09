@@ -263,6 +263,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <span>Fondo</span>
           <label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label><button class="btn icon bg-flip" id="bg-flip" hidden aria-label="Blanco o negro para el color del fondo"><i></i></button>
         </div>
+        <label class="check" title="Los cubos usan solamente los 3 colores de la paleta: nunca blanco ni negro (tampoco el color del fondo)"><input type="checkbox" data-check="onlyPal"> Solo los 3 colores (sin blanco ni negro)</label>
         <label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label>
       </section>
 
@@ -321,7 +322,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2,
+  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2, onlyPal: false,
   motion: 'still', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
@@ -775,6 +776,10 @@ function tint(hex, k, grain) {
 }
 // Líneas que siguen la profundidad draws circles, always.
 const linesOn = st => st.source === 'image' && st.imgLines && !!img?.depth;
+// Solo los 3 colores: the palette less any colour that is the background, never black or white. A colour that would
+// disappear on the background becomes another palette colour, chosen by k.
+const usablePal = st => { const P = st.palette.filter(c => c.toLowerCase() !== st.bg.toLowerCase()); return P.length ? P : st.palette; };
+const palOnly = (c, st, k = 0) => { const U = usablePal(st); return U.some(u => u.toLowerCase() === c.toLowerCase()) ? c : U[k % U.length]; };
 const accentOf = st => PerceptaBg.pick(st.bg, st.bgFlip);
 function colorOf(i, st) {
   if (st.colorMode === 'image' && img && st.source === 'image') {
@@ -784,8 +789,11 @@ function colorOf(i, st) {
   // Al azar: the palette's colours and, with them, the background's opposite: black on a white ground, white on a black
   // one (on a coloured ground, whichever of the two stands out more).
   let c = st.ink;
-  if (st.colorMode === 'random') { const P = st.palette, k = gen.pal[i] % (P.length + 1); c = k < P.length ? P[k] : accentOf(st); }
-  const base = onBg(c, st.bg);
+  if (st.colorMode === 'random') {
+    if (st.onlyPal) { const U = usablePal(st); c = U[gen.pal[i] % U.length]; }
+    else { const P = st.palette, k = gen.pal[i] % (P.length + 1); c = k < P.length ? P[k] : accentOf(st); }
+  } else if (st.onlyPal) c = palOnly(c, st);
+  const base = st.onlyPal ? c : onBg(c, st.bg);
   return st.style === 'mono' ? base : tint(base, gen.shade[i], st.grain);
 }
 
@@ -1035,13 +1043,13 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
   S[seg.dataset.key] = b.dataset.v; sync();
 }));
 document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
-document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
+document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; if (inp.dataset.check === 'onlyPal') renderPalette(); sync(); }));
 // The palette's colours (one swatch each, editable) and the Un color swatches (the palette plus black and white;
 // the picker below takes any other) are redrawn when a palette is chosen, since palettes differ in length.
 function renderPalette() {
   $('#palette').innerHTML = S.palette.map((_, i) => `<label title="Color ${i + 1}"><input type="color" data-pal="${i}" aria-label="Color ${i + 1}"></label>`).join('');
   document.querySelectorAll('[data-pal]').forEach(inp => inp.addEventListener('input', () => { S.palette[+inp.dataset.pal] = inp.value; sync(); }));
-  $('#inks').innerHTML = [...S.palette, INK, WHITE].map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join('');
+  $('#inks').innerHTML = [...S.palette, ...(S.onlyPal ? [] : [INK, WHITE])].map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join('');
 }
 renderPalette();
 const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.palette = colors; if (!colors.includes(S.ink) && S.ink !== INK && S.ink !== WHITE) S.ink = colors[colors.length - 1]; renderPalette(); sync(); });

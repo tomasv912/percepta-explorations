@@ -264,6 +264,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <span>Fondo</span>
           <label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label><button class="btn icon bg-flip" id="bg-flip" hidden aria-label="Blanco o negro para el color del fondo"><i></i></button>
         </div>
+        <label class="check" title="Los cubos usan solamente los 3 colores de la paleta: nunca blanco ni negro (tampoco el color del fondo)"><input type="checkbox" data-check="onlyPal"> Solo los 3 colores (sin blanco ni negro)</label>
         <label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label>
       </section>
 
@@ -312,7 +313,7 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
-  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, lineDot: 1, snap: false, cell: 6, cellGap: .2, handJit: 1,
+  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, lineDot: 1, snap: false, cell: 6, cellGap: .2, onlyPal: false, handJit: 1,
   revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -613,10 +614,14 @@ function stipple(n, r, sc = scene) {
   }
   return out;
 }
+// Solo los 3 colores: the palette less any colour that is the background, never black or white. A colour that would
+// disappear on the background becomes another palette colour, chosen by k.
+const usablePal = st => { const P = st.palette.filter(c => c.toLowerCase() !== st.bg.toLowerCase()); return P.length ? P : st.palette; };
+const palOnly = (c, st, k = 0) => { const U = usablePal(st); return U.some(u => u.toLowerCase() === c.toLowerCase()) ? c : U[k % U.length]; };
 function colorOf(p) {
-  const P = S.palette, c = S.colorMode === 'tone' ? P[clamp(Math.floor((1 - p.tone) * P.length), 0, P.length - 1)]
+  const P = S.onlyPal ? usablePal(S) : S.palette, c = S.colorMode === 'tone' ? P[clamp(Math.floor((1 - p.tone) * P.length), 0, P.length - 1)]
     : S.colorMode === 'random' ? P[Math.floor(p.pick * P.length)] : S.ink;
-  return onBg(c, S.bg);
+  return S.onlyPal ? palOnly(c, S) : onBg(c, S.bg);
 }
 // Pixels are drawn where they are now: home plus the animation's offset (p.dx, p.dy).
 // Engrillar: every pixel moved to the middle of its cell on a grid of the pixel size, one per cell (the last one drawn
@@ -712,13 +717,13 @@ for (const [key, d] of Object.entries(SLIDERS)) {
 }
 $('#presets').innerHTML = PRESETS.map(([k, n]) => `<button data-p="${k}">${n}</button>`).join('');
 $('#presets').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (b) { preset = b.dataset.p; loadPreset(); key = ''; sync(); } });
-const renderInks = () => { $('#inks').innerHTML = [...S.palette, INK, WHITE].map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join(''); };
+const renderInks = () => { $('#inks').innerHTML = [...S.palette, ...(S.onlyPal ? [] : [INK, WHITE])].map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join(''); };
 renderInks();
 const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.palette = colors; renderInks(); sync(); });
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
 const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => S.palette, () => S.bg, v => { S.bg = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
 document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = b.dataset.v; sync(); } }));
-document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; sync(); }));
+document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; if (inp.dataset.check === 'onlyPal') renderInks(); sync(); }));
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('#reseed').addEventListener('click', reseed);
