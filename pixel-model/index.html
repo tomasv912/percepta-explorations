@@ -184,14 +184,14 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       </div>
       <label class="tt-check" data-for="turn" title="Los píxeles quedan pegados al modelo y giran con él; apagado, cada cuadro se dibuja de nuevo"><input type="checkbox" data-check="ttFixed"> Píxeles fijos</label>
       <div id="sl-ttDur" data-for="boil float hover turn reveal enter"></div>
-      <i class="tt-sep" data-for="boil float hover turn reveal enter"></i>
-      <div class="seg" data-key="ttFps" aria-label="Cuadros por segundo del video" data-for="boil float hover turn reveal enter">
+      <i class="tt-sep" data-for="boil float hover turn reveal enter paint"></i>
+      <div class="seg" data-key="ttFps" aria-label="Cuadros por segundo del video" data-for="boil float hover turn reveal enter paint">
         <button data-v="8">8</button><button data-v="9">9</button><button data-v="12">12</button><button data-v="15">15</button><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button>
       </div>
-      <div class="seg" data-key="vidFmt" aria-label="Formato del video" data-for="boil float hover turn reveal enter">
+      <div class="seg" data-key="vidFmt" aria-label="Formato del video" data-for="boil float hover turn reveal enter paint">
         <button data-v="mp4" title="MP4 4K, a calidad máxima">MP4</button><button data-v="png" title="Secuencia de imágenes: cada cuadro como PNG, sin pérdida, en un .zip (pesa mucho más)">Secuencia PNG (.zip)</button>
       </div>
-      <button class="btn primary" id="video" data-for="boil float hover turn reveal enter" title="MP4 4K en loop, recortado al modelo, con el fondo (MP4 no tiene transparencia)">Exportar video</button>
+      <button class="btn primary" id="video" data-for="boil float hover turn reveal enter paint" title="MP4 4K en loop, recortado al modelo, con el fondo (MP4 no tiene transparencia)">Exportar video</button>
     </div>
   </main>
 
@@ -314,12 +314,12 @@ function setArtboard() {
 function viewBoxNow() { const ar = AW / AH, h = 1.15 / S.zoom, hx = ar >= 1 ? h * ar : h, hy = ar >= 1 ? h : h / ar; return { x0: -hx, y0: -hy, x1: hx, y1: hy }; }
 const DEFAULTS = {
   yaw: -20, pitch: 12, zoom: 1, panX: 0, panY: 0, lightAz: 220, lightEl: 40, ambient: .25, shadow: .65,
-  count: 40000, size: 3, contrast: 1.6, threshold: 0, edge: .8, jitter: 1, seed: 1,
+  count: 40000, size: 3, contrast: 1, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
-  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, lineDot: 1, snap: false, cell: 6, cellGap: .2, onlyPal: false, dir: '1a', handJit: 1,
-  paintRate: 4000, paintDur: .7, paintRand: false, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
+  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: .2, onlyPal: false, dir: '1b', handJit: 1,
+  paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -679,7 +679,7 @@ const SLIDERS = {
   count: { label: 'Densidad', min: 2000, max: 200000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño del píxel', min: 1, max: 24, step: .5, fmt: v => v + ' px', emph: true },
   threshold: { label: 'Umbral', min: 0, max: .9, step: .01, fmt: v => v ? Math.round(v * 100) + '%' : 'sin umbral' },
-  contrast: { label: 'Contraste', min: .5, max: 4, step: .05, fmt: v => v.toFixed(2) },
+  contrast: { label: 'Contraste', min: .5, max: 12, step: .05, fmt: v => v.toFixed(2) },
   edge: { label: 'Bordes y superposiciones', min: 0, max: 2, step: .01, fmt: pct },
   fps: { label: 'Dibujos por segundo', min: 1, max: 60, step: 1, fmt: String, emph: true },
   handJit: { label: 'Temblor', min: 0, max: 2, step: .05, fmt: v => v ? Math.round(v * 100) + '%' : 'sin temblor' },
@@ -1127,14 +1127,25 @@ function brushLoop() {
     brushRaf = 0;
     if (S.anim !== 'paint' || !pts) return;
     const B = brushState();
-    if (B.down) brushAdd(now, B.ptr); else if (B.auto) { brushAdd(now, B.auto); if (!B.left) B.auto = null; } else B.last = now;
+    if (B.down) brushAdd(now, B.ptr); else if (B.auto) { B.ptr = circlePtr((now - B.auto) / 1000); brushAdd(now, B.ptr); if (!B.left) B.auto = null; } else B.last = now;
     shown = brushFrame(now); render();
     if (B.down || B.auto || B.flying) brushRaf = requestAnimationFrame(tick);
   };
   brushRaf = requestAnimationFrame(tick);
 }
 $('#paint-reset').addEventListener('click', () => { brush = null; shown = brushFrame(performance.now()); render(); });
-$('#paint-all').addEventListener('click', () => { const B = brushState(); B.auto = B.ptr || [AW / 2, AH / 2]; B.last = performance.now(); brushLoop(); });
+// Completar and the video: the pointer goes round the model (an ellipse over its middle, a turn every 4 s).
+function circlePtr(t) {
+  const b = bounds(pts) || { x0: 0, y0: 0, x1: AW, y1: AH }, cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, a = t / 4 * Math.PI * 2;
+  return [cx + (b.x1 - b.x0) * .32 * Math.cos(a), cy + (b.y1 - b.y0) * .32 * Math.sin(a)];
+}
+// The whole painting as a film: from empty, the pointer circling and pixels let out at Ritmo until none are left,
+// then the last ones land and it holds a second. at(i) must be called in order.
+function paintRun(fps) {
+  brush = null; const B = brushState(); B.last = 0;
+  return { T: B.n / S.paintRate + S.paintDur + 1, at(i) { const now = i * 1000 / fps; B.ptr = circlePtr(now / 1000); brushAdd(now, B.ptr); return brushFrame(now); } };
+}
+$('#paint-all').addEventListener('click', () => { const B = brushState(); B.auto = performance.now(); B.last = B.auto; brushLoop(); });
 const animOn = () => S.turn || S.anim === 'boil' || S.anim === 'float' || isMotion();
 const loopLen = () => S.anim === 'boil' && !S.turn ? boilCount() / S.fps : S.ttDur;
 const nowT = () => paused ? pausedT : (((performance.now() - t0) / 1000) % loopLen() + loopLen()) % loopLen();
@@ -1307,7 +1318,8 @@ $('#video').addEventListener('click', async () => {
   const png = S.vidFmt === 'png';
   if (!png && (!('VideoEncoder' in window) || !window.Mp4Muxer)) return toast('Este navegador no puede exportar video: probá con Chrome, Edge o Safari.');
   const btn = $('#video'), label = btn.textContent, fps = +S.ttFps;
-  const T = S.anim === 'boil' && !S.turn ? boilCount() / S.fps : S.ttDur, N = Math.max(2, Math.round(T * fps));
+  const run = S.anim === 'paint' ? paintRun(fps) : null;
+  const T = run ? run.T : S.anim === 'boil' && !S.turn ? boilCount() / S.fps : S.ttDur, N = Math.max(2, Math.round(T * fps));
   // Hover: a pointer sweeps a figure of eight over the model; one loop to settle, then the loop that is kept.
   let sim = null;
   const hoverSim = () => {
@@ -1318,6 +1330,7 @@ $('#video').addEventListener('click', async () => {
   };
   const sweep = (() => { const b = bounds(pts), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, rx = (b.x1 - b.x0) * .4, ry = (b.y1 - b.y0) * .3; return i => { const a = 2 * Math.PI * i / N; return [cx + rx * Math.sin(a), cy + ry * Math.sin(2 * a)]; }; })();
   const frameAt = i => {
+    if (run) return run.at(i);
     if (S.turn) return comboFrame(i / N, false, S.anim === 'hover' ? sweep(i) : null);
     if (S.anim === 'boil') return boilFrame(Math.floor(i / fps * S.fps) % boilCount());
     if (S.anim === 'float') return floatFrame(i / N);
@@ -1330,7 +1343,8 @@ $('#video').addEventListener('click', async () => {
     // The crop: for a turn, everything the model sweeps; otherwise every frame's pixels.
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     const pad = S.size * (1 + S.jitter) + 4 + (S.anim === 'float' ? S.floatAmp * 2 : S.anim === 'hover' ? S.hoverRadius * .5 * S.hoverForce : 0);
-    if (S.turn) {
+    if (run) { x0 = y0 = -1e9; x1 = y1 = 1e9; } // the whole frame (or the recorte): pixels fly in from the pointer
+    else if (S.turn) {
       const box = viewBoxNow(), k = AW / (box.x1 - box.x0);
       for (let i = 0; i < N; i++) {
         const t = viewTris(wrapDeg(S.yaw + +S.ttDir * 360 * i / N));
@@ -1353,7 +1367,7 @@ $('#video').addEventListener('click', async () => {
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = S.bg; ctx.fillRect(0, 0, W, H);
       ctx.setTransform(sc, 0, 0, sc, 0, 0); draw(ctx, list, b.x0, b.y0);
     };
-    const name = [{ boil: 'a-mano', float: 'flotar', hover: 'hover', reveal: 'reveal-' + S.revDir, enter: 'entrada-' + S.entDir + (S.entInf ? '-infinito' : '') }[S.anim], S.turn && 'turntable'].filter(Boolean).join('-');
+    const name = [{ boil: 'a-mano', float: 'flotar', hover: 'hover', paint: 'interactivo', reveal: 'reveal-' + S.revDir, enter: 'entrada-' + S.entDir + (S.entInf ? '-infinito' : '') }[S.anim], S.turn && 'turntable'].filter(Boolean).join('-');
     if (png) {
       // Lossless: every frame a PNG, numbered, in a .zip (stored: PNGs don't shrink further).
       const files = [];
@@ -1409,7 +1423,7 @@ $('#video').addEventListener('click', async () => {
 // that follow the model, frequency modulated (closer together where dark), never overlapping.
 PerceptaDirection({
   get: () => S.dir,
-  set: v => { S.dir = v; if (v === '1a') S.lines = false; else { S.lines = true; S.lineAM = false; S.snap = false; } sync(); },
+  set: v => { S.dir = v; if (v === '1a') S.lines = false; else { S.lines = true; S.snap = false; } sync(); },
 });
 loadPreset();
 sync();
