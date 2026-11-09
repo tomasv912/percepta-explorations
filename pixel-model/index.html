@@ -172,6 +172,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <div id="sl-entStay" data-for="enter"></div>
       <div id="sl-paintRate" data-for="paint"></div>
       <div id="sl-paintDur" data-for="paint"></div>
+      <label class="tt-check" data-for="paint" title="Cada píxel cae en un lugar al azar del modelo, no en el más cercano al cursor"><input type="checkbox" data-check="paintRand"> Lugar al azar</label>
       <button class="tt-play" id="paint-reset" data-for="paint" title="Vacía el lienzo para pintar de nuevo">Reiniciar</button>
       <button class="tt-play" id="paint-all" data-for="paint" title="Completa el modelo desde el cursor (o el centro)">Completar</button>
       <div class="seg" data-key="ease" aria-label="Curva de movimiento" data-for="reveal enter paint">
@@ -318,7 +319,7 @@ const DEFAULTS = {
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
   shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: false, lineGap: 12, lineFollow: 1, lineAM: false, lineDot: 1, snap: false, cell: 6, cellGap: .2, onlyPal: false, dir: '1a', handJit: 1,
-  paintRate: 4000, paintDur: .7, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
+  paintRate: 4000, paintDur: .7, paintRand: false, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -1093,7 +1094,8 @@ let paused = false, pausedT = 0;
 // fly from the cursor to their places on the chosen curve, taking Vuelo seconds, so the model is painted in. 1B: the
 // pixels nearest the cursor go first, straight from its tip, so the model grows out from it in order; their places
 // never overlap (they are 1B's). 1A: chosen with some chance among the nearest (the part of the model nearest the
-// cursor fills, loosely) and leaving from a little cloud round the cursor.
+// cursor fills, loosely) and leaving from a little cloud round the cursor. Lugar al azar: each goes to any place left in
+// the model, chosen at random, so the model appears all over at once while the pixels stream out of the cursor.
 let brush = null, brushRaf = 0;
 function brushState() {
   if (!brush || brush.list !== pts) { const n = pts ? pts.length : 0; brush = { list: pts, n, fx: new Float32Array(n), fy: new Float32Array(n), t0: new Float64Array(n).fill(NaN), left: n, down: false, ptr: null, last: 0, carry: 0, rnd: rng(S.seed * 4099 + 5) }; }
@@ -1105,7 +1107,7 @@ function brushAdd(now, from) {
   B.carry += S.paintRate * dt; let want = Math.min(B.left, Math.floor(B.carry)); B.carry -= want;
   if (want <= 0) return;
   const b1 = S.dir === '1b', [cx, cy] = from, idx = [], key = [];
-  for (let i = 0; i < B.n; i++) if (B.t0[i] !== B.t0[i]) { const p = B.list[i], d = Math.hypot(p.x - cx, p.y - cy); idx.push(i); key.push(b1 ? d : d * (.35 + B.rnd() * 1.3)); }
+  for (let i = 0; i < B.n; i++) if (B.t0[i] !== B.t0[i]) { const p = B.list[i], d = Math.hypot(p.x - cx, p.y - cy); idx.push(i); key.push(S.paintRand ? B.rnd() : b1 ? d : d * (.35 + B.rnd() * 1.3)); }
   const ord = idx.map((_, k) => k).sort((a, b) => key[a] - key[b]).slice(0, want), spread = S.size * 18;
   for (const k of ord) { const i = idx[k]; B.t0[i] = now; B.fx[i] = cx + (b1 ? 0 : (B.rnd() - .5) * spread); B.fy[i] = cy + (b1 ? 0 : (B.rnd() - .5) * spread); B.left--; }
 }
