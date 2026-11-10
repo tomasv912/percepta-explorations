@@ -328,7 +328,7 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
-  mzCount: '1', mzHeight: 3, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
+  mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -405,35 +405,52 @@ const SKY_VAR = { keep: 0, tall: .3, wide: .25, bend: .25, twist: 1.4, taper: .4
 // Coronamiento) and the seed for what they leave open (the type, when Al azar; tier proportions; the crown).
 // Escalonado: tiers, each narrower. Cilindro: a round shaft. Afinado: a square prism narrowing to the top.
 // Torcido: a stack of floor plates, each turned a little more. Floor slabs stand proud at every floor.
-// Manzanas: city blocks, built from the seed. Each block is a square plot (a sidewalk slab a little proud of the
-// street) built up along its four edges with buildings of their own width, depth and height (some stepped back, a few
-// towers, Alturas sets how tall they can go), leaving a courtyard in the middle; Cantidad lays 1, 2, 4, 6 or 8 of them
-// out on a grid with streets between.
+// Manzanas: city blocks, built from the seed. Each block is a perfect square cut into lots (split again and again,
+// across the longer side, until the lots are building-sized) and every lot is built to its edges, so the block is
+// solid: flat roofs, stepped tops, gable roofs, a round tower on a podium, now and then a small square with a tree.
+// Alturas scales how tall they go; Cantidad lays 1, 2, 4, 6 or 8 blocks out on a grid with streets between.
 function blocks(seed) {
   const T = [], quad = (a, b, c, d) => T.push(a, b, c, a, c, d);
   const box = (x0, x1, y0, y1, z0, z1) => { const p = (x, y, z) => [x, y, z];
     quad(p(x0, y0, z0), p(x1, y0, z0), p(x1, y1, z0), p(x0, y1, z0)); quad(p(x1, y0, z1), p(x0, y0, z1), p(x0, y1, z1), p(x1, y1, z1));
     quad(p(x0, y0, z1), p(x0, y0, z0), p(x0, y1, z0), p(x0, y1, z1)); quad(p(x1, y0, z0), p(x1, y0, z1), p(x1, y1, z1), p(x1, y1, z0));
     quad(p(x0, y1, z0), p(x1, y1, z0), p(x1, y1, z1), p(x0, y1, z1)); quad(p(x0, y0, z1), p(x1, y0, z1), p(x1, y0, z0), p(x0, y0, z0)); };
-  const n = +S.mzCount, cols = { 1: 1, 2: 2, 4: 2, 6: 3, 8: 4 }[n], rows = Math.ceil(n / cols), B = 4, street = 1.1, curb = .06;
+  const cyl = (cx, cz, rad, y0, y1, k = 1, n = 20) => { for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, b = (i + 1) / n * Math.PI * 2, P = (t, y, rr) => [cx + Math.cos(t) * rr, y, cz + Math.sin(t) * rr];
+    quad(P(a, y0, rad), P(b, y0, rad), P(b, y1, rad * k), P(a, y1, rad * k)); T.push([cx, y1, cz], P(b, y1, rad * k), P(a, y1, rad * k)); } };
+  const ball = (cx, cy, cz, rad, ry) => { const nu = 8, nv = 14, P = (i, j) => { const ph = i / nu * Math.PI, th = j / nv * Math.PI * 2; return [cx + Math.sin(ph) * Math.cos(th) * rad, cy + Math.cos(ph) * ry, cz + Math.sin(ph) * Math.sin(th) * rad]; };
+    for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) quad(P(i, j), P(i + 1, j), P(i + 1, j + 1), P(i, j + 1)); };
+  const gable = (x0, x1, y0, y1, z0, z1) => { const alongX = x1 - x0 >= z1 - z0;
+    if (alongX) { const zc = (z0 + z1) / 2; quad([x0, y0, z0], [x1, y0, z0], [x1, y1, zc], [x0, y1, zc]); quad([x1, y0, z1], [x0, y0, z1], [x0, y1, zc], [x1, y1, zc]); T.push([x0, y0, z1], [x0, y0, z0], [x0, y1, zc], [x1, y0, z0], [x1, y0, z1], [x1, y1, zc]); }
+    else { const xc = (x0 + x1) / 2; quad([x1, y0, z0], [x1, y0, z1], [xc, y1, z1], [xc, y1, z0]); quad([x0, y0, z1], [x0, y0, z0], [xc, y1, z0], [xc, y1, z1]); T.push([x0, y0, z0], [x1, y0, z0], [xc, y1, z0], [x1, y0, z1], [x0, y0, z1], [xc, y1, z1]); } };
+  const n = +S.mzCount, cols = { 1: 1, 2: 2, 4: 2, 6: 3, 8: 4 }[n], rows = Math.ceil(n / cols), B = 4, street = 1.1, curb = .06, H = S.mzHeight;
   for (let k = 0; k < n; k++) {
     const r = rng(seed * 7919 + k * 104729 + 3), pick = (a, b) => a + r() * (b - a), ox = (k % cols - (cols - 1) / 2) * (B + street), oz = (Math.floor(k / cols) - (rows - 1) / 2) * (B + street);
     box(ox - B / 2, ox + B / 2, 0, curb, oz - B / 2, oz + B / 2);
-    const inset = .12, L = B - 2 * inset;
-    // the four sides, each a run of lots from corner to corner (the corners belong to the side before)
-    for (let side = 0; side < 4; side++) {
-      let u = side ? .9 : 0;
-      while (u < L - .25) {
-        const w = Math.min(L - u, pick(.45, 1.15)), d = pick(.7, 1.35), tall = r() < .14, h = (tall ? pick(.55, 1) : pick(.12, .45)) * S.mzHeight;
-        // the lot in the side's frame (u along, v inwards), then turned onto the plot
-        const at = (uu, vv) => { const a = -L / 2 + uu, b = -L / 2 + vv; return side === 0 ? [a, b] : side === 1 ? [L / 2 - b, a] : side === 2 ? [L / 2 - (uu), L / 2 - vv] : [b, L / 2 - uu]; };
-        const [x0, z0] = at(u + .02, 0), [x1, z1] = at(u + w - .02, d);
-        const X0 = ox + Math.min(x0, x1), X1 = ox + Math.max(x0, x1), Z0 = oz + Math.min(z0, z1), Z1 = oz + Math.max(z0, z1);
-        box(X0, X1, curb, curb + h, Z0, Z1);
-        if (h > 1.2 && r() < .7) { const s2 = pick(.15, .3), cx = (X0 + X1) / 2, cz = (Z0 + Z1) / 2, hw = (X1 - X0) / 2 * (1 - s2), hd = (Z1 - Z0) / 2 * (1 - s2); box(cx - hw, cx + hw, curb + h, curb + h * pick(1.15, 1.4), cz - hd, cz + hd); }
-        u += w;
+    // the lots: the square split across its longer side until a lot is under about one unit
+    const lots = [], split = (x0, x1, z0, z1) => {
+      const w = x1 - x0, d = z1 - z0, big = Math.max(w, d);
+      if (big < pick(.7, 1.4) || (big < 1.6 && r() < .25)) return lots.push([x0, x1, z0, z1]);
+      const t = pick(.35, .65);
+      if (w >= d) { const m = x0 + w * t; split(x0, m, z0, z1); split(m, x1, z0, z1); } else { const m = z0 + d * t; split(x0, x1, z0, m); split(x0, x1, m, z1); }
+    };
+    split(ox - B / 2, ox + B / 2, oz - B / 2, oz + B / 2);
+    let plaza = r() < .7 ? Math.floor(r() * lots.length) : -1;
+    lots.forEach(([x0, x1, z0, z1], li) => {
+      const y = curb, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, w = x1 - x0, d = z1 - z0, m = Math.min(w, d), q = r();
+      if (li === plaza) { // a small square: a low lawn slab and a tree
+        box(x0, x1, y, y + .02, z0, z1);
+        const th = pick(.35, .55); cyl(cx, cz, m * .05, y, y + th, 1, 8); ball(cx, y + th + m * .22, cz, m * .32, m * .28); return;
       }
-    }
+      const h = (q < .12 ? pick(.9, 1.6) : pick(.15, .55)) * H;
+      const kind = r();
+      if (kind < .2 && h > .4) { // a round tower on a podium filling the lot
+        const ph = pick(.12, .25) * H; box(x0, x1, y, y + ph, z0, z1); cyl(cx, cz, m * pick(.3, .45), y + ph, y + h, 1, 24);
+      } else if (kind < .45 && h < .8 * H) { // a gable roof
+        box(x0, x1, y, y + h, z0, z1); gable(x0, x1, y + h, y + h + m * pick(.25, .45), z0, z1);
+      } else if (kind < .7) { // stepped top
+        box(x0, x1, y, y + h, z0, z1); const s2 = pick(.15, .3); box(x0 + w * s2, x1 - w * s2, y + h, y + h * pick(1.15, 1.35), z0 + d * s2, z1 - d * s2);
+      } else box(x0, x1, y, y + h, z0, z1);
+    });
   }
   const P = new Float32Array(T.length * 3), I = new Uint32Array(T.length);
   T.forEach((v, i) => { P[i * 3] = v[0]; P[i * 3 + 1] = v[1]; P[i * 3 + 2] = v[2]; I[i] = i; });
