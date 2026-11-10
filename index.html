@@ -215,8 +215,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section id="motion-sec">
         <h2>Movimiento</h2>
         <div class="seg tall" data-key="motion" aria-label="Movimiento">
-          <button data-v="still">Quieta</button><button data-v="horiz" id="mv-horiz">Desplazamiento horizontal</button>
+          <button data-v="still">Quieta</button><button data-v="horiz" id="mv-horiz">Desplazamiento</button>
         </div>
+        <div class="seg" data-key="flowDir" id="flowdir-row" aria-label="Dirección del desplazamiento"><button data-v="r" title="Hacia la derecha">→</button><button data-v="l" title="Hacia la izquierda">←</button><button data-v="d" title="Hacia abajo">↓</button><button data-v="u" title="Hacia arriba">↑</button></div>
         <p class="hint" id="motion-hint"></p>
         <div id="sl-wThresh"></div>
         <div id="motion-controls">
@@ -327,7 +328,7 @@ const DEFAULTS = {
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
   dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2, onlyPal: false, dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0,
-  motion: 'still', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
+  motion: 'still', flowDir: 'r', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -657,7 +658,7 @@ function generate(st) {
         add(x, y, 1, 0, undefined, clamp(d));
       }
     }
-    else if (st.motion === 'horiz') {
+    else if (st.motion === 'horiz' && st.flowDir === 'r') {
       // Desplazamiento horizontal: each point keeps its own draws (where it sits across the cloud or the sheet, its
       // jitter, whether it strays) and only its place along the flow, u, moves (wavesAt), so it drifts in through the
       // chaos, narrows onto the focus and fans out along its ray, in at the left edge and out at the right. Its colour
@@ -697,11 +698,11 @@ function generate(st) {
         add(x, y, 1, 0, r() < settle ? col : undefined, clamp(.5 + .45 * sheet(s * .7 + .3, w + .5)));
       }
     }
-  } else if (st.motion === 'horiz' || st.wThresh > 0) {
+  } else if ((st.motion === 'horiz' && st.flowDir === 'r') || st.wThresh > 0) {
     // Olas with Umbral or in motion: each cube keeps two ranks on its sheet (along and into the depth) and is placed
     // from the sheet's density (see sheetGrid), which piles up on the curves with Umbral; Desplazamiento horizontal
     // runs the along-rank round once a loop (wavesAt).
-    const { layers, height, focal, zNear, zFar } = waveField(), flowing = st.motion === 'horiz';
+    const { layers, height, focal, zNear, zFar } = waveField(), flowing = st.motion === 'horiz' && st.flowDir === 'r';
     const grids = layers.map(L => sheetGrid(L, st, flowing)), li = new Uint8Array(n), q = new Float32Array(n), qv = new Float32Array(n), nn = new Float32Array(n), uu = new Float32Array(n);
     for (let c = 0; c < n; c++) {
       const l = Math.floor(r() * layers.length), a = r(), b = r(), no = gauss(r) * st.thickness * .06 * (1 - st.wThresh * .7), [u, v] = placeOn(grids[l], b, a);
@@ -1124,12 +1125,11 @@ function sync() {
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   const waves = S.source === 'waves', image = S.source === 'image', mono = S.style === 'mono';
   $('#wave-controls').hidden = !waves && S.source !== 'bloom';
-  const flows = waves || S.source === 'refract';
-  if (S.motion !== 'still' && !flows) S.motion = 'still';
-  $('#motion-sec').hidden = !flows; $('#sl-wThresh').hidden = !waves; $('#motion-controls').hidden = S.motion === 'still';
+  $('#motion-sec').hidden = false; $('#flowdir-row').hidden = S.motion === 'still'; $('#sl-wThresh').hidden = !waves; $('#motion-controls').hidden = S.motion === 'still';
   $('#sl-jitter').hidden = !(S.motion === 'horiz' && S.handJit);
   $('#motion-hint').hidden = S.motion === 'still';
-  $('#motion-hint').textContent = S.source === 'refract' ? 'Los cubos avanzan de izquierda a derecha: entran por el borde como nube, se encauzan en el foco y salen abiertos por el otro borde, en loop; A mano les suma un saltito en cada dibujo, como stop motion.' : 'Los cubos recorren la ola de izquierda a derecha, entran por un borde del cuadro y salen por el otro, en loop; A mano les suma un saltito en cada dibujo, como stop motion.';
+  $('#motion-hint').textContent = sheetFlow() ? (S.source === 'refract' ? 'Los cubos avanzan de izquierda a derecha: entran por el borde como nube, se encauzan en el foco y salen abiertos por el otro borde, en loop; A mano les suma un saltito en cada dibujo, como stop motion.' : 'Los cubos recorren la ola de izquierda a derecha, entran por un borde del cuadro y salen por el otro, en loop; A mano les suma un saltito en cada dibujo, como stop motion.')
+    : 'Los cubos corren en la dirección elegida por dentro de la forma (lo que generaste, la imagen o lo que dibujaste con el pincel): salen por un extremo y vuelven a entrar por el otro, así la imagen se mantiene, en loop; A mano les suma un saltito en cada dibujo.';
   if (!$('#motion-export').disabled) $('#motion-export').textContent = S.vidFmt === 'png' ? 'Exportar PNG (.zip)' : 'Exportar video';
   $('#image-controls').hidden = !image; $('#refract-controls').hidden = S.source !== 'refract'; $('#bloom-controls').hidden = S.source !== 'bloom';
   $('#source-hint').textContent = image ? 'Más cubos en las zonas oscuras, menos en las claras.' : 'También podés arrastrar o pegar una imagen: más cubos en lo oscuro, menos en lo claro.';
@@ -1147,7 +1147,7 @@ function sync() {
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   markPalette();
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
-  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz', S.wThresh, S.contrast, S.threshold, S.invert, S.dir, S.imgLines && depthId, S.dGap, S.dPx, S.dRelief, S.dAM,
+  const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.flowDir === 'r' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz' && S.flowDir === 'r', S.wThresh, S.contrast, S.threshold, S.invert, S.dir, S.imgLines && depthId, S.dGap, S.dPx, S.dRelief, S.dAM,
     S.style, S.count, S.size, S.snap && !S.blend && S.cell, S.chaos, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {
@@ -1374,7 +1374,48 @@ addEventListener('paste', e => {
 // the first. Cubes dispersed by hand stay put.
 let flowPlaying = true, flowT0 = performance.now(), flowX = null, flowY = null, shownFi = -1;
 const handOn = () => S.motion === 'horiz' && S.handJit && S.jitter > 0;
-const animMode = () => S.motion === 'horiz' && (S.source === 'waves' || S.source === 'refract') && !!gen0?.wv;
+const animMode = () => S.motion === 'horiz' && !!gen;
+// The waves' own travel (cubes riding their sheets, edge to edge of the frame): Olas or Refracción going right with
+// nothing retouched. Otherwise the general flow (flowAt).
+const sheetFlow = () => S.motion === 'horiz' && S.flowDir === 'r' && !!gen0?.wv && !ops.length;
+// The general flow: any picture (generated, an image, strokes of the brush) runs in the chosen direction inside its own
+// shape. Cubes are taken in bands across the flow (a cube's width high); in a band each keeps its rank along it and the
+// ranks slide on, a whole number of turns a loop, so the last drawing leads into the first. A cube goes where the
+// band's cubes are (by rank): across a gap it runs on a half cube's width and then jumps to the far side, so the
+// shape and its density hold; out of one end of the band it comes back at the other. The other coordinate it keeps.
+let flowCache = null;
+function flowSetup() {
+  const key = [gen.n, S.flowDir, S.size].join();
+  if (flowCache && flowCache.gen === gen && flowCache.key === key) return flowCache;
+  const vert = S.flowDir === 'd' || S.flowDir === 'u', A = vert ? gen.hy : gen.hx, Bx = vert ? gen.hx : gen.hy, band = Math.max(2, S.size * 1.6), g0 = Math.max(1, S.size * 1.2);
+  const bands = new Map();
+  for (let i = 0; i < gen.n; i++) { if (gen.del[i]) continue; const k = Math.floor(Bx[i] / band); (bands.get(k) || bands.set(k, []).get(k)).push(i); }
+  const rows = [], rowOf = new Int32Array(gen.n).fill(-1), arc = new Float32Array(gen.n), rank = new Int32Array(gen.n);
+  let Cmax = 0;
+  for (const ids of bands.values()) {
+    ids.sort((a, b) => A[a] - A[b]);
+    const pos = Float32Array.from(ids, i => A[i]), c = new Float32Array(ids.length);
+    for (let k = 1; k < ids.length; k++) c[k] = c[k - 1] + Math.min(pos[k] - pos[k - 1], g0);
+    const C = c[ids.length - 1] + g0, ri = rows.length;
+    rows.push({ pos, c, C });
+    ids.forEach((i, k) => { rowOf[i] = ri; arc[i] = c[k]; rank[i] = k; });
+    Cmax = Math.max(Cmax, C);
+  }
+  for (const row of rows) row.turns = Math.max(1, Math.round(row.C / (Cmax || 1))); // the longest band once a loop
+  return flowCache = { gen, key, vert, rows, rowOf, arc, rank };
+}
+function flowAt(i, t) {
+  // by rank, not by distance: a cube moves to where the cube ahead of it was, so the band's cubes always sit where the
+  // picture has them (dense stays dense) while every cube runs on
+  const F = flowSetup(), ri = F.rowOf[i]; if (ri < 0) return null;
+  const row = F.rows[ri], m = row.pos.length, sign = S.flowDir === 'l' || S.flowDir === 'u' ? -1 : 1, g0 = Math.max(1, S.size * 1.2);
+  const q = ((F.rank[i] + sign * t * row.turns * m) % m + m) % m, k = Math.floor(q), f = q - k, a = row.pos[k];
+  const b = k + 1 < m ? row.pos[k + 1] : row.pos[0] + (row.pos[m - 1] - row.pos[0]) + g0 * 2;
+  const gap = b - a;
+  if (gap <= g0) return a + gap * f;
+  // a wide gap (or the end of the band): run on a cube's width, then jump
+  return f < .5 ? a + g0 * f * 2 : (k + 1 < m ? row.pos[k + 1] : row.pos[0]) - g0 * (1 - f) * 2;
+}
 const animating = () => animMode() && flowPlaying && !filming;
 const drawings = () => Math.max(2, Math.round(S.loopDur * +S.vidFps));
 function wavesAt(t) {
@@ -1400,11 +1441,13 @@ function hash01(a, b) {
 }
 // Every cube where drawing fi puts it.
 function poseAt(fi) {
-  const horiz = S.motion === 'horiz' && gen0?.wv, src = edit.src, J = handOn() ? S.jitter : 0, d = fi % drawings();
-  if (horiz) wavesAt(d / drawings());
+  const sheet = sheetFlow(), gflow = S.motion === 'horiz' && !sheet, src = edit.src, J = handOn() ? S.jitter : 0, d = fi % drawings(), t = d / drawings();
+  if (sheet) wavesAt(t);
+  const vert = S.flowDir === 'd' || S.flowDir === 'u';
   for (let i = 0; i < gen.n; i++) {
     if (moved[i]) continue;
-    let x = horiz ? flowX[src[i]] : gen.hx[i], y = horiz ? flowY[src[i]] : gen.hy[i];
+    let x = sheet ? flowX[src[i]] : gen.hx[i], y = sheet ? flowY[src[i]] : gen.hy[i];
+    if (gflow) { const a = flowAt(i, t); if (a !== null) { if (vert) y = a; else x = a; } }
     if (J) {
       const k = src[i] * 4, jx = (.35 + .65 * hash01(k, d)) * (hash01(k + 1, d) < .5 ? -1 : 1), jy = (.35 + .65 * hash01(k + 2, d)) * (hash01(k + 3, d) < .5 ? -1 : 1);
       x += jx * J; y += jy * J;
