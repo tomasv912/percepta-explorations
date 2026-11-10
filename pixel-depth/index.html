@@ -723,7 +723,7 @@ function project(cam) {
 }
 function colorOf(p) {
   const P = S.palette;
-  const c = S.colorMode === 'height' ? [INK, ...P][clamp(Math.floor(p.lift / field.top * (P.length + 1) * .999), 0, P.length)] : S.colorMode === 'random' ? P[Math.floor(p.pick * P.length)] : S.ink;
+  const c = S.colorMode === 'height' ? [INK, ...P][clamp(Math.floor(p.lift / field.top * (P.length + 1) * .999), 0, P.length)] : S.colorMode === 'random' ? [...P, PerceptaBg.pick(S.bg, S.bgFlip)][Math.floor(p.pick * (P.length + 1))] : S.ink;
   return onBg(c, S.bg);
 }
 // Engrillar: every pixel moved to the middle of its cell on a grid of the pixel size (Tamaño del píxel), one per cell

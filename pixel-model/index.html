@@ -633,7 +633,7 @@ const usablePal = st => { const P = st.palette.filter(c => c.toLowerCase() !== s
 const palOnly = (c, st, k = 0) => { const U = usablePal(st); return U.some(u => u.toLowerCase() === c.toLowerCase()) ? c : U[k % U.length]; };
 function colorOf(p) {
   const P = S.onlyPal ? usablePal(S) : S.palette, c = S.colorMode === 'tone' ? P[clamp(Math.floor((1 - p.tone) * P.length), 0, P.length - 1)]
-    : S.colorMode === 'random' ? P[Math.floor(p.pick * P.length)] : S.ink;
+    : S.colorMode === 'random' ? (S.onlyPal ? P[Math.floor(p.pick * P.length)] : [...P, PerceptaBg.pick(S.bg, S.bgFlip)][Math.floor(p.pick * (P.length + 1))]) : S.ink; // Al azar: with the background's opposite too
   return S.onlyPal ? palOnly(c, S) : onBg(c, S.bg);
 }
 // Pixels are drawn where they are now: home plus the animation's offset (p.dx, p.dy).

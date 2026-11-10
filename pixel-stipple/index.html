@@ -378,7 +378,7 @@ function colorOf(i, sp) {
   if (S.colorMode === 'image') { const v = colAt(P.x[i], P.y[i]); return '#' + v.toString(16).padStart(6, '0'); }
   else if (S.colorMode === 'tone') c = Pl[clamp(Math.floor(P.tone[i] * Pl.length), 0, Pl.length - 1)];
   else if (S.colorMode === 'vel') c = [...Pl, INK][clamp(Math.floor(sp * (Pl.length + 1)), 0, Pl.length)];
-  else if (S.colorMode === 'random') c = Pl[Math.floor(P.pick[i] * Pl.length)];
+  else if (S.colorMode === 'random') c = [...Pl, PerceptaBg.pick(S.bg, S.bgFlip)][Math.floor(P.pick[i] * (Pl.length + 1))]; // with the background's opposite
   else c = S.ink;
   return onBg(c, S.bg);
 }

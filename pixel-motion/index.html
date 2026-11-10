@@ -238,7 +238,7 @@ function build() {
     const u = r(), v = r(), L = r() * layers.length | 0;
     // A cube keeps only its ranks on the sheet, u along and qv into the depth: where it sits is worked out each
     // drawing (see placeAt), so it can gather where the sheet curves.
-    cubes.push({ u, qv: v, L, n: gauss(r) * S.thickness * .06, pal: r() * S.palette.length | 0, k: 1 + (r() - .5) * .3, jx: r() * 1e4 | 0 });
+    cubes.push({ u, qv: v, L, n: gauss(r) * S.thickness * .06, pal: r() * (S.palette.length + 1) | 0, k: 1 + (r() - .5) * .3, jx: r() * 1e4 | 0 });
   }
   scene = { layers, cubes, focal: .4 + S.persp * 1.4, zNear: 1, zFar: 1 + 1.5 + S.persp * 2.5 };
   fitT = null;
@@ -310,7 +310,8 @@ function placeAt(cdfs, li, qv, q, t) {
   return [invert(g.rows[row], NU, q) / NU, rv / NV];
 }
 function cubesRaw(i) { const keep = fitT; fitT = { k: 1, ox: 0, oy: 0 }; const j = S.jitter; S.jitter = 0; const o = cubesAt(i).map(c => c); S.jitter = j; fitT = keep; return o; }
-function colorOf(pal) { return onBg(S.colorMode === 'ink' ? S.ink : S.palette[pal % S.palette.length], S.bg); }
+// Al azar: the palette's colours and the background's opposite (black on white, white on black).
+function colorOf(pal) { return onBg(S.colorMode === 'ink' ? S.ink : [...S.palette, PerceptaBg.pick(S.bg, S.bgFlip)][pal % (S.palette.length + 1)], S.bg); }
 // Engrillar: every cube moved to the middle of its cell on a grid of the cube size (Tamaño), one per cell (the front
 // one), all at that size, so they sit side by side and never on top of each other.
 function snapped(list) {
