@@ -121,6 +121,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 #building-controls .seg { flex-wrap: wrap; }
 #building-controls .seg button, #shape-controls .seg button { flex: 1 0 30%; }
 #shape-controls .seg { flex-wrap: wrap; }
+#block-controls { display: flex; flex-direction: column; gap: 10px; }
 .crop-hud { position: absolute; bottom: 72px; left: 14px; flex-direction: column; align-items: stretch; display: flex; gap: 4px; align-items: center; white-space: nowrap; z-index: 4; padding: 4px; border-radius: 10px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); font-size: 12px; color: var(--text-2); }
 .crop-hud b { color: var(--text); font-weight: 500; margin: 4px 6px; }
 .crop-hud button { height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: var(--fill); color: var(--text); font: 500 12px var(--font); cursor: pointer; }
@@ -200,6 +201,11 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section>
         <h2>Modelo</h2>
         <div class="presets" id="presets" aria-label="Modelos"></div>
+        <div id="block-controls">
+          <div class="seg" data-key="mzCount" aria-label="Cantidad de manzanas"><button data-v="1">1</button><button data-v="2">2</button><button data-v="4">4</button><button data-v="6">6</button><button data-v="8">8</button></div>
+          <div id="sl-mzHeight"></div>
+          <p class="hint">Cada semilla (R) arma otras manzanas.</p>
+        </div>
         <div id="shape-controls">
           <div class="seg" data-key="shape" aria-label="Forma"><button data-v="cube">Cubo</button><button data-v="sphere">Esfera</button><button data-v="ico">Icosfera</button><button data-v="cyl">Cilindro</button><button data-v="cone">Cono</button><button data-v="pyramid">Pirámide</button><button data-v="tetra">Tetraedro</button><button data-v="torus">Toro</button><button data-v="disc">Círculo</button><button data-v="wave">Ola</button></div>
         </div>
@@ -322,7 +328,7 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
-  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
+  mzCount: '1', mzHeight: 3, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -339,7 +345,7 @@ function rng(seed) {
 // Built-in models, each with variations from the seed (R): a bonsai and a skyscraper (scans, simplified, in models/),
 // and Building, generated here and shaped by its own settings; or an uploaded file. Positions are centred and scaled
 // to fit a unit sphere.
-const PRESETS = [['bonsai', 'Bonsai'], ['rascacielos', 'Rascacielos'], ['building', 'Building'], ['shapes', 'Formas']];
+const PRESETS = [['bonsai', 'Bonsai'], ['rascacielos', 'Rascacielos'], ['building', 'Building'], ['blocks', 'Manzanas'], ['shapes', 'Formas']];
 let model = null, modelName = '', preset = 'bonsai', presetSeed = -1, loadingPreset = null;
 // An indexed mesh into 18-float triangles, with smooth normals (each vertex the area-weighted sum of its faces).
 function indexedTris(P, I) {
@@ -399,6 +405,40 @@ const SKY_VAR = { keep: 0, tall: .3, wide: .25, bend: .25, twist: 1.4, taper: .4
 // Coronamiento) and the seed for what they leave open (the type, when Al azar; tier proportions; the crown).
 // Escalonado: tiers, each narrower. Cilindro: a round shaft. Afinado: a square prism narrowing to the top.
 // Torcido: a stack of floor plates, each turned a little more. Floor slabs stand proud at every floor.
+// Manzanas: city blocks, built from the seed. Each block is a square plot (a sidewalk slab a little proud of the
+// street) built up along its four edges with buildings of their own width, depth and height (some stepped back, a few
+// towers, Alturas sets how tall they can go), leaving a courtyard in the middle; Cantidad lays 1, 2, 4, 6 or 8 of them
+// out on a grid with streets between.
+function blocks(seed) {
+  const T = [], quad = (a, b, c, d) => T.push(a, b, c, a, c, d);
+  const box = (x0, x1, y0, y1, z0, z1) => { const p = (x, y, z) => [x, y, z];
+    quad(p(x0, y0, z0), p(x1, y0, z0), p(x1, y1, z0), p(x0, y1, z0)); quad(p(x1, y0, z1), p(x0, y0, z1), p(x0, y1, z1), p(x1, y1, z1));
+    quad(p(x0, y0, z1), p(x0, y0, z0), p(x0, y1, z0), p(x0, y1, z1)); quad(p(x1, y0, z0), p(x1, y0, z1), p(x1, y1, z1), p(x1, y1, z0));
+    quad(p(x0, y1, z0), p(x1, y1, z0), p(x1, y1, z1), p(x0, y1, z1)); quad(p(x0, y0, z1), p(x1, y0, z1), p(x1, y0, z0), p(x0, y0, z0)); };
+  const n = +S.mzCount, cols = { 1: 1, 2: 2, 4: 2, 6: 3, 8: 4 }[n], rows = Math.ceil(n / cols), B = 4, street = 1.1, curb = .06;
+  for (let k = 0; k < n; k++) {
+    const r = rng(seed * 7919 + k * 104729 + 3), pick = (a, b) => a + r() * (b - a), ox = (k % cols - (cols - 1) / 2) * (B + street), oz = (Math.floor(k / cols) - (rows - 1) / 2) * (B + street);
+    box(ox - B / 2, ox + B / 2, 0, curb, oz - B / 2, oz + B / 2);
+    const inset = .12, L = B - 2 * inset;
+    // the four sides, each a run of lots from corner to corner (the corners belong to the side before)
+    for (let side = 0; side < 4; side++) {
+      let u = side ? .9 : 0;
+      while (u < L - .25) {
+        const w = Math.min(L - u, pick(.45, 1.15)), d = pick(.7, 1.35), tall = r() < .14, h = (tall ? pick(.55, 1) : pick(.12, .45)) * S.mzHeight;
+        // the lot in the side's frame (u along, v inwards), then turned onto the plot
+        const at = (uu, vv) => { const a = -L / 2 + uu, b = -L / 2 + vv; return side === 0 ? [a, b] : side === 1 ? [L / 2 - b, a] : side === 2 ? [L / 2 - (uu), L / 2 - vv] : [b, L / 2 - uu]; };
+        const [x0, z0] = at(u + .02, 0), [x1, z1] = at(u + w - .02, d);
+        const X0 = ox + Math.min(x0, x1), X1 = ox + Math.max(x0, x1), Z0 = oz + Math.min(z0, z1), Z1 = oz + Math.max(z0, z1);
+        box(X0, X1, curb, curb + h, Z0, Z1);
+        if (h > 1.2 && r() < .7) { const s2 = pick(.15, .3), cx = (X0 + X1) / 2, cz = (Z0 + Z1) / 2, hw = (X1 - X0) / 2 * (1 - s2), hd = (Z1 - Z0) / 2 * (1 - s2); box(cx - hw, cx + hw, curb + h, curb + h * pick(1.15, 1.4), cz - hd, cz + hd); }
+        u += w;
+      }
+    }
+  }
+  const P = new Float32Array(T.length * 3), I = new Uint32Array(T.length);
+  T.forEach((v, i) => { P[i * 3] = v[0]; P[i * 3 + 1] = v[1]; P[i * 3 + 2] = v[2]; I[i] = i; });
+  return { P, I };
+}
 function building(seed) {
   const r = rng(seed * 104729 + 7), T = [], pick = (a, b) => a + r() * (b - a);
   const quad = (a, b, c, d) => { T.push(a, b, c, a, c, d); };
@@ -499,9 +539,10 @@ function shapeMesh(kind, seed) {
   return { P: Float32Array.from(P), I: Uint32Array.from(I) };
 }
 // What the current preset is made from: its seed, and Building's settings or the shape.
-const presetSig = () => preset + ':' + (preset === 'shapes' ? S.shape + ':' + S.seed : preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
+const presetSig = () => preset + ':' + (preset === 'blocks' ? [S.seed, S.mzCount, S.mzHeight].join() : preset === 'shapes' ? S.shape + ':' + S.seed : preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
 function loadPreset() {
   const sig = presetSig(), which = preset;
+  if (which === 'blocks') { const m = blocks(S.seed); setModelTris(indexedTris(m.P, m.I), 'Manzanas'); presetSeed = sig; return; }
   if (which === 'shapes') { const m = shapeMesh(S.shape, S.seed); setModelTris(indexedTris(m.P, m.I), SHAPES.find(x => x[0] === S.shape)[1]); presetSeed = sig; return; }
   if (which === 'building') { const m = building(S.seed); setModelTris(indexedTris(m.P, m.I), 'Building'); presetSeed = sig; return; }
   if (loadingPreset) return;
@@ -717,6 +758,7 @@ const SLIDERS = {
   entSpread: { label: 'Dispersión', min: 0, max: 1, step: .01, fmt: pct },
   entStagger: { label: 'Escalonado', min: 0, max: 1, step: .01, fmt: pct },
   entStay: { label: 'Formando el modelo', min: .1, max: .95, step: .01, fmt: pct },
+  mzHeight: { label: 'Alturas', min: .5, max: 8, step: .1, fmt: v => '×' + v.toFixed(1).replace('.', ','), emph: true },
   bH: { label: 'Altura', min: 1, max: 20, step: .1, fmt: v => v.toFixed(1), emph: true },
   bW: { label: 'Ancho', min: .3, max: 3, step: .01, fmt: v => v.toFixed(2) },
   bD: { label: 'Profundidad', min: .2, max: 1.5, step: .01, fmt: v => '×' + v.toFixed(2) },
@@ -782,6 +824,7 @@ function sync(fast) {
   document.querySelectorAll('[data-p]').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === preset && !modelName.includes('.')));
   $('#building-controls').hidden = preset !== 'building' || modelName.includes('.');
   $('#shape-controls').hidden = preset !== 'shapes' || modelName.includes('.');
+  $('#block-controls').hidden = preset !== 'blocks' || modelName.includes('.');
   if (preset && !modelName.includes('.') && presetSeed !== presetSig()) loadPreset();
   if (!model) { $('#stats').textContent = 'Cargando el modelo…'; return; }
   updateBg(S.bgFlip);
