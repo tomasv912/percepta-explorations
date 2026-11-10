@@ -335,10 +335,13 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: 1, onlyPal: false, cseed: 1, dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0,
+  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: 1, onlyPal: false, cseed: 1, square: false, dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0,
   motion: 'still', flowDir: 'r', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
+// 1B spacing: circles keep apart by their distance; squares (Cuadrados) by the larger of their two offsets, so
+// their corners can't touch either.
+const apartD = (dx, dy) => S.square ? Math.max(Math.abs(dx), Math.abs(dy)) : Math.hypot(dx, dy);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
 
@@ -460,7 +463,7 @@ function apart(G, gap, jit = 0, r = Math.random) {
   for (let i = 0; i < n; i++) {
     const x = G.hx[i], y = G.hy[i], rad = G.size[i] / 2, cx = Math.floor(x / cell), cy = Math.floor(y / cell);
     let ok = true;
-    for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = grid.get(key(cx + a, cy + b)); if (l) for (const [ox, oy, orad] of l) if (Math.hypot(ox - x, oy - y) < rad + orad + gap - 1e-6) { ok = false; break; } }
+    for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = grid.get(key(cx + a, cy + b)); if (l) for (const [ox, oy, orad] of l) if (apartD(ox - x, oy - y) < rad + orad + gap - 1e-6) { ok = false; break; } }
     if (!ok) continue;
     const kk = key(cx, cy); (grid.get(kk) || grid.set(kk, []).get(kk)).push([x, y, rad]); keep.push(i);
   }
@@ -550,7 +553,7 @@ function generate(st) {
         const sc = scOf(tn); if (sc < .08) continue;
         const half = sc * sz / 2, cx = Math.floor(x / cellS), cy = Math.floor(y / cellS);
         let ok = true;
-        for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = taken.get(keyOf(cx + a, cy + b)); if (l) for (const [ox, oy, oh] of l) if (Math.hypot(ox - x, oy - y) < half + oh + sep - 1e-7) { ok = false; break; } } // circles: apart by their radii and the space
+        for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = taken.get(keyOf(cx + a, cy + b)); if (l) for (const [ox, oy, oh] of l) if (apartD(ox - x, oy - y) < half + oh + sep - 1e-7) { ok = false; break; } } // circles: apart by their radii and the space
         if (!ok) continue;
         const kk = keyOf(cx, cy); (taken.get(kk) || taken.set(kk, []).get(kk)).push([x, y, half]);
         add(x, y, 1, col[k]); size[got - 1] = st.size * sc; shade[got - 1] = 0;
@@ -960,7 +963,7 @@ function fill(ctx, st, lev, grow) {
   // Círculos: each cube drawn as the circle inside its square (trails stay bands).
   eachShape(st, (color, alpha, polys, cube) => {
     ctx.globalAlpha = alpha; ctx.fillStyle = color;
-    const round = cube && (st.circle || linesOn(st));
+    const round = cube && (st.circle || linesOn(st)) && !(st.dir === '1b' && st.square);
     for (let k = 0; k < polys.length; k += BATCH) {
       ctx.beginPath();
       for (let j = k; j < Math.min(polys.length, k + BATCH); j++) {
@@ -1001,7 +1004,7 @@ function toSvg(st) {
   if (st.bgExport) out.push(`<rect width="${gen.W}" height="${gen.H}" fill="${st.bg}"/>`);
   out.push(`<g transform="matrix(${r(c * 1000) / 1000} 0 0 ${r(c * 1000) / 1000} ${r(-v.x * c)} ${r(-v.y * c)})">`);
   const paths = (lev, grow) => eachShape(st, (color, alpha, polys, cube) => {
-    const round = cube && (st.circle || linesOn(st)), circ = p => { const rr = (p[2] - p[0]) / 2; return `M${r(p[0])} ${r(p[1] + rr)}a${r(rr)} ${r(rr)} 0 1 0 ${r(rr * 2)} 0a${r(rr)} ${r(rr)} 0 1 0 ${r(-rr * 2)} 0Z`; };
+    const round = cube && (st.circle || linesOn(st)) && !(st.dir === '1b' && st.square), circ = p => { const rr = (p[2] - p[0]) / 2; return `M${r(p[0])} ${r(p[1] + rr)}a${r(rr)} ${r(rr)} 0 1 0 ${r(rr * 2)} 0a${r(rr)} ${r(rr)} 0 1 0 ${r(-rr * 2)} 0Z`; };
     const d = polys.filter(inView).map(q => q.map((v, k) => v + (k % 2 ? panY : panX))).map(p => round ? circ(p) : `M${r(p[0])} ${r(p[1])}L${r(p[2])} ${r(p[3])}L${r(p[4])} ${r(p[5])}L${r(p[6])} ${r(p[7])}Z`).join('');
     if (d) out.push(`<path fill="${color}"${alpha < 1 ? ` fill-opacity="${Math.round(alpha * 1000) / 1000}"` : ''} d="${d}"/>`);
   }, lev, grow);
@@ -1170,7 +1173,7 @@ function sync() {
   markPalette();
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
   const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.flowDir === 'r' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz' && S.flowDir === 'r', S.wThresh, S.contrast, S.threshold, S.invert, S.dir, S.imgLines && depthId, S.dGap, S.dPx, S.dRelief, S.dAM,
-    S.style, S.count, S.size, S.snap && !S.blend && (S.size + S.cellGap), S.chaos, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
+    S.style, S.count, S.size, S.snap && !S.blend && (S.size + S.cellGap), S.chaos, S.square, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {
     gen0 = generate(S); genKey = key; placeKey = pkey; rebuild(true);
@@ -1601,13 +1604,14 @@ $('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.s
 // The mode bar (top middle): in 1A Caótico (loose, overlapping), Engrillado (one per cell) or Pasaje (from one to the
 // other across the picture: Dirección, Dónde ocurre, Largo); in 1B the circles' Caos.
 const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label="Modo"><button data-ord="chaos" title="Píxeles sueltos que se superponen">Caótico</button><button data-ord="grid" title="Cada píxel en su celda, separado de los demás">Engrillado</button><button data-ord="blend" title="De desorden a orden en una misma composición">Pasaje</button></div>
-  <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label>`);
+  <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label><label class="pm-sq" id="pm-sq" title="Píxeles cuadrados en vez de redondos, igual de separados"><input type="checkbox" id="pm-square"> Cuadrados</label>`);
 const ordOf = () => S.blend ? 'blend' : S.snap ? 'grid' : 'chaos';
 modeBar.querySelector('#pm-1a').addEventListener('click', e => { const b = e.target.closest('[data-ord]'); if (!b) return; S.snap = b.dataset.ord === 'grid'; S.blend = b.dataset.ord === 'blend'; sync(); });
 modeBar.querySelector('#pm-chaos').addEventListener('input', e => { S.chaos = +e.target.value; sync(); });
+modeBar.querySelector('#pm-square').addEventListener('change', e => { S.square = e.target.checked; sync(); });
 function syncModeBar() {
   const b1 = S.dir === '1b';
-  modeBar.querySelector('#pm-1a').hidden = b1; modeBar.querySelector('#pm-1b').hidden = !b1;
+  modeBar.querySelector('#pm-1a').hidden = b1; modeBar.querySelector('#pm-1b').hidden = modeBar.querySelector('#pm-sq').hidden = !b1; modeBar.querySelector('#pm-square').checked = S.square;
   modeBar.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ord === ordOf()));
   const ch = modeBar.querySelector('#pm-chaos'); if (+ch.value !== S.chaos) ch.value = S.chaos; ch.style.setProperty('--p', S.chaos * 100 + '%');
   modeBar.querySelector('#pm-chaos-out').textContent = Math.round(S.chaos * 100) + '%';

@@ -322,10 +322,13 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
-  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
+  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
+// 1B spacing: circles keep apart by their distance; squares (Cuadrados) by the larger of their two offsets, so
+// their corners can't touch either.
+const apartD = (dx, dy) => S.square ? Math.max(Math.abs(dx), Math.abs(dy)) : Math.hypot(dx, dy);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 function rng(seed) {
   let a = seed >>> 0 || 1;
@@ -600,7 +603,7 @@ function linePick(raw, kA, r, at) {
     let ok = true;
     for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) {
       const l = grid.get(key(cx + a, cy + b)); if (!l) continue;
-      for (const [x, y, h] of l) if (Math.hypot(x - ax, y - ay) < rad + h + gap - 1e-6) { ok = false; break; }
+      for (const [x, y, h] of l) if (apartD(x - ax, y - ay) < rad + h + gap - 1e-6) { ok = false; break; }
     }
     if (!ok) continue;
     const kk = key(cx, cy); (grid.get(kk) || grid.set(kk, []).get(kk)).push([ax, ay, rad]);
@@ -664,7 +667,7 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
       // Reveal: a pixel growing in is drawn at its share of the size (p.sc), from its middle
       const s = sizeOf(p), z = p.sc === undefined ? s : s * p.sc; if (z <= .05) continue;
       // Líneas horizontales: circles
-      if (S.lines && !S.snap) { const cx = (p.x + (p.dx || 0) - ox), cy = (p.y + (p.dy || 0) - oy); ctx.moveTo(cx + z / 2, cy); ctx.arc(cx, cy, z / 2, 0, Math.PI * 2); continue; }
+      if (S.lines && !S.snap && !S.square) { const cx = (p.x + (p.dx || 0) - ox), cy = (p.y + (p.dy || 0) - oy); ctx.moveTo(cx + z / 2, cy); ctx.arc(cx, cy, z / 2, 0, Math.PI * 2); continue; }
       ctx.rect(Math.round((p.x + (p.dx || 0) - z / 2 - ox) * q) / q, Math.round((p.y + (p.dy || 0) - z / 2 - oy) * q) / q, z, z);
     }
     ctx.fill();
@@ -783,7 +786,7 @@ function sync(fast) {
   updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   if (S.aspect + S.orient !== artKey) { artKey = S.aspect + S.orient; setArtboard(); S.panX = S.panY = 0; if (typeof crop !== 'undefined') { crop = null; cropStack = []; cropUI(); } }
-  const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow, S.lineAM, S.lineDot, S.chaos]);
+  const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow, S.lineAM, S.lineDot, S.chaos, S.square]);
   if (k !== key || (!fast && fastNext)) { fastNext = !!fast; pts = build(fast); key = k; ptsPan = [S.panX, S.panY]; }
   // Moved in the frame (Shift + drag): the same pixels, shifted; nothing is re-sampled.
   if (ptsPan[0] !== S.panX || ptsPan[1] !== S.panY) { const dx = S.panX - ptsPan[0], dy = S.panY - ptsPan[1]; for (const p of pts) { p.x += dx; p.y += dy; } ptsPan = [S.panX, S.panY]; }
@@ -946,7 +949,7 @@ function hoverStep(list, ptr, dt) {
 // once, by the side its surface faces most; its place on the model is stored, so a turn only moves and hides
 // pixels. Hidden: behind something nearer, by a quick depth render of the frame.
 let ring = null;
-const ringKey = () => JSON.stringify([modelName, presetSeed, AW, AH, S.lines, S.lineGap, S.lineAM, S.lineDot, S.chaos, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
+const ringKey = () => JSON.stringify([modelName, presetSeed, AW, AH, S.lines, S.lineGap, S.lineAM, S.lineDot, S.chaos, S.square, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
 function buildRing() {
   const K = 8, box = viewBoxNow(), k = AW / (box.x1 - box.x0), p = S.pitch * Math.PI / 180, cp = Math.cos(p), sp = Math.sin(p), list = [];
   const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180, L = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.abs(-Math.cos(el) * Math.sin(az)) + .35];
@@ -1300,7 +1303,7 @@ $('#svg').addEventListener('click', () => {
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
   if (S.bgExport) out.push(`<rect width="${w}" height="${h}" fill="${S.bg}"/>`);
   const groups = new Map();
-  const round = S.lines && !S.snap;
+  const round = S.lines && !S.snap && !S.square;
   for (const p of gridded() ? snapList(exportList()) : exportList()) { const z = sizeOf(p), zz = p.sc === undefined ? z : z * p.sc, ss = n(zz); if (zz <= .05) continue; const c = colorOf(p), X0 = p.x + (p.dx || 0) - b.x0, Y0 = p.y + (p.dy || 0) - b.y0; groups.set(c, (groups.get(c) || '') + (round ? `M${n(X0 - zz / 2)} ${n(Y0)}a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${ss} 0a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${-ss} 0Z` : `M${n(X0 - zz / 2)} ${n(Y0 - zz / 2)}h${ss}v${ss}h${-ss}z`)); }
   for (const [c, d] of groups) out.push(`<path fill="${c}" d="${d}"/>`);
   out.push('</svg>');
@@ -1444,13 +1447,14 @@ $('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.s
 // The mode bar (top middle): in 1A Caótico (loose, overlapping), Engrillado (one per cell) or Pasaje (from one to the
 // other across the picture: Dirección, Dónde ocurre, Largo); in 1B the circles' Caos.
 const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label="Modo"><button data-ord="chaos" title="Píxeles sueltos que se superponen">Caótico</button><button data-ord="grid" title="Cada píxel en su celda, separado de los demás">Engrillado</button><button data-ord="blend" title="De desorden a orden en una misma composición">Pasaje</button></div>
-  <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label>`);
+  <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label><label class="pm-sq" id="pm-sq" title="Píxeles cuadrados en vez de redondos, igual de separados"><input type="checkbox" id="pm-square"> Cuadrados</label>`);
 const ordOf = () => S.blend ? 'blend' : S.snap ? 'grid' : 'chaos';
 modeBar.querySelector('#pm-1a').addEventListener('click', e => { const b = e.target.closest('[data-ord]'); if (!b) return; S.snap = b.dataset.ord === 'grid'; S.blend = b.dataset.ord === 'blend'; sync(); });
 modeBar.querySelector('#pm-chaos').addEventListener('input', e => { S.chaos = +e.target.value; sync(); });
+modeBar.querySelector('#pm-square').addEventListener('change', e => { S.square = e.target.checked; sync(); });
 function syncModeBar() {
   const b1 = S.dir === '1b';
-  modeBar.querySelector('#pm-1a').hidden = b1; modeBar.querySelector('#pm-1b').hidden = !b1;
+  modeBar.querySelector('#pm-1a').hidden = b1; modeBar.querySelector('#pm-1b').hidden = modeBar.querySelector('#pm-sq').hidden = !b1; modeBar.querySelector('#pm-square').checked = S.square;
   modeBar.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ord === ordOf()));
   const ch = modeBar.querySelector('#pm-chaos'); if (+ch.value !== S.chaos) ch.value = S.chaos; ch.style.setProperty('--p', S.chaos * 100 + '%');
   modeBar.querySelector('#pm-chaos-out').textContent = Math.round(S.chaos * 100) + '%';

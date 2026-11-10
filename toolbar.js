@@ -214,6 +214,8 @@
 .pmode .seg { min-width: 300px; }
 .pmode .pm-chaos { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
 .pmode .pm-chaos input { width: 180px; }
+.pmode .pm-sq { display: flex; align-items: center; gap: 6px; padding: 0 10px 0 4px; cursor: pointer; }
+.pmode .pm-sq input { accent-color: var(--text, #1a1714); margin: 0; }
 .pmode output { font: 12px var(--mono, ui-monospace, monospace); color: var(--text, #1a1714); min-width: 36px; text-align: right; }`;
       document.head.appendChild(st);
     }
