@@ -339,7 +339,7 @@ function rng(seed) {
 // Built-in models, each with variations from the seed (R): a bonsai and a skyscraper (scans, simplified, in models/),
 // and Building, generated here and shaped by its own settings; or an uploaded file. Positions are centred and scaled
 // to fit a unit sphere.
-const PRESETS = [['bonsai', 'Bonsai'], ['bonsai2', 'Bonsai v2'], ['rascacielos', 'Rascacielos'], ['building', 'Building'], ['shapes', 'Formas']];
+const PRESETS = [['bonsai', 'Bonsai'], ['rascacielos', 'Rascacielos'], ['building', 'Building'], ['shapes', 'Formas']];
 let model = null, modelName = '', preset = 'bonsai', presetSeed = -1, loadingPreset = null;
 // An indexed mesh into 18-float triangles, with smooth normals (each vertex the area-weighted sum of its faces).
 function indexedTris(P, I) {
@@ -357,7 +357,7 @@ function indexedTris(P, I) {
   return out;
 }
 // The bonsai, read once: 'PXM1', vertex and triangle counts, its box, positions as 16-bit steps across the box, indices.
-// Bonsai v2 (models/bonsai-v2.pxm) is the same tree with no pot: the tray and the roots over its soil cut away.
+// The bonsai is the scan with no pot: its tray and the roots that ran over the tray's soil cut away.
 const pxmCache = {};
 async function bonsaiMesh(file = 'bonsai.pxm') {
   if (pxmCache[file]) return pxmCache[file];
@@ -393,8 +393,7 @@ function variant(base, seed, o) {
   }
   return out;
 }
-const BONSAI_VAR = { keep: .2, tall: .22, wide: .22, bend: .9, twist: 1.6, taper: 0 };
-const BONSAI2_VAR = { ...BONSAI_VAR, keep: .05 };
+const BONSAI_VAR = { keep: .05, tall: .22, wide: .22, bend: .9, twist: 1.6, taper: 0 };
 const SKY_VAR = { keep: 0, tall: .3, wide: .25, bend: .25, twist: 1.4, taper: .45 };
 // Building, from its settings (Tipo, Ancho, Profundidad, Altura, Pisos, Retiros, Afinado, Torsión, Aletas, Losas,
 // Coronamiento) and the seed for what they leave open (the type, when Al azar; tier proportions; the crown).
@@ -506,10 +505,10 @@ function loadPreset() {
   if (which === 'shapes') { const m = shapeMesh(S.shape, S.seed); setModelTris(indexedTris(m.P, m.I), SHAPES.find(x => x[0] === S.shape)[1]); presetSeed = sig; return; }
   if (which === 'building') { const m = building(S.seed); setModelTris(indexedTris(m.P, m.I), 'Building'); presetSeed = sig; return; }
   if (loadingPreset) return;
-  loadingPreset = (which === 'bonsai' ? bonsaiMesh() : which === 'bonsai2' ? bonsaiMesh('bonsai-v2.pxm') : skyMesh()).then(base => {
+  loadingPreset = (which === 'bonsai' ? bonsaiMesh() : skyMesh()).then(base => {
     loadingPreset = null;
     if (preset !== which || modelName.includes('.')) return loadPreset();
-    setModelTris(indexedTris(variant(base, S.seed, which === 'bonsai' ? BONSAI_VAR : which === 'bonsai2' ? BONSAI2_VAR : SKY_VAR), base.I), { bonsai: 'Bonsai', bonsai2: 'Bonsai v2' }[which] || 'Rascacielos'); presetSeed = presetSig(); key = ''; sync();
+    setModelTris(indexedTris(variant(base, S.seed, which === 'bonsai' ? BONSAI_VAR : SKY_VAR), base.I), which === 'bonsai' ? 'Bonsai' : 'Rascacielos'); presetSeed = presetSig(); key = ''; sync();
   }, () => { loadingPreset = null; toast('No se pudo cargar el modelo.'); });
 }
 // Triangles with normals (18 per triangle): centred and scaled like setModel, normals kept.
