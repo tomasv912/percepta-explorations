@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixel Connect</title>
+<link rel="stylesheet" href="../vendor/dialkit/styles.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Mono:wght@400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --page: #f4f2ee; --surface: #fbfaf8; --fill: #efece7; --line: #dcd7cf;
+  --text: #1a1714; --text-2: #5e5850; --text-3: #8f887e; --accent: #1a1714;
+  --font: Inter, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  /* The hero's own tokens (Figma: Percepta – Brand, D3). ABC Diatype is the brand face; Inter and DM Mono stand in. */
+  --hero-sans: "ABC Diatype", Inter, system-ui, sans-serif;
+  --hero-mono: "ABC Diatype Mono", "DM Mono", ui-monospace, monospace;
+  --off-black: #111; --off-gray: #dcdcdc; --btn-text: #343434; --btn-fill: #f8f8f8;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --page: #161513; --surface: #1d1c1a; --fill: #282624; --line: #34312d; --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --page: #161513; --surface: #1d1c1a; --fill: #282624; --line: #34312d; --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; background: var(--page); color: var(--text); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
+
+/* The stage holds the 1920 × 1080 artboard, scaled to fit. */
+.stage { flex: 1; min-height: 0; position: relative; overflow: hidden; display: grid; place-items: center; padding: 24px; }
+.frame { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; background: #fff; overflow: hidden; box-shadow: 0 0 0 1px var(--line), 0 10px 40px rgb(0 0 0 / .08); }
+.frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.frame.demo, .frame.demo * { cursor: none; }
+
+/* Nav_light: semantic, over the canvas, as in Figma (node 5496:9357). */
+.site-nav { position: absolute; left: 0; top: 0; width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 11.111px 55.556px; background: #fff; border-bottom: 1.111px solid var(--off-gray); z-index: 2; }
+.site-nav .logo { display: block; width: 151.111px; height: 23.333px; overflow: visible; }
+.site-nav .logo img { display: block; width: 151.111px; height: 28.788px; }
+.site-nav ul { flex: 1 0 0; display: flex; gap: 33.333px; align-items: center; justify-content: center; margin: 0; padding: 0 0 0 111.111px; list-style: none; }
+.site-nav ul a { font: 400 17.778px/1.5 var(--hero-sans); letter-spacing: .3556px; color: var(--off-black); text-decoration: none; white-space: nowrap; }
+.site-nav ul li:first-child a { line-height: 1.2; letter-spacing: -.1778px; }
+.site-nav .cta { width: 324.444px; display: flex; gap: 6.667px; justify-content: flex-end; align-items: center; }
+.site-nav .cta a { display: inline-flex; align-items: center; justify-content: center; padding: 8.889px 22.222px; border-radius: 55.556px; font: 400 16.667px/26.667px var(--hero-mono); letter-spacing: .1667px; text-transform: uppercase; color: var(--btn-text); text-decoration: none; text-shadow: 0 1.111px 1.111px rgb(255 255 255 / .8); white-space: nowrap; }
+.site-nav .cta a.primary { background: var(--btn-fill); box-shadow: inset 0 2.222px 1.111px #fff, inset 0 -2.222px 1.111px rgb(0 0 0 / .05); }
+.site-nav a:focus-visible { outline: 2px solid #7d91d9; outline-offset: 2px; }
+
+.hint { position: absolute; right: 16px; bottom: 12px; margin: 0; color: var(--text-3); font: 11px var(--mono); pointer-events: none; }
+.toast { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); padding: 8px 12px; border-radius: 8px; background: var(--text); color: var(--page); font: 500 12px var(--font); opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; }
+.toast.on { opacity: 1; }
+</style>
+</head>
+<body>
+<script src="../toolbar.js"></script>
+<main class="stage" id="stage">
+  <div class="frame" id="frame">
+    <canvas id="cv" aria-hidden="true"></canvas>
+    <header class="site-nav">
+      <a class="logo" href="#" aria-label="Percepta"><img src="logo.svg" alt="" width="151" height="29"></a>
+      <nav aria-label="Principal"><ul><li><a href="#">Company</a></li><li><a href="#">Docs</a></li><li><a href="#">Careers</a></li></ul></nav>
+      <div class="cta"><a href="#">Log in</a><a href="#" class="primary">Start generating</a></div>
+    </header>
+  </div>
+  <p class="hint" id="hint">Pasá el mouse por los puntos · DialKit abajo a la izquierda</p>
+  <div class="toast" id="toast" role="status"></div>
+</main>
+<script src="dots.js"></script>
+<script src="../vendor/mp4-muxer.js"></script>
+<script src="../vendor/dialkit/browser.global.js" data-dialkit></script>
+<script>
+// Pixel Connect. The Percepta hero wave (Figma: Percepta – Brand, section "hero", 4 frames) with the hover from the
+// reference: the dot under the pointer becomes a hub, and lines reach out from it to the dots around it, which turn
+// accent. Moving to another dot moves the hub; the lines follow it and re-attach.
+//
+// The four frames, left to right, are four poses of one phrase, and the Demo (and the MP4) play them in order:
+//   1 pointer in the empty space under the wave, nothing lit          (0:00)
+//   2 pointer reaches a dot: it turns accent and grows, the hub        (≈ 2.0 s)
+//   3 lines grow from the hub to ~10 dots around it, which turn accent  (≈ 2.8 s)
+//   4 pointer moves to the next dot up: the hub follows, lines re-attach (≈ 4.2 s)
+// then it goes back to 1, so the loop has no seam.
+//
+// One step function moves everything (step), one draws it (draw), so the page, the demo and the export agree.
+(() => {
+  const AW = 1920, AH = 1080, NAV = 67;
+  const $ = s => document.querySelector(s);
+  const stage = $('#stage'), frame = $('#frame'), cv = $('#cv'), ctx = cv.getContext('2d');
+
+  // ---- dots (dots.js: x, y, size index; traced from the Figma frame) ----
+  const SIZES = window.PC_SIZES, RAW = window.PC_DOTS, N = RAW.length / 3;
+  // after the N traced dots, G slots for the dots that fill an empty side of the star (frame 3 has some in blank space)
+  const G = 96, M = N + G, ghost = new Uint8Array(M);
+  const X = new Float32Array(M), Y = new Float32Array(M), D = new Float32Array(M), SZ = new Uint8Array(M), HASH = new Float32Array(M);
+  const hash = n => { let h = Math.imul(n + 1, 2654435761) >>> 0; h ^= h >>> 15; h = Math.imul(h, 2246822519) >>> 0; h ^= h >>> 13; return (h >>> 0) / 4294967296; };
+  for (let i = 0; i < N; i++) {
+    X[i] = RAW[i * 3]; Y[i] = RAW[i * 3 + 1]; SZ[i] = RAW[i * 3 + 2]; D[i] = SIZES[SZ[i]];
+    HASH[i] = hash(i);
+  }
+  // a grid so neighbourhood lookups touch only nearby dots
+  const CELL = 48, GW = Math.ceil(AW / CELL) + 1, GH = Math.ceil(AH / CELL) + 1, grid = Array.from({ length: GW * GH }, () => []);
+  for (let i = 0; i < N; i++) grid[Math.min(GH - 1, Math.max(0, Math.floor(Y[i] / CELL))) * GW + Math.min(GW - 1, Math.max(0, Math.floor(X[i] / CELL)))].push(i);
+  const near = (x, y, r, fn) => {
+    const c0 = Math.max(0, Math.floor((x - r) / CELL)), c1 = Math.min(GW - 1, Math.floor((x + r) / CELL));
+    const r0 = Math.max(0, Math.floor((y - r) / CELL)), r1 = Math.min(GH - 1, Math.floor((y + r) / CELL));
+    for (let gy = r0; gy <= r1; gy++) for (let gx = c0; gx <= c1; gx++) for (const i of grid[gy * GW + gx]) {
+      const dx = X[i] - x, dy = Y[i] - y, d2 = dx * dx + dy * dy;
+      if (d2 <= r * r) fn(i, Math.sqrt(d2), dx, dy);
+    }
+  };
+
+  // ---- parameters (DialKit) ----
+  const P = {
+    radius: 165, count: 11, snap: 22, minDist: 40, preferBig: .3, fill: true,
+    lineWidth: 1, lineAlpha: .45, hubSize: 11, activeSize: 9,
+    base: '#ced4e8', accent: '#7d91d9', line: '#7d91d9',
+    follow: 16, delay: .55, inDur: .5, outDur: .3, stagger: .6, linger: .15,
+    demo: true, cursor: true,
+  };
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+
+  // ---- state ----
+  const act = new Float32Array(M);      // 0..1: how far the line to this dot has grown (and how lit the dot is)
+  const on = new Uint8Array(M);         // 1: the dot is a target of the current hub
+  const S = { hub: -1, hx: 0, hy: 0, hubVis: 0, age: 0, hubCol: new Float32Array(M), lost: 0, px: -1e4, py: -1e4, inside: false, targets: [] };
+  const reset = () => { act.fill(0); on.fill(0); S.hubCol.fill(0); S.hub = -1; S.hubVis = 0; S.lost = 0; S.age = 0; S.targets = []; ghost.fill(0); };
+
+  // The targets of a new hub, as a star: the circle around it cut into `count` sectors (turned by the hub's hash so
+  // stars differ), one dot per sector. Old targets still in reach keep their sector (a short move keeps the network,
+  // frame 3 → 4); empty sectors take the best dot in them (bigger first, by Preferir grandes); a sector with no dot at
+  // all gets a new one when Completar huecos is on, on the wave's 15.2 px lattice, as in frame 3.
+  const LAT = 15.18;
+  function newGhost(x, y) {
+    for (let i = N; i < M; i++) if (!ghost[i]) { const z = hash(Math.round(x * 31 + y * 17)); ghost[i] = 1; X[i] = x; Y[i] = y; SZ[i] = z < .55 ? 0 : z < .85 ? 1 : 2; D[i] = SIZES[SZ[i]]; act[i] = 0; S.hubCol[i] = 0; return i; }
+    return -1;
+  }
+  function pickTargets(h) {
+    const hx = X[h], hy = Y[h], K = P.count, W = 2 * Math.PI / K, rot = hash(h * 7 + 3) * W;
+    const sec = (dx, dy) => Math.floor((((Math.atan2(dy, dx) - rot) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) / W) % K;
+    const chosen = [], taken = new Array(K).fill(false);
+    const keep = S.targets.filter(i => i !== h && Math.hypot(X[i] - hx, Y[i] - hy) <= P.radius * 1.15 && Math.hypot(X[i] - hx, Y[i] - hy) >= P.minDist * .6);
+    keep.sort((a, b) => Math.hypot(X[a] - hx, Y[a] - hy) - Math.hypot(X[b] - hx, Y[b] - hy));
+    for (const i of keep) { const k = sec(X[i] - hx, Y[i] - hy); if (!taken[k]) { taken[k] = true; chosen.push(i); } }
+    const best = new Array(K).fill(-1), bs = new Array(K).fill(-Infinity);
+    near(hx, hy, P.radius, (i, d, dx, dy) => {
+      if (i === h || d < P.minDist) return;
+      const k = sec(dx, dy); if (taken[k]) return;
+      const sc = P.preferBig * SZ[i] / 4 + (1 - P.preferBig) * HASH[i];
+      if (sc > bs[k]) { bs[k] = sc; best[k] = i; }
+    });
+    for (let k = 0; k < K; k++) {
+      if (taken[k]) continue;
+      if (best[k] >= 0) { chosen.push(best[k]); continue; }
+      if (!P.fill) continue;
+      const a = rot + (k + .5 + (hash(h * 31 + k) - .5) * .6) * W, r = P.minDist + (P.radius - P.minDist) * (.25 + .7 * hash(h * 57 + k));
+      const x = hx + Math.round(Math.cos(a) * r / LAT) * LAT, y = hy + Math.round(Math.sin(a) * r / LAT) * LAT;
+      if (y < NAV + 8 || y > AH - 4 || x < 4 || x > AW - 4) continue;
+      const g = newGhost(x, y); if (g >= 0) chosen.push(g);
+    }
+    return chosen;
+  }
+  function setHub(h) {
+    if (h === S.hub) return;
+    if (S.hub < 0 && h >= 0) { S.hx = X[h]; S.hy = Y[h]; S.age = 0; }
+    S.hub = h;
+    const next = h >= 0 ? pickTargets(h) : [];
+    for (const i of S.targets) on[i] = 0;
+    for (const i of next) on[i] = 1;
+    S.targets = next;
+  }
+
+  // One step of dt seconds, the pointer at (px, py) or outside.
+  function step(dt) {
+    // the hub: the dot under the pointer (within snap); kept a moment after the pointer leaves it so gaps don't flicker
+    let best = -1, bd = Infinity;
+    if (S.inside && S.py > NAV) near(S.px, S.py, P.snap, (i, d) => { if (d < bd) { bd = d; best = i; } });
+    if (best >= 0) { S.lost = 0; setHub(best); }
+    else if (S.hub >= 0) { S.lost += dt; if (S.lost >= P.linger) setHub(-1); }
+    const instant = reduce.matches;
+    // frame 2 → 3: a fresh hub lights alone for a beat (delay) before its lines grow; a moved hub re-attaches at once
+    if (S.hub >= 0) S.age += dt;
+    const grow = instant || S.age >= P.delay;
+    if (S.hub >= 0) { const k = instant ? 1 : 1 - Math.exp(-dt * P.follow); S.hx += (X[S.hub] - S.hx) * k; S.hy += (Y[S.hub] - S.hy) * k; }
+    S.hubVis = instant ? +(S.hub >= 0) : S.hub >= 0 ? Math.min(1, S.hubVis + dt / (P.inDur * .5)) : Math.max(0, S.hubVis - dt / P.outDur);
+    // hub colour per dot, so the dot that was the hub fades back (frame 4: the old hub returns to base)
+    for (let i = 0; i < M; i++) {
+      if (i >= N && !ghost[i]) continue;
+      const tgt = i === S.hub ? 1 : 0, v = S.hubCol[i];
+      if (v !== tgt) S.hubCol[i] = instant ? tgt : tgt ? Math.min(1, v + dt / (P.inDur * .4)) : Math.max(0, v - dt / P.outDur);
+      const a = act[i];
+      if (on[i]) {
+        if (a < 1 && grow) {
+          const d = Math.hypot(X[i] - S.hx, Y[i] - S.hy);
+          act[i] = instant ? 1 : Math.min(1, a + dt / (P.inDur * (1 + P.stagger * d / P.radius)));
+        }
+      } else if (a > 0) act[i] = instant ? 0 : Math.max(0, a - dt / P.outDur);
+      if (i >= N && !on[i] && act[i] === 0) ghost[i] = 0; // a filled-in dot leaves once its line is gone
+    }
+  }
+
+  // ---- drawing ----
+  const rgb = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+  const mix = (a, b, t) => `rgb(${Math.round(a[0] + (b[0] - a[0]) * t)},${Math.round(a[1] + (b[1] - a[1]) * t)},${Math.round(a[2] + (b[2] - a[2]) * t)})`;
+  const easeOut = t => 1 - Math.pow(1 - t, 3);
+  const easeInOut = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+  // The arrow from the Figma frames ("bundle os x cursors", 16.4 × 24), tip at (0, 0).
+  const ARROW = new Path2D('M1 1 L1 18.6 L5.3 14.6 L8.2 21.3 L11.1 20.1 L8.3 13.6 L14.2 13.6 Z');
+  const logoImg = new Image(); logoImg.src = 'logo.svg';
+
+  function draw(c, s, opt = {}) {
+    c.setTransform(s, 0, 0, s, 0, 0);
+    c.fillStyle = '#fff'; c.fillRect(0, 0, AW, AH);
+    // the soft lavender floor (sampled from the frame: white at 820, #DCE0F2 at the bottom)
+    const g = c.createLinearGradient(0, 820, 0, AH); g.addColorStop(0, 'rgba(220,224,242,0)'); g.addColorStop(1, 'rgb(220,224,242)');
+    c.fillStyle = g; c.fillRect(0, 820, AW, AH - 820);
+    const B = rgb(P.base), A = rgb(P.accent), L = rgb(P.line);
+    // lines, from the hub out, each grown to its progress
+    if (S.hubVis > 0 || act.some(v => v > 0)) {
+      c.lineWidth = P.lineWidth; c.lineCap = 'round';
+      for (let i = 0; i < M; i++) {
+        const a = act[i]; if (a <= 0) continue;
+        const p = easeOut(a), x = S.hx + (X[i] - S.hx) * p, y = S.hy + (Y[i] - S.hy) * p;
+        c.strokeStyle = `rgba(${L[0]},${L[1]},${L[2]},${P.lineAlpha * Math.min(1, a * 2)})`;
+        c.beginPath(); c.moveTo(S.hx, S.hy); c.lineTo(x, y); c.stroke();
+      }
+    }
+    // dots
+    for (let i = 0; i < M; i++) {
+      if (i >= N && !ghost[i]) continue;
+      const lit = Math.max(act[i] > 0 ? easeOut(Math.min(1, act[i] * 1.6)) : 0, S.hubCol[i]);
+      if (i >= N && lit <= 0) continue;
+      const d = D[i] + Math.max(0, P.activeSize - D[i]) * lit;
+      c.fillStyle = lit > 0 ? mix(B, A, lit) : P.base;
+      c.globalAlpha = i >= N ? lit : 1; // a filled-in dot appears as its line reaches it
+      c.beginPath(); c.arc(X[i], Y[i], d / 2, 0, Math.PI * 2); c.fill();
+    }
+    c.globalAlpha = 1;
+    // the static teal dot in the frame (Ellipse 805)
+    c.fillStyle = 'rgb(210,227,235)'; c.beginPath(); c.arc(772.1, 294.9, 8, 0, Math.PI * 2); c.fill();
+    // the hub: a dot that travels between dots as the pointer moves
+    if (S.hubVis > 0) {
+      c.fillStyle = P.accent; c.beginPath(); c.arc(S.hx, S.hy, P.hubSize / 2 * easeOut(S.hubVis), 0, Math.PI * 2); c.fill();
+    }
+    if (opt.nav) drawNav(c);
+    if (opt.cursor && S.inside) {
+      c.save(); c.translate(S.px - 1, S.py - 1); c.scale(1.1, 1.1);
+      c.lineJoin = 'round'; c.lineWidth = 1.6; c.strokeStyle = '#fff'; c.fillStyle = '#000';
+      c.shadowColor = 'rgba(0,0,0,.25)'; c.shadowBlur = 2; c.shadowOffsetY = .6;
+      c.stroke(ARROW); c.shadowColor = 'transparent'; c.fill(ARROW); c.restore();
+    }
+  }
+  // The nav drawn into the canvas, for the MP4 only (the page's nav is the HTML above), same metrics as the CSS.
+  function drawNav(c) {
+    const cs = getComputedStyle(document.documentElement);
+    c.fillStyle = '#fff'; c.fillRect(0, 0, AW, 66.667); c.fillStyle = '#dcdcdc'; c.fillRect(0, 66.667 - 1.111, AW, 1.111);
+    const nav = frame.querySelector('.site-nav'), fr = frame.getBoundingClientRect(), k = AW / fr.width;
+    const box = el => { const r = el.getBoundingClientRect(); return { x: (r.left - fr.left) * k, y: (r.top - fr.top) * k, w: r.width * k, h: r.height * k }; };
+    if (logoImg.complete && logoImg.naturalWidth) { const b = box(nav.querySelector('.logo')); c.drawImage(logoImg, b.x, b.y, 151.111, 28.788); }
+    c.textBaseline = 'middle'; c.textAlign = 'left';
+    for (const a of nav.querySelectorAll('ul a, .cta a')) {
+      const b = box(a), st = getComputedStyle(a);
+      if (a.classList.contains('primary')) {
+        c.fillStyle = '#f8f8f8'; c.beginPath(); c.roundRect(b.x, b.y, b.w, b.h, b.h / 2); c.fill();
+      }
+      c.font = `${st.fontWeight} ${st.fontSize} ${st.fontFamily}`; c.letterSpacing = st.letterSpacing;
+      c.fillStyle = st.color;
+      const pl = parseFloat(st.paddingLeft) || 0, txt = st.textTransform === 'uppercase' ? a.textContent.toUpperCase() : a.textContent;
+      c.fillText(txt, b.x + pl, b.y + b.h / 2 + .5);
+    }
+    c.letterSpacing = '0px';
+  }
+
+  // ---- the demo: the four frames in order, as a pointer path (tip positions read from the Figma cursors) ----
+  const F1 = [1208.5, 519.6], F2 = [1116.5, 457.4], F4 = [1167.3, 403.8];
+  const DEMO = 9;
+  const KEYS = [ // [time, x, y]: holds and moves; moves eased in and out, with a little arc
+    [0, ...F1], [.8, ...F1], [2.0, ...F2], [3.3, ...F2], [4.2, ...F4], [5.8, ...F4], [7.4, ...F1], [DEMO, ...F1],
+  ];
+  function demoAt(t) {
+    t = ((t % DEMO) + DEMO) % DEMO;
+    let k = 0; while (k < KEYS.length - 2 && t > KEYS[k + 1][0]) k++;
+    const [t0, x0, y0] = KEYS[k], [t1, x1, y1] = KEYS[k + 1];
+    const u = t1 > t0 ? easeInOut(Math.min(1, Math.max(0, (t - t0) / (t1 - t0)))) : 1;
+    const bow = Math.sin(u * Math.PI) * Math.hypot(x1 - x0, y1 - y0) * .12, nx = -(y1 - y0), ny = x1 - x0, nl = Math.hypot(nx, ny) || 1;
+    return [x0 + (x1 - x0) * u + nx / nl * bow, y0 + (y1 - y0) * u + ny / nl * bow];
+  }
+
+  // ---- page: fit, pointer, loop ----
+  let scale = 1;
+  function fit() {
+    const r = stage.getBoundingClientRect(), pad = innerWidth < 600 ? 16 : 24;
+    scale = Math.min((r.width - pad * 2) / AW, (r.height - pad * 2) / AH);
+    frame.style.transform = `translate(${(r.width - AW * scale) / 2}px, ${(r.height - AH * scale) / 2}px) scale(${scale})`;
+    const dpr = Math.min(3, devicePixelRatio || 1), w = Math.round(AW * scale * dpr), h = Math.round(AH * scale * dpr);
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  }
+  addEventListener('resize', fit); new ResizeObserver(fit).observe(stage); fit();
+
+  let live = { x: 0, y: 0, inside: false }, lastMove = -1e9;
+  const toArt = e => { const r = frame.getBoundingClientRect(); return [(e.clientX - r.left) / scale, (e.clientY - r.top) / scale]; };
+  frame.addEventListener('pointermove', e => { const [x, y] = toArt(e); live = { x, y, inside: true }; lastMove = performance.now(); });
+  frame.addEventListener('pointerdown', e => { const [x, y] = toArt(e); live = { x, y, inside: true }; lastMove = performance.now(); });
+  frame.addEventListener('pointerleave', () => { live.inside = false; });
+
+  // Demo plays while nobody is hovering; any pointer movement takes over, and the demo comes back 3 s after.
+  let demoT = 0, last = performance.now(), filming = false;
+  const demoActive = now => P.demo && !reduce.matches && now - lastMove > 3000 && !live.inside;
+  function tick(now) {
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    if (!filming) {
+      const demo = demoActive(now);
+      frame.classList.toggle('demo', demo && P.cursor);
+      if (demo) { demoT += dt; const [x, y] = demoAt(demoT); S.px = x; S.py = y; S.inside = true; }
+      else { S.px = live.x; S.py = live.y; S.inside = live.inside; demoT = 0; }
+      step(dt);
+      draw(ctx, cv.width / AW, { cursor: demo && P.cursor });
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  // ---- export: the demo loop, 4K, 60 fps, every frame stepped at 1/60 s ----
+  const toastEl = $('#toast'); let toastT = 0;
+  const toast = m => { toastEl.textContent = m; toastEl.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('on'), 2600); };
+  // A deterministic frame source shared by the in-page export and offline renders: frameAt(i) draws frame i of the loop.
+  // It holds the live loop (filming) so nothing else steps the state between frames; release() hands it back.
+  function film(c, W, fps = 60, cursor = P.cursor) {
+    filming = true; reset(); let t = 0;
+    return i => {
+      const tt = i / fps;
+      while (t < tt - 1e-9) { const dt = Math.min(1 / fps, tt - t); t += dt; const [x, y] = demoAt(t); S.px = x; S.py = y; S.inside = true; step(dt); }
+      if (i === 0) { const [x, y] = demoAt(0); S.px = x; S.py = y; S.inside = true; }
+      draw(c, W / AW, { nav: true, cursor });
+    };
+  }
+  window.PixelConnect = { DEMO, film, P, reset, release: () => { filming = false; reset(); demoT = 0; } };
+
+  async function exportMp4() {
+    if (filming) return;
+    if (!('VideoEncoder' in window) || !window.Mp4Muxer) return toast('Este navegador no puede exportar video: probá con Chrome, Edge o Safari.');
+    const W = 3840, H = 2160, fps = 60, NF = Math.round(DEMO * fps);
+    filming = true;
+    try {
+      await document.fonts.ready;
+      let config = null, kind = '';
+      search: for (const br of [60e6, 40e6, 20e6])
+        for (const [codec, k2] of [['avc1.640034', 'avc'], ['avc1.640033', 'avc'], ['avc1.4d0033', 'avc'], ['vp09.00.51.08', 'vp9']]) {
+          const cfg = { codec, width: W, height: H, bitrate: br, bitrateMode: 'variable', latencyMode: 'quality', framerate: fps };
+          if ((await VideoEncoder.isConfigSupported(cfg)).supported) { config = cfg; kind = k2; break search; }
+        }
+      if (!config) throw new Error('codec');
+      const muxer = new Mp4Muxer.Muxer({ target: new Mp4Muxer.ArrayBufferTarget(), video: { codec: kind, width: W, height: H, frameRate: fps }, fastStart: 'in-memory' });
+      let failed = null;
+      const enc = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: e => failed = e });
+      enc.configure(config);
+      const c = document.createElement('canvas'); c.width = W; c.height = H;
+      const paint = film(c.getContext('2d'), W, fps);
+      for (let i = 0; i < NF; i++) {
+        if (failed) throw failed;
+        paint(i);
+        const f = new VideoFrame(c, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) });
+        enc.encode(f, { keyFrame: i % fps === 0 }); f.close();
+        if (i % 10 === 0) toast(`Renderizando ${i + 1} / ${NF}`);
+        while (enc.encodeQueueSize > 4) await new Promise(r => setTimeout(r, 5));
+      }
+      await enc.flush(); enc.close(); muxer.finalize();
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([muxer.target.buffer], { type: 'video/mp4' })); a.download = 'pixel-connect-4k.mp4'; a.click();
+      toast('MP4 listo');
+    } catch (e) { console.error(e); toast('No se pudo exportar el video.'); }
+    finally { filming = false; reset(); demoT = 0; }
+  }
+
+  // ---- DialKit ----
+  const DK = window.DialKit;
+  if (DK) {
+    DK.createDialRoot({ position: 'bottom-left', theme: 'system', defaultOpen: false });
+    const kit = DK.createDialKit('Pixel Connect', {
+      'Conexión': {
+        'Radio': [P.radius, 80, 400, 1], 'Cantidad': [P.count, 3, 24, 1], 'Enganche': [P.snap, 6, 60, 1],
+        'Distancia mínima': [P.minDist, 0, 80, 1], 'Preferir grandes': [P.preferBig, 0, 1, .01], 'Completar huecos': P.fill,
+      },
+      'Estilo': {
+        'Grosor de línea': [P.lineWidth, .25, 4, .05], 'Opacidad de línea': [P.lineAlpha, .05, 1, .01],
+        'Tamaño del centro': [P.hubSize, 0, 30, .5], 'Tamaño activos': [P.activeSize, 0, 24, .5],
+        'Color base': P.base, 'Color activo': P.accent, 'Color de línea': P.line,
+      },
+      'Movimiento': {
+        'Seguimiento': [P.follow, 2, 40, .5], 'Pausa antes de conectar (s)': [P.delay, 0, 1.5, .01], 'Entrada (s)': [P.inDur, .05, 1.5, .01], 'Salida (s)': [P.outDur, .05, 1.5, .01],
+        'Escalonado': [P.stagger, 0, 2, .01], 'Retención (s)': [P.linger, 0, .6, .01],
+      },
+      'Demo': { 'Demo automática': P.demo, 'Cursor': P.cursor, 'Reiniciar': { type: 'action', label: 'Reiniciar demo' }, 'Exportar': { type: 'action', label: 'Exportar MP4 4K' } },
+    }, {
+      onAction: path => {
+        const p = String(path && path.path || path);
+        if (p.includes('Exportar')) exportMp4();
+        else if (p.includes('Reiniciar')) { reset(); demoT = 0; lastMove = -1e9; }
+      },
+    });
+    const MAP = {
+      'Conexión.Radio': 'radius', 'Conexión.Cantidad': 'count', 'Conexión.Enganche': 'snap', 'Conexión.Distancia mínima': 'minDist', 'Conexión.Preferir grandes': 'preferBig', 'Conexión.Completar huecos': 'fill',
+      'Estilo.Grosor de línea': 'lineWidth', 'Estilo.Opacidad de línea': 'lineAlpha', 'Estilo.Tamaño del centro': 'hubSize', 'Estilo.Tamaño activos': 'activeSize',
+      'Estilo.Color base': 'base', 'Estilo.Color activo': 'accent', 'Estilo.Color de línea': 'line',
+      'Movimiento.Seguimiento': 'follow', 'Movimiento.Pausa antes de conectar (s)': 'delay', 'Movimiento.Entrada (s)': 'inDur', 'Movimiento.Salida (s)': 'outDur', 'Movimiento.Escalonado': 'stagger', 'Movimiento.Retención (s)': 'linger',
+      'Demo.Demo automática': 'demo', 'Demo.Cursor': 'cursor',
+    };
+    kit.subscribe(v => {
+      let retarget = false;
+      for (const [path, key] of Object.entries(MAP)) {
+        const [g, k] = path.split('.'), val = v[g]?.[k];
+        if (val === undefined || val === P[key]) continue;
+        if (typeof P[key] === 'string' && !/^#[0-9a-f]{6}$/i.test(val)) continue;
+        P[key] = val; if (['radius', 'count', 'minDist', 'preferBig', 'fill'].includes(key)) retarget = true;
+      }
+      if (retarget && S.hub >= 0) { const h = S.hub; S.targets = []; S.hub = -1; on.fill(0); setHub(h); }
+    });
+  }
+})();
+</script>
+</body>
+</html>
