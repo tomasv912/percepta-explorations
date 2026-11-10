@@ -39,14 +39,14 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
 [hidden] { display: none !important; }
 
 .app { display: grid; flex: 1; min-height: 0; grid-template-columns: 1fr 280px; }
-main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding: 52px 24px 76px; }
+main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding: 92px 24px 76px; }
 .frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); }
 .frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .frame { cursor: grab; touch-action: none; }
 .frame:active { cursor: grabbing; }
 .frame.moving, .frame.moving:active { cursor: move; }
 .busy { position: absolute; top: 12px; right: 14px; font: 11px var(--mono); color: var(--text-3); }
-.hud { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
+.hud { position: absolute; top: 54px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
 .tt { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 4px 16px rgb(0 0 0 / .06); white-space: nowrap; z-index: 1; }
 .tt { flex-wrap: wrap; justify-content: center; width: max-content; max-width: calc(100% - 24px); }
 .tt-sep { width: 1px; height: 28px; background: var(--line); flex: none; }
@@ -249,6 +249,11 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <label class="check" id="snap-row" title="Los píxeles se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
         <div id="sl-cell"></div>
         <div id="sl-cellGap"></div>
+        <div id="blend-controls">
+          <div class="seg" data-key="blendDir" aria-label="Dirección del pasaje"><button data-v="ltr" title="Desorden a la izquierda, orden a la derecha">→</button><button data-v="rtl" title="Desorden a la derecha, orden a la izquierda">←</button><button data-v="ttb" title="Desorden arriba, orden abajo">↓</button><button data-v="btt" title="Desorden abajo, orden arriba">↑</button></div>
+          <div id="sl-blendAt"></div>
+          <div id="sl-blendSoft"></div>
+        </div>
         <div class="row">
           <span>Semilla</span>
           <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
@@ -318,7 +323,7 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
-  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: .2, onlyPal: false, dir: '1b', handJit: 1,
+  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: .2, onlyPal: false, dir: '1b', blend: false, blendDir: 'ltr', blendAt: .5, blendSoft: .5, chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -604,9 +609,13 @@ function linePick(raw, kA, r, at) {
   }
   return out;
 }
+// Caos (1B): the line points moved off their lines by up to amt (a gaussian) before they are picked, so the circles
+// loosen but still never overlap.
+const gauss = r => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
+function jitterRaw(raw, amt, r) { if (amt > 0) for (let i = 0; i < raw.length; i += 4) { raw[i] += gauss(r) * amt * .5; raw[i + 1] += gauss(r) * amt * .5; } return raw; }
 function lineStipple(sc, r) {
   const { buf, box } = sc, kA = AW / (box.x1 - box.x0), p = S.pitch * Math.PI / 180;
-  const raw = contour(buf, Math.cos(p), Math.sin(p), S.lineFollow, S.lineGap / kA, (S.size + S.lineDot) / kA);
+  const raw = jitterRaw(contour(buf, Math.cos(p), Math.sin(p), S.lineFollow, S.lineGap / kA, (S.size + S.lineDot) / kA), S.chaos * S.lineGap * 1.6 / kA, r);
   return linePick(raw, kA, r, box).map(([i, s]) => ({ x: (raw[i] - box.x0) * kA + S.panX, y: (raw[i + 1] - box.y0) * kA + S.panY, tone: raw[i + 3], pick: r(), sc: s }));
 }
 function stipple(n, r, sc = scene) {
@@ -632,21 +641,29 @@ function colorOf(p) {
 // Engrillar: every pixel moved to the middle of its cell on a grid of the pixel size, one per cell (the last one drawn
 // there), so they sit side by side and never on top of each other.
 // The density sampled: the slider's, or with Engrillar enough to fill cells of Tamaño de la celda.
-const count = () => S.snap ? PerceptaCells(S.count, S.size, S.cell, 400000) : S.count;
+const gridded = () => (S.snap || S.blend) && !S.lines;
+const count = () => S.snap && !S.blend && !S.lines ? PerceptaCells(S.count, S.size, S.cell, 400000) : S.count;
+// Pasaje: only the pixels the order reaches (by where they are and a chance of their own) go on the grid; the rest
+// stay loose. Gridded ones carry ord and are drawn at the cell's size.
 function snapList(list) {
-  const sn = PerceptaSnap(list.length, i => list[i].x + (list[i].dx || 0), i => list[i].y + (list[i].dy || 0), S.cell), out = [];
-  for (let i = 0; i < list.length; i++) if (sn.keep[i]) out.push({ x: sn.x[i], y: sn.y[i], tone: list[i].tone, pick: list[i].pick, sc: list[i].sc });
+  const on = list.map((p, i) => !S.blend || PerceptaChance(i) < PerceptaOrder((p.x + (p.dx || 0)) / AW, (p.y + (p.dy || 0)) / AH, S.blendDir, S.blendAt, S.blendSoft));
+  const sn = PerceptaSnap(list.length, i => on[i] ? list[i].x + (list[i].dx || 0) : NaN, i => list[i].y + (list[i].dy || 0), S.cell), out = [];
+  for (let i = 0; i < list.length; i++) {
+    if (!on[i]) out.push(list[i]);
+    else if (sn.keep[i]) out.push({ x: sn.x[i], y: sn.y[i], tone: list[i].tone, pick: list[i].pick, sc: list[i].sc, ord: 1 });
+  }
   return out;
 }
+const sizeOf = p => p.ord ? S.cell * (1 - S.cellGap) : S.size;
 function draw(ctx, list, ox = 0, oy = 0, q = RES) {
-  if (S.snap) list = snapList(list);
-  const groups = new Map(), s = S.snap ? S.cell * (1 - S.cellGap) : S.size;
+  if (gridded()) list = snapList(list);
+  const groups = new Map();
   for (const p of list) { const c = colorOf(p); let l = groups.get(c); if (!l) groups.set(c, l = []); l.push(p); }
   for (const [c, l] of groups) {
     ctx.fillStyle = c; ctx.beginPath();
     for (const p of l) {
       // Reveal: a pixel growing in is drawn at its share of the size (p.sc), from its middle
-      const z = p.sc === undefined ? s : s * p.sc; if (z <= .05) continue;
+      const s = sizeOf(p), z = p.sc === undefined ? s : s * p.sc; if (z <= .05) continue;
       // Líneas horizontales: circles
       if (S.lines && !S.snap) { const cx = (p.x + (p.dx || 0) - ox), cy = (p.y + (p.dy || 0) - oy); ctx.moveTo(cx + z / 2, cy); ctx.arc(cx, cy, z / 2, 0, Math.PI * 2); continue; }
       ctx.rect(Math.round((p.x + (p.dx || 0) - z / 2 - ox) * q) / q, Math.round((p.y + (p.dy || 0) - z / 2 - oy) * q) / q, z, z);
@@ -655,8 +672,8 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
   }
 }
 function bounds(list) {
-  if (S.snap) list = snapList(list);
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, s = (S.snap ? S.cell : S.size) / 2;
+  if (gridded()) list = snapList(list);
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, s = Math.max(gridded() ? S.cell : 0, S.size) / 2;
   for (const p of list) { const x = p.x + (p.dx || 0), y = p.y + (p.dy || 0); x0 = Math.min(x0, x - s); y0 = Math.min(y0, y - s); x1 = Math.max(x1, x + s); y1 = Math.max(y1, y + s); }
   return x0 > x1 ? null : { x0: Math.floor(Math.max(0, x0)), y0: Math.floor(Math.max(0, y0)), x1: Math.ceil(Math.min(AW, x1)), y1: Math.ceil(Math.min(AH, y1)) };
 }
@@ -675,6 +692,8 @@ const SLIDERS = {
   ambient: { label: 'Luz ambiente', min: 0, max: .8, step: .01, fmt: pct },
   shadow: { label: 'Sombras proyectadas', min: 0, max: 1, step: .01, fmt: pct },
   cell: { label: 'Tamaño de la celda', min: 2, max: 40, step: 1, fmt: v => v + ' px', emph: true },
+  blendAt: { label: 'Dónde ocurre el pasaje', min: 0, max: 1, step: .01, fmt: v => Math.round(v * 100) + '%' },
+  blendSoft: { label: 'Largo del pasaje', min: .02, max: 1, step: .01, fmt: v => Math.round(v * 100) + '%' },
   cellGap: { label: 'Separación entre píxeles', min: .05, max: .7, step: .01, fmt: v => Math.round(v * 100) + '%' },
   count: { label: 'Densidad', min: 2000, max: 200000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño del píxel', min: 1, max: 24, step: .5, fmt: v => v + ' px', emph: true },
@@ -751,8 +770,9 @@ function sync(fast) {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink'; markPalette();
-  $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !S.snap;
-  $('#lines-row').hidden = true; $('#snap-row').hidden = S.dir === '1b';
+  const gridOnly = S.snap && !S.blend && !S.lines;
+  $('#sl-count').hidden = $('#sl-size').hidden = gridOnly; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !gridded(); if (typeof syncModeBar === 'function') syncModeBar();
+  $('#lines-row').hidden = true; $('#snap-row').hidden = true;
   $('#sl-lineGap').hidden = $('#sl-lineFollow').hidden = $('#sl-lineDot').hidden = $('#lineAM-row').hidden = !S.lines;
   document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn'))); });
   if (S.anim === 'enter') { $('#sl-revHold').hidden = S.entInf; $('#sl-entStay').hidden = !S.entInf; }
@@ -766,7 +786,7 @@ function sync(fast) {
   updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   if (S.aspect + S.orient !== artKey) { artKey = S.aspect + S.orient; setArtboard(); S.panX = S.panY = 0; if (typeof crop !== 'undefined') { crop = null; cropStack = []; cropUI(); } }
-  const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow, S.lineAM, S.lineDot]);
+  const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow, S.lineAM, S.lineDot, S.chaos]);
   if (k !== key || (!fast && fastNext)) { fastNext = !!fast; pts = build(fast); key = k; ptsPan = [S.panX, S.panY]; }
   // Moved in the frame (Shift + drag): the same pixels, shifted; nothing is re-sampled.
   if (ptsPan[0] !== S.panX || ptsPan[1] !== S.panY) { const dx = S.panX - ptsPan[0], dy = S.panY - ptsPan[1]; for (const p of pts) { p.x += dx; p.y += dy; } ptsPan = [S.panX, S.panY]; }
@@ -929,7 +949,7 @@ function hoverStep(list, ptr, dt) {
 // once, by the side its surface faces most; its place on the model is stored, so a turn only moves and hides
 // pixels. Hidden: behind something nearer, by a quick depth render of the frame.
 let ring = null;
-const ringKey = () => JSON.stringify([modelName, presetSeed, AW, AH, S.lines, S.lineGap, S.lineAM, S.lineDot, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
+const ringKey = () => JSON.stringify([modelName, presetSeed, AW, AH, S.lines, S.lineGap, S.lineAM, S.lineDot, S.chaos, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
 function buildRing() {
   const K = 8, box = viewBoxNow(), k = AW / (box.x1 - box.x0), p = S.pitch * Math.PI / 180, cp = Math.cos(p), sp = Math.sin(p), list = [];
   const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180, L = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.abs(-Math.cos(el) * Math.sin(az)) + .35];
@@ -939,7 +959,7 @@ function buildRing() {
     let area = 0; for (let i = 0; i < buf.mask.length; i++) area += buf.mask[i];
     if (S.lines) {
       // level lines of the model's height, traced in this view, kept on the side this view owns
-      const raw = contour(buf, cp, sp, 1, S.lineGap / k, (S.size + S.lineDot) / k);
+      const raw = jitterRaw(contour(buf, cp, sp, 1, S.lineGap / k, (S.size + S.lineDot) / k), S.chaos * S.lineGap * 1.6 / k, r);
       for (const [i, s2] of linePick(raw, k, r, box)) {
         const ix = Math.min(buf.W - 1, Math.floor((raw[i] - box.x0) * buf.k)), iy = Math.min(buf.H - 1, Math.floor((raw[i + 1] - box.y0) * buf.k)), o = iy * buf.W + ix;
         let n = [buf.nrm[o * 3], buf.nrm[o * 3 + 1], buf.nrm[o * 3 + 2]]; if (n[2] < 0) n = n.map(c => -c);
@@ -1284,7 +1304,7 @@ $('#svg').addEventListener('click', () => {
   if (S.bgExport) out.push(`<rect width="${w}" height="${h}" fill="${S.bg}"/>`);
   const groups = new Map();
   const round = S.lines && !S.snap;
-  for (const p of S.snap ? snapList(exportList()) : exportList()) { const zz = p.sc === undefined ? z : z * p.sc, ss = n(zz); if (zz <= .05) continue; const c = colorOf(p), X0 = p.x + (p.dx || 0) - b.x0, Y0 = p.y + (p.dy || 0) - b.y0; groups.set(c, (groups.get(c) || '') + (round ? `M${n(X0 - zz / 2)} ${n(Y0)}a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${ss} 0a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${-ss} 0Z` : `M${n(X0 - zz / 2)} ${n(Y0 - zz / 2)}h${ss}v${ss}h${-ss}z`)); }
+  for (const p of gridded() ? snapList(exportList()) : exportList()) { const z = sizeOf(p), zz = p.sc === undefined ? z : z * p.sc, ss = n(zz); if (zz <= .05) continue; const c = colorOf(p), X0 = p.x + (p.dx || 0) - b.x0, Y0 = p.y + (p.dy || 0) - b.y0; groups.set(c, (groups.get(c) || '') + (round ? `M${n(X0 - zz / 2)} ${n(Y0)}a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${ss} 0a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${-ss} 0Z` : `M${n(X0 - zz / 2)} ${n(Y0 - zz / 2)}h${ss}v${ss}h${-ss}z`)); }
   for (const [c, d] of groups) out.push(`<path fill="${c}" d="${d}"/>`);
   out.push('</svg>');
   download(`pixel-model-${S.seed}${S.expScale === '1' ? '' : `@${S.expScale}x`}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));
@@ -1419,11 +1439,27 @@ $('#video').addEventListener('click', async () => {
   }
 });
 
+// The mode bar (top middle): in 1A Caótico (loose, overlapping), Engrillado (one per cell) or Pasaje (from one to the
+// other across the picture: Dirección, Dónde ocurre, Largo); in 1B the circles' Caos.
+const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label="Modo"><button data-ord="chaos" title="Píxeles sueltos que se superponen">Caótico</button><button data-ord="grid" title="Cada píxel en su celda, separado de los demás">Engrillado</button><button data-ord="blend" title="De desorden a orden en una misma composición">Pasaje</button></div>
+  <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label>`);
+const ordOf = () => S.blend ? 'blend' : S.snap ? 'grid' : 'chaos';
+modeBar.querySelector('#pm-1a').addEventListener('click', e => { const b = e.target.closest('[data-ord]'); if (!b) return; S.snap = b.dataset.ord === 'grid'; S.blend = b.dataset.ord === 'blend'; sync(); });
+modeBar.querySelector('#pm-chaos').addEventListener('input', e => { S.chaos = +e.target.value; sync(); });
+function syncModeBar() {
+  const b1 = S.dir === '1b';
+  modeBar.querySelector('#pm-1a').hidden = b1; modeBar.querySelector('#pm-1b').hidden = !b1;
+  modeBar.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ord === ordOf()));
+  const ch = modeBar.querySelector('#pm-chaos'); if (+ch.value !== S.chaos) ch.value = S.chaos; ch.style.setProperty('--p', S.chaos * 100 + '%');
+  modeBar.querySelector('#pm-chaos-out').textContent = Math.round(S.chaos * 100) + '%';
+  $('#blend-controls').hidden = b1 || !S.blend;
+}
+
 // Dirección (toolbar.js): 1A square pixels, all one size, scattered by the light; 1B round pixels on horizontal lines
 // that follow the model, frequency modulated (closer together where dark), never overlapping.
 PerceptaDirection({
   get: () => S.dir,
-  set: v => { S.dir = v; if (v === '1a') S.lines = false; else { S.lines = true; S.snap = false; } sync(); },
+  set: v => { S.dir = v; if (v === '1a') S.lines = false; else { S.lines = true; S.snap = false; S.blend = false; } sync(); },
 });
 loadPreset();
 sync();

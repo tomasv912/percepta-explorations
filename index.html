@@ -38,11 +38,11 @@ html, body { height: 100%; margin: 0; }
 body { display: flex; flex-direction: column; background: var(--page); color: var(--text); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
 
 .app { display: grid; flex: 1; min-height: 0; grid-template-columns: 1fr 280px; }
-main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding: 36px 0 64px; touch-action: none; }
+main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding: 88px 0 64px; touch-action: none; }
 .frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); }
 .frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity .15s ease-out; }
 .frame { touch-action: none; }
-.hud { position: absolute; top: 10px; right: 14px; display: flex; gap: 12px; align-items: center; white-space: nowrap; z-index: 4;
+.hud { position: absolute; top: 52px; right: 14px; display: flex; gap: 12px; align-items: center; white-space: nowrap; z-index: 4;
   background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
 .crop-hud { position: absolute; top: 10px; left: 14px; display: flex; gap: 4px; align-items: center; white-space: nowrap; z-index: 4; padding: 4px 4px 4px 10px;
   background: var(--surface); color: var(--text-2); border-radius: 8px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
@@ -247,6 +247,11 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <label class="check" id="snap-row" title="Los cubos se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
         <div id="sl-cell"></div>
         <div id="sl-cellGap"></div>
+        <div id="blend-controls">
+          <div class="seg" data-key="blendDir" aria-label="Dirección del pasaje"><button data-v="ltr" title="Desorden a la izquierda, orden a la derecha">→</button><button data-v="rtl" title="Desorden a la derecha, orden a la izquierda">←</button><button data-v="ttb" title="Desorden arriba, orden abajo">↓</button><button data-v="btt" title="Desorden abajo, orden arriba">↑</button></div>
+          <div id="sl-blendAt"></div>
+          <div id="sl-blendSoft"></div>
+        </div>
       </section>
 
       <section>
@@ -322,7 +327,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2, onlyPal: false, dir: '1a',
+  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2, onlyPal: false, dir: '1a', blend: false, blendDir: 'ltr', blendAt: .5, blendSoft: .5, chaos: 0,
   motion: 'still', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
@@ -440,7 +445,9 @@ function placeOn(g, qv, q) { const rv = invertCdf(g.vcdf, NV, qv), row = Math.mi
 // Dirección 1B: round cubes that never overlap. Taken in the order they were made (which is random), a cube stays only
 // if its circle is at least Espacio entre píxeles from every circle already kept; everything that rides along with the
 // cubes (their motion ranks) is thinned the same way.
-function apart(G, gap) {
+function apart(G, gap, jit = 0, r = Math.random) {
+  // Caos: first every cube moves off its place by up to jit (a gaussian), then the spacing is kept as always.
+  if (jit > 0) for (let i = 0; i < G.n; i++) { G.hx[i] += gauss(r) * jit * .5; G.hy[i] += gauss(r) * jit * .5; }
   const n = G.n, keep = [], maxS = G.size.reduce((a, b) => Math.max(a, b), 0), cell = maxS + gap + 1e-6, grid = new Map(), key = (a, b) => a * 100003 + b;
   for (let i = 0; i < n; i++) {
     const x = G.hx[i], y = G.hy[i], rad = G.size[i] / 2, cx = Math.floor(x / cell), cy = Math.floor(y / cell);
@@ -461,7 +468,7 @@ function generate(st) {
   const [W, H] = st.orient === 'v' ? [...SIZES[st.aspect]].reverse() : SIZES[st.aspect], r = rng(st.seed), rand = r, mono = st.style === 'mono', image = st.source === 'image' && img;
   const gridRows = image ? Math.max(1, Math.round(st.gridCols / img.ar)) : 0, grid = image && st.grid;
   const lines = image && st.imgLines && img.depth;
-  const n = lines ? Math.min(4e6, (Math.ceil(W / (st.size + st.dPx)) + 2) * (Math.ceil(H / st.dGap) + 2) * 3) : grid ? st.gridCols * gridRows : st.snap ? PerceptaCells(st.count, st.size, st.cell, 300000) : st.count;
+  const n = lines ? Math.min(4e6, (Math.ceil(W / (st.size + st.dPx)) + 2) * (Math.ceil(H / st.dGap) + 2) * 3) : grid ? st.gridCols * gridRows : st.snap && !st.blend && st.dir !== '1b' ? PerceptaCells(st.count, st.size, st.cell, 300000) : st.count;
   const px = new Float32Array(n), py = new Float32Array(n), size = new Float32Array(n), shade = new Uint8Array(n);
   const pal = new Uint8Array(n), rgb = new Uint32Array(n), tlen = new Float32Array(n), dep = new Float32Array(n);
   let got = 0;
@@ -763,7 +770,7 @@ function generate(st) {
   for (let i = 0; i < got; i++) { px[i] = X0 + (px[i] - x0) / (x1 - x0 || 1) * (X1 - X0); py[i] = Y0 + (py[i] - y0) / (y1 - y0 || 1) * (Y1 - Y0); }
   if (wr) wr.fit = { x0, x1, y0, y1, X0, X1, Y0, Y1, vert: st.orient === 'v' };
   const G = { wv: wr, W, H, n: got, hx: cut(px), hy: cut(py), size: cut(size), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen), dep: cut(dep) };
-  return st.dir === '1b' ? apart(G, st.dPx) : G;
+  return st.dir === '1b' ? apart(G, st.dPx, st.chaos * (lines ? st.dGap * 1.6 : st.size * 10), rng(st.seed * 13 + 1)) : G;
 }
 
 // An image is a flat card: fitted inside the frame unrotated (so turning it never rescales), then turned
@@ -870,7 +877,17 @@ function step(dt) {
 const TRAIL_BANDS = 8;
 // Engrillar: worked out once per drawing (see draw / toSvg): every cube on a grid of the cube size, one per cell.
 let SNAP = null;
-const snapFor = st => st.snap ? PerceptaSnap(gen.n, i => gone[i] || gen.del[i] ? NaN : X[i], i => Y[i], st.cell) : null;
+// Pasaje: only the cubes the order reaches go on the grid (one per cell); the rest stay loose where they are. ord[i]
+// says which are on it (they are drawn at the cell's size).
+function snapFor(st) {
+  if (st.dir === '1b' || !(st.snap || st.blend)) return null;
+  const on = new Uint8Array(gen.n);
+  for (let i = 0; i < gen.n; i++) on[i] = !st.blend || PerceptaChance(i) < PerceptaOrder((X[i] + panX) / gen.W, (Y[i] + panY) / gen.H, st.blendDir, st.blendAt, st.blendSoft) ? 1 : 0;
+  const sn = PerceptaSnap(gen.n, i => gone[i] || gen.del[i] || !on[i] ? NaN : X[i], i => Y[i], st.cell);
+  if (st.blend) for (let i = 0; i < gen.n; i++) if (!on[i]) { sn.keep[i] = 1; sn.x[i] = X[i]; sn.y[i] = Y[i]; }
+  sn.ord = on;
+  return sn;
+}
 function groupsOf(st) {
   const g = new Map();
   for (let i = 0; i < gen.n; i++) {
@@ -915,7 +932,7 @@ function eachShape(st, fn, lev = null, grow = 0) {
       }
       if (polys.length) fn(color, (1 - (b - .5) / TRAIL_BANDS) * fade, polys);
     }
-    fn(color, fade, idx.map(i => { const h = (SNAP ? st.cell * (1 - st.cellGap) : gen.size[i]) / 2 + grow, x = SNAP ? SNAP.x[i] : X[i], y = SNAP ? SNAP.y[i] : Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }), true);
+    fn(color, fade, idx.map(i => { const h = (SNAP && SNAP.ord[i] ? st.cell * (1 - st.cellGap) : gen.size[i]) / 2 + grow, x = SNAP ? SNAP.x[i] : X[i], y = SNAP ? SNAP.y[i] : Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }), true);
   }
 }
 // Filled in small batches: one huge path of overlapping polygons rasterizes far slower than many small ones.
@@ -1028,6 +1045,8 @@ const SLIDERS = {
   contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
   threshold: { label: 'Umbral', min: 0, max: .99, step: .01, fmt: pct, emph: true },
   cell: { label: 'Tamaño de la celda', min: 2, max: 60, step: 1, fmt: v => v + ' px', emph: true },
+  blendAt: { label: 'Dónde ocurre el pasaje', min: 0, max: 1, step: .01, fmt: v => Math.round(v * 100) + '%' },
+  blendSoft: { label: 'Largo del pasaje', min: .02, max: 1, step: .01, fmt: v => Math.round(v * 100) + '%' },
   cellGap: { label: 'Separación entre píxeles', min: .05, max: .7, step: .01, fmt: v => Math.round(v * 100) + '%' },
   count: { label: 'Cubos', values: steps(10, [10, 100], [100, 200], [200, 2000], [1000, 150000]), fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño', values: steps(1, [.5, 50], [10, 200]), fmt: v => v + ' px' },
@@ -1124,14 +1143,15 @@ function sync() {
   $('#blModel').value = S.blModel; $('#sl-blFlorets').hidden = S.blModel !== 'hortensia';
   updateBg(S.bgFlip);
   const b1 = S.dir === '1b';
-  $('#depth-controls').hidden = !S.imgLines; $('#circle-row').hidden = $('#imgLines-row').hidden = true; $('#snap-row').hidden = b1; $('#sl-dPx').hidden = !b1; $('#grid-row').hidden = S.imgLines; if (image && S.imgLines) ensureDepth();
-  $('#sl-gridCols').hidden = !S.grid || S.imgLines; $('#sl-count').hidden = (image && S.grid) || S.snap; $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !S.snap;
+  $('#depth-controls').hidden = !S.imgLines; $('#circle-row').hidden = $('#imgLines-row').hidden = true; $('#snap-row').hidden = true; $('#sl-dPx').hidden = !b1; $('#grid-row').hidden = S.imgLines; if (image && S.imgLines) ensureDepth();
+  $('#sl-gridCols').hidden = !S.grid || S.imgLines; const gridOnly = S.snap && !S.blend && S.dir !== '1b', cells = (S.snap || S.blend) && S.dir !== '1b';
+  $('#sl-count').hidden = (image && S.grid) || gridOnly; $('#sl-size').hidden = gridOnly; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !cells; if (typeof syncModeBar === 'function') syncModeBar();
   $('.rt-bar [data-tool="rotate"]').hidden = !image; if (!image && tools.tool === 'rotate') tools.setTool('scatter');
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   markPalette();
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
   const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz', S.wThresh, S.contrast, S.threshold, S.invert, S.dir, S.imgLines && depthId, S.dGap, S.dPx, S.dRelief, S.dAM,
-    S.style, S.count, S.size, S.snap && S.cell, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
+    S.style, S.count, S.size, S.snap && !S.blend && S.cell, S.chaos, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {
     gen0 = generate(S); genKey = key; placeKey = pkey; rebuild(true);
@@ -1511,12 +1531,28 @@ $('#svg').addEventListener('click', () => download(`pixel-waves-${S.seed}.svg`, 
 
 // Dirección (toolbar.js): 1A squares, all one size, overlapping, gathered by the light; 1B circles that never overlap,
 // and a photo laid out by its depth (Líneas que siguen la profundidad).
+// The mode bar (top middle): in 1A Caótico (loose, overlapping), Engrillado (one per cell) or Pasaje (from one to the
+// other across the picture: Dirección, Dónde ocurre, Largo); in 1B the circles' Caos.
+const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label="Modo"><button data-ord="chaos" title="Píxeles sueltos que se superponen">Caótico</button><button data-ord="grid" title="Cada píxel en su celda, separado de los demás">Engrillado</button><button data-ord="blend" title="De desorden a orden en una misma composición">Pasaje</button></div>
+  <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label>`);
+const ordOf = () => S.blend ? 'blend' : S.snap ? 'grid' : 'chaos';
+modeBar.querySelector('#pm-1a').addEventListener('click', e => { const b = e.target.closest('[data-ord]'); if (!b) return; S.snap = b.dataset.ord === 'grid'; S.blend = b.dataset.ord === 'blend'; sync(); });
+modeBar.querySelector('#pm-chaos').addEventListener('input', e => { S.chaos = +e.target.value; sync(); });
+function syncModeBar() {
+  const b1 = S.dir === '1b';
+  modeBar.querySelector('#pm-1a').hidden = b1; modeBar.querySelector('#pm-1b').hidden = !b1;
+  modeBar.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ord === ordOf()));
+  const ch = modeBar.querySelector('#pm-chaos'); if (+ch.value !== S.chaos) ch.value = S.chaos; ch.style.setProperty('--p', S.chaos * 100 + '%');
+  modeBar.querySelector('#pm-chaos-out').textContent = Math.round(S.chaos * 100) + '%';
+  $('#blend-controls').hidden = b1 || !S.blend;
+}
+
 const direction = PerceptaDirection({
   get: () => S.dir,
   set: v => {
     S.dir = v;
     if (v === '1a') { S.circle = false; S.imgLines = false; S.style = 'mono'; }
-    else { S.circle = true; S.imgLines = true; S.snap = false; }
+    else { S.circle = true; S.imgLines = true; S.snap = false; S.blend = false; }
     sync();
   },
 });

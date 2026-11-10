@@ -205,6 +205,29 @@
   // Dirección: the two ways a tool can work, as two buttons on the left of the page. 1A: square pixels, all one size,
   // overlapping, gathered by the light. 1B: round pixels that never overlap, laid by depth or form. The tool hands it
   // get() and set(v) ('1a' or '1b'); the choice is remembered per tool in this browser.
+  // The bar at the top middle of the picture, for the direction's own modes (1A: Caótico, Engrillado, Pasaje; 1B:
+  // Caos). The page fills it and wires it; its clicks stay its own.
+  window.PerceptaModeBar = (stage, html) => {
+    if (!document.getElementById('pmode-style')) {
+      const st = document.createElement('style'); st.id = 'pmode-style';
+      st.textContent = `.pmode { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 10px; padding: 4px; border-radius: 10px; background: var(--surface, #fbfaf8); box-shadow: 0 0 0 1px var(--line, #dcd7cf), 0 4px 14px rgb(0 0 0 / .06); white-space: nowrap; font: 500 12px var(--font, Inter, system-ui, sans-serif); color: var(--text-2, #5e5850); }
+.pmode .seg { min-width: 300px; }
+.pmode .pm-chaos { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
+.pmode .pm-chaos input { width: 180px; }
+.pmode output { font: 12px var(--mono, ui-monospace, monospace); color: var(--text, #1a1714); min-width: 36px; text-align: right; }`;
+      document.head.appendChild(st);
+    }
+    const el = document.createElement('div'); el.className = 'pmode'; el.innerHTML = html; stage.appendChild(el);
+    for (const t of ['pointerdown', 'pointermove', 'pointerup', 'click', 'dblclick', 'wheel', 'mousedown']) el.addEventListener(t, e => e.stopPropagation());
+    return el;
+  };
+  // Pasaje: how ordered a pixel at (u, v) (0–1 across the frame) is, 0 chaotic to 1 on the grid, and whether pixel i
+  // (by a fixed chance of its own) is on the grid there.
+  window.PerceptaOrder = (u, v, dir, at, soft) => {
+    const t = dir === 'rtl' ? 1 - u : dir === 'ttb' ? v : dir === 'btt' ? 1 - v : u, a = at - soft / 2, b = at + soft / 2;
+    if (t <= a) return 0; if (t >= b) return 1; const x = (t - a) / (b - a); return x * x * (3 - 2 * x);
+  };
+  window.PerceptaChance = i => { let h = Math.imul(i ^ 0x5bd1e995, 0x9e3779b1); h ^= h >>> 15; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; return (h >>> 0) / 4294967296; };
   window.PerceptaDirection = o => {
     if (!document.getElementById('pdir-style')) {
       const st = document.createElement('style'); st.id = 'pdir-style';
