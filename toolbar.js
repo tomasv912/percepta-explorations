@@ -221,11 +221,55 @@
     for (const t of ['pointerdown', 'pointermove', 'pointerup', 'click', 'dblclick', 'wheel', 'mousedown']) el.addEventListener(t, e => e.stopPropagation());
     return el;
   };
-  // Pasaje: how ordered a pixel at (u, v) (0–1 across the frame) is, 0 chaotic to 1 on the grid, and whether pixel i
-  // (by a fixed chance of its own) is on the grid there.
-  window.PerceptaOrder = (u, v, dir, at, soft) => {
-    const t = dir === 'rtl' ? 1 - u : dir === 'ttb' ? v : dir === 'btt' ? 1 - v : u, a = at - soft / 2, b = at + soft / 2;
-    if (t <= a) return 0; if (t >= b) return 1; const x = (t - a) / (b - a); return x * x * (3 - 2 * x);
+  // Pasaje: how ordered a pixel at (u, v) (0–1 across the frame) is, 0 chaotic to 1 on the grid: along the line from
+  // A (where the order starts) to B (where it is complete), smoothly; before A all chaos, past B all order.
+  window.PerceptaOrder = (u, v, A, B) => {
+    const dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy || 1e-9, t = ((u - A[0]) * dx + (v - A[1]) * dy) / L;
+    if (t <= 0) return 0; if (t >= 1) return 1; return t * t * (3 - 2 * t);
+  };
+  // The Pasaje's handles over the picture: A (Caos, hollow) and B (Orden, filled) joined by a line, each draggable, and
+  // the line's middle moves both. o: { frame, visible(), get() → [A, B], set(A, B), view() → { x, y, w, h } (the part
+  // of the artboard the frame shows, in fractions; whole by default) }.
+  window.PerceptaBlendHandles = o => {
+    if (!document.getElementById('pbh-style')) {
+      const st = document.createElement('style'); st.id = 'pbh-style';
+      st.textContent = `.pbh { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.pbh svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.pbh .h { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; pointer-events: auto; cursor: grab; box-shadow: 0 0 0 1.5px #fff, 0 1px 4px rgb(0 0 0 / .35); touch-action: none; }
+.pbh .h:active { cursor: grabbing; }
+.pbh .a { background: #fff; border: 2px solid #3d7bff; box-sizing: border-box; }
+.pbh .b { background: #3d7bff; }
+.pbh .m { width: 12px; height: 12px; margin: -6px 0 0 -6px; background: #fff; border: 1.5px solid #3d7bff; box-sizing: border-box; cursor: move; }
+.pbh .lab { position: absolute; transform: translate(-50%, -26px); font: 600 10px var(--font, Inter, system-ui, sans-serif); color: #fff; background: #3d7bff; padding: 2px 5px; border-radius: 4px; white-space: nowrap; pointer-events: none; }`;
+      document.head.appendChild(st);
+    }
+    const el = document.createElement('div'); el.className = 'pbh';
+    el.innerHTML = '<svg aria-hidden="true"><line stroke="#3d7bff" stroke-width="1.5" stroke-dasharray="5 4"/></svg><div class="h a" title="Desde acá empieza el orden (antes, todo caos)"></div><div class="h m" title="Mover el pasaje"></div><div class="h b" title="Desde acá todo ordenado"></div><span class="lab la">Caos</span><span class="lab lb">Orden</span>';
+    o.frame.appendChild(el);
+    const [ha, hm, hb] = el.querySelectorAll('.h'), line = el.querySelector('line'), la = el.querySelector('.la'), lb = el.querySelector('.lb');
+    const view = () => o.view ? o.view() : { x: 0, y: 0, w: 1, h: 1 };
+    const toScr = p => { const v = view(); return [(p[0] - v.x) / v.w * 100, (p[1] - v.y) / v.h * 100]; };
+    const fromEv = e => { const r = o.frame.getBoundingClientRect(), v = view(); return [v.x + (e.clientX - r.left) / r.width * v.w, v.y + (e.clientY - r.top) / r.height * v.h]; };
+    const drag = (h, which) => {
+      h.addEventListener('pointerdown', e => {
+        e.stopPropagation(); e.preventDefault(); h.setPointerCapture(e.pointerId);
+        const [A0, B0] = o.get(), p0 = fromEv(e);
+        const mv = ev => { ev.stopPropagation(); const p = fromEv(ev), d = [p[0] - p0[0], p[1] - p0[1]];
+          if (which === 'a') o.set(p, B0); else if (which === 'b') o.set(A0, p); else o.set([A0[0] + d[0], A0[1] + d[1]], [B0[0] + d[0], B0[1] + d[1]]); paint(); };
+        const up = () => { h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up); };
+        h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
+      });
+      for (const t of ['click', 'dblclick', 'mousedown']) h.addEventListener(t, e => e.stopPropagation());
+    };
+    drag(ha, 'a'); drag(hb, 'b'); drag(hm, 'm');
+    function paint() {
+      el.hidden = !o.visible(); if (el.hidden) return;
+      const [A, B] = o.get(), a = toScr(A), b = toScr(B), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      for (const [h, p] of [[ha, a], [hb, b], [hm, m], [la, a], [lb, b]]) { h.style.left = p[0] + '%'; h.style.top = p[1] + '%'; }
+      line.setAttribute('x1', a[0] + '%'); line.setAttribute('y1', a[1] + '%'); line.setAttribute('x2', b[0] + '%'); line.setAttribute('y2', b[1] + '%');
+    }
+    (function tick() { paint(); requestAnimationFrame(tick); })();
+    return { paint };
   };
   window.PerceptaChance = i => { let h = Math.imul(i ^ 0x5bd1e995, 0x9e3779b1); h ^= h >>> 15; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; return (h >>> 0) / 4294967296; };
   window.PerceptaDirection = o => {

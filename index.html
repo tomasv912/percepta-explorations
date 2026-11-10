@@ -248,9 +248,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-cell"></div>
         <div id="sl-cellGap"></div>
         <div id="blend-controls">
-          <div class="seg" data-key="blendDir" aria-label="Dirección del pasaje"><button data-v="ltr" title="Desorden a la izquierda, orden a la derecha">→</button><button data-v="rtl" title="Desorden a la derecha, orden a la izquierda">←</button><button data-v="ttb" title="Desorden arriba, orden abajo">↓</button><button data-v="btt" title="Desorden abajo, orden arriba">↑</button></div>
-          <div id="sl-blendAt"></div>
-          <div id="sl-blendSoft"></div>
+<p class="hint">Arrastrá los manejadores sobre el lienzo: <b>Caos</b> marca dónde empieza el orden y <b>Orden</b> dónde se completa; el punto del medio mueve los dos.</p>
+          <div class="btns"><button class="btn" id="blend-swap" type="button">Invertir</button><button class="btn" id="blend-reset" type="button">Restablecer</button></div>
         </div>
       </section>
 
@@ -327,7 +326,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2, onlyPal: false, dir: '1a', blend: false, blendDir: 'ltr', blendAt: .5, blendSoft: .5, chaos: 0,
+  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2, onlyPal: false, dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0,
   motion: 'still', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
@@ -882,7 +881,7 @@ let SNAP = null;
 function snapFor(st) {
   if (st.dir === '1b' || !(st.snap || st.blend)) return null;
   const on = new Uint8Array(gen.n);
-  for (let i = 0; i < gen.n; i++) on[i] = !st.blend || PerceptaChance(i) < PerceptaOrder((X[i] + panX) / gen.W, (Y[i] + panY) / gen.H, st.blendDir, st.blendAt, st.blendSoft) ? 1 : 0;
+  for (let i = 0; i < gen.n; i++) on[i] = !st.blend || PerceptaChance(i) < PerceptaOrder((X[i] + panX) / gen.W, (Y[i] + panY) / gen.H, st.blendA, st.blendB) ? 1 : 0;
   const sn = PerceptaSnap(gen.n, i => gone[i] || gen.del[i] || !on[i] ? NaN : X[i], i => Y[i], st.cell);
   if (st.blend) for (let i = 0; i < gen.n; i++) if (!on[i]) { sn.keep[i] = 1; sn.x[i] = X[i]; sn.y[i] = Y[i]; }
   sn.ord = on;
@@ -1045,8 +1044,6 @@ const SLIDERS = {
   contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
   threshold: { label: 'Umbral', min: 0, max: .99, step: .01, fmt: pct, emph: true },
   cell: { label: 'Tamaño de la celda', min: 2, max: 60, step: 1, fmt: v => v + ' px', emph: true },
-  blendAt: { label: 'Dónde ocurre el pasaje', min: 0, max: 1, step: .01, fmt: v => Math.round(v * 100) + '%' },
-  blendSoft: { label: 'Largo del pasaje', min: .02, max: 1, step: .01, fmt: v => Math.round(v * 100) + '%' },
   cellGap: { label: 'Separación entre píxeles', min: .05, max: .7, step: .01, fmt: v => Math.round(v * 100) + '%' },
   count: { label: 'Cubos', values: steps(10, [10, 100], [100, 200], [200, 2000], [1000, 150000]), fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño', values: steps(1, [.5, 50], [10, 200]), fmt: v => v + ' px' },
@@ -1531,6 +1528,11 @@ $('#svg').addEventListener('click', () => download(`pixel-waves-${S.seed}.svg`, 
 
 // Dirección (toolbar.js): 1A squares, all one size, overlapping, gathered by the light; 1B circles that never overlap,
 // and a photo laid out by its depth (Líneas que siguen la profundidad).
+// Pasaje's handles (toolbar.js) over the picture, and its two buttons.
+PerceptaBlendHandles({ frame, visible: () => S.dir !== '1b' && S.blend, get: () => [S.blendA, S.blendB], set: (A, B) => { S.blendA = A; S.blendB = B; sync(); }, view: () => { const v = viewBox(); return { x: v.x / gen.W, y: v.y / gen.H, w: v.w / gen.W, h: v.h / gen.H }; } });
+$('#blend-swap').addEventListener('click', () => { [S.blendA, S.blendB] = [S.blendB, S.blendA]; sync(); });
+$('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.slice(); S.blendB = DEFAULTS.blendB.slice(); sync(); });
+
 // The mode bar (top middle): in 1A Caótico (loose, overlapping), Engrillado (one per cell) or Pasaje (from one to the
 // other across the picture: Dirección, Dónde ocurre, Largo); in 1B the circles' Caos.
 const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label="Modo"><button data-ord="chaos" title="Píxeles sueltos que se superponen">Caótico</button><button data-ord="grid" title="Cada píxel en su celda, separado de los demás">Engrillado</button><button data-ord="blend" title="De desorden a orden en una misma composición">Pasaje</button></div>

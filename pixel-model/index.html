@@ -250,9 +250,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-cell"></div>
         <div id="sl-cellGap"></div>
         <div id="blend-controls">
-          <div class="seg" data-key="blendDir" aria-label="Dirección del pasaje"><button data-v="ltr" title="Desorden a la izquierda, orden a la derecha">→</button><button data-v="rtl" title="Desorden a la derecha, orden a la izquierda">←</button><button data-v="ttb" title="Desorden arriba, orden abajo">↓</button><button data-v="btt" title="Desorden abajo, orden arriba">↑</button></div>
-          <div id="sl-blendAt"></div>
-          <div id="sl-blendSoft"></div>
+<p class="hint">Arrastrá los manejadores sobre el lienzo: <b>Caos</b> marca dónde empieza el orden y <b>Orden</b> dónde se completa; el punto del medio mueve los dos.</p>
+          <div class="btns"><button class="btn" id="blend-swap" type="button">Invertir</button><button class="btn" id="blend-reset" type="button">Restablecer</button></div>
         </div>
         <div class="row">
           <span>Semilla</span>
@@ -323,7 +322,7 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
-  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: .2, onlyPal: false, dir: '1b', blend: false, blendDir: 'ltr', blendAt: .5, blendSoft: .5, chaos: 0, handJit: 1,
+  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: .2, onlyPal: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -646,7 +645,7 @@ const count = () => S.snap && !S.blend && !S.lines ? PerceptaCells(S.count, S.si
 // Pasaje: only the pixels the order reaches (by where they are and a chance of their own) go on the grid; the rest
 // stay loose. Gridded ones carry ord and are drawn at the cell's size.
 function snapList(list) {
-  const on = list.map((p, i) => !S.blend || PerceptaChance(i) < PerceptaOrder((p.x + (p.dx || 0)) / AW, (p.y + (p.dy || 0)) / AH, S.blendDir, S.blendAt, S.blendSoft));
+  const on = list.map((p, i) => !S.blend || PerceptaChance(i) < PerceptaOrder((p.x + (p.dx || 0)) / AW, (p.y + (p.dy || 0)) / AH, S.blendA, S.blendB));
   const sn = PerceptaSnap(list.length, i => on[i] ? list[i].x + (list[i].dx || 0) : NaN, i => list[i].y + (list[i].dy || 0), S.cell), out = [];
   for (let i = 0; i < list.length; i++) {
     if (!on[i]) out.push(list[i]);
@@ -692,8 +691,6 @@ const SLIDERS = {
   ambient: { label: 'Luz ambiente', min: 0, max: .8, step: .01, fmt: pct },
   shadow: { label: 'Sombras proyectadas', min: 0, max: 1, step: .01, fmt: pct },
   cell: { label: 'Tamaño de la celda', min: 2, max: 40, step: 1, fmt: v => v + ' px', emph: true },
-  blendAt: { label: 'Dónde ocurre el pasaje', min: 0, max: 1, step: .01, fmt: v => Math.round(v * 100) + '%' },
-  blendSoft: { label: 'Largo del pasaje', min: .02, max: 1, step: .01, fmt: v => Math.round(v * 100) + '%' },
   cellGap: { label: 'Separación entre píxeles', min: .05, max: .7, step: .01, fmt: v => Math.round(v * 100) + '%' },
   count: { label: 'Densidad', min: 2000, max: 200000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño del píxel', min: 1, max: 24, step: .5, fmt: v => v + ' px', emph: true },
@@ -1438,6 +1435,11 @@ $('#video').addEventListener('click', async () => {
     filming = false; btn.disabled = false; btn.textContent = label; key = ''; sync();
   }
 });
+
+// Pasaje's handles (toolbar.js) over the picture, and its two buttons.
+PerceptaBlendHandles({ frame, visible: () => S.dir !== '1b' && S.blend, get: () => [S.blendA, S.blendB], set: (A, B) => { S.blendA = A; S.blendB = B; sync(); }, view: () => { const v = viewBox(); return { x: v.x / AW, y: v.y / AH, w: v.w / AW, h: v.h / AH }; } });
+$('#blend-swap').addEventListener('click', () => { [S.blendA, S.blendB] = [S.blendB, S.blendA]; sync(); });
+$('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.slice(); S.blendB = DEFAULTS.blendB.slice(); sync(); });
 
 // The mode bar (top middle): in 1A Caótico (loose, overlapping), Engrillado (one per cell) or Pasaje (from one to the
 // other across the picture: Dirección, Dónde ocurre, Largo); in 1B the circles' Caos.

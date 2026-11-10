@@ -191,9 +191,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-cell"></div>
         <div id="sl-cellGap"></div>
         <div id="blend-controls">
-          <div class="seg" data-key="blendDir" aria-label="Dirección del pasaje"><button data-v="ltr" title="Desorden a la izquierda, orden a la derecha">→</button><button data-v="rtl" title="Desorden a la derecha, orden a la izquierda">←</button><button data-v="ttb" title="Desorden arriba, orden abajo">↓</button><button data-v="btt" title="Desorden abajo, orden arriba">↑</button></div>
-          <div id="sl-blendAt"></div>
-          <div id="sl-blendSoft"></div>
+<p class="hint">Arrastrá los manejadores sobre el lienzo: <b>Caos</b> marca dónde empieza el orden y <b>Orden</b> dónde se completa; el punto del medio mueve los dos.</p>
+          <div class="btns"><button class="btn" id="blend-swap" type="button">Invertir</button><button class="btn" id="blend-reset" type="button">Restablecer</button></div>
         </div>
         <div class="row">
           <span>Semilla</span>
@@ -237,7 +236,7 @@ const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 const AW = 1920, AH = 1080, RES = 2, PW = 3, CELL = 1 / 150;
 const DEFAULTS = {
   disp: .3, start: .35, soft: .7, rise: .35, thin: .35, fadeA: .5,
-  dir: '1a', blend: false, blendDir: 'ltr', blendAt: .5, blendSoft: .5, chaos: 0, cut: false, lines: false, lGap: 14, lDot: 1, mdens: 3.5, cull: true, cityN: 16, cityGreen: .35, citySeed: 1, wave: .5, waveScale: .5, depth: 2.4,
+  dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, cut: false, lines: false, lGap: 14, lDot: 1, mdens: 3.5, cull: true, cityN: 16, cityGreen: .35, citySeed: 1, wave: .5, waveScale: .5, depth: 2.4,
   pitch: 24, yaw: 0, persp: .55, zoom: 1.3, frameY: .02,
   count: 45000, size: 2.5, depthSize: .6, seed: 1, snap: false, cell: 5, cellGap: .2,
   palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'ink', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
@@ -736,7 +735,7 @@ const count = () => S.snap && !S.blend && !S.lines ? PerceptaCells(S.count, S.si
 // grid; the rest stay loose where they are.
 function snapped(items) {
   if (!gridded()) return items;
-  const on = items.map((it, i) => !S.blend || PerceptaChance(i) < PerceptaOrder(it[0] / AW, it[1] / AH, S.blendDir, S.blendAt, S.blendSoft));
+  const on = items.map((it, i) => !S.blend || PerceptaChance(i) < PerceptaOrder(it[0] / AW, it[1] / AH, S.blendA, S.blendB));
   const sn = PerceptaSnap(items.length, i => on[i] ? items[i][0] : NaN, i => items[i][1], S.cell), out = [];
   for (let i = 0; i < items.length; i++) {
     if (!on[i]) out.push(items[i]);
@@ -776,8 +775,6 @@ const SLIDERS = {
   zoom: { label: 'Escala', min: .3, max: 4, step: .01, fmt: v => '×' + v.toFixed(2) },
   frameY: { label: 'Encuadre', min: -.6, max: .6, step: .01, fmt: pct },
   cell: { label: 'Tamaño de la celda', min: 2, max: 30, step: 1, fmt: v => v + ' px', emph: true },
-  blendAt: { label: 'Dónde ocurre el pasaje', min: 0, max: 1, step: .01, fmt: v => Math.round(v * 100) + '%' },
-  blendSoft: { label: 'Largo del pasaje', min: .02, max: 1, step: .01, fmt: v => Math.round(v * 100) + '%' },
   cellGap: { label: 'Separación entre píxeles', min: .05, max: .7, step: .01, fmt: v => Math.round(v * 100) + '%' },
   count: { label: 'Cantidad', min: 5000, max: 150000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño del píxel', min: 1, max: 12, step: .5, fmt: v => v + ' px', emph: true },
@@ -996,6 +993,11 @@ $('#svg').addEventListener('click', () => {
 });
 
 objs = city(S.citySeed);
+// Pasaje's handles (toolbar.js) over the picture, and its two buttons.
+PerceptaBlendHandles({ frame, visible: () => S.dir !== '1b' && S.blend, get: () => [S.blendA, S.blendB], set: (A, B) => { S.blendA = A; S.blendB = B; sync(); } });
+$('#blend-swap').addEventListener('click', () => { [S.blendA, S.blendB] = [S.blendB, S.blendA]; sync(); });
+$('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.slice(); S.blendB = DEFAULTS.blendB.slice(); sync(); });
+
 // The mode bar (top middle): in 1A Caótico (loose, overlapping), Engrillado (one per cell) or Pasaje (from one to the
 // other across the picture: Dirección, Dónde ocurre, Largo); in 1B the circles' Caos.
 const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label="Modo"><button data-ord="chaos" title="Píxeles sueltos que se superponen">Caótico</button><button data-ord="grid" title="Cada píxel en su celda, separado de los demás">Engrillado</button><button data-ord="blend" title="De desorden a orden en una misma composición">Pasaje</button></div>
