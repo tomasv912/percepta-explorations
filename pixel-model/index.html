@@ -39,7 +39,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
 [hidden] { display: none !important; }
 
 .app { display: grid; flex: 1; min-height: 0; grid-template-columns: 1fr 280px; }
-main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding: 92px 24px 76px; }
+main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding: 92px 24px 120px; }
 .frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); }
 .frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .frame { cursor: grab; touch-action: none; }
@@ -47,7 +47,9 @@ main { position: relative; display: grid; place-items: center; overflow: hidden;
 .frame.moving, .frame.moving:active { cursor: move; }
 .busy { position: absolute; top: 12px; right: 14px; font: 11px var(--mono); color: var(--text-3); }
 .hud { position: absolute; top: 54px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
-.tt { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 4px 16px rgb(0 0 0 / .06); white-space: nowrap; z-index: 1; }
+.send { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 1; }
+.send .btn { height: 32px; padding: 0 14px; }
+.tt { position: absolute; bottom: 58px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 4px 16px rgb(0 0 0 / .06); white-space: nowrap; z-index: 1; }
 .tt { flex-wrap: wrap; justify-content: center; width: max-content; max-width: calc(100% - 24px); }
 .tt-sep { width: 1px; height: 28px; background: var(--line); flex: none; }
 .tt-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); cursor: pointer; }
@@ -141,6 +143,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
     <div class="drop" id="drop" hidden>Soltá el modelo (.obj, .fbx, .glb, .gltf)</div>
     <div class="hud" id="stats">—</div>
     <div class="crop-hud" id="crop-hud"><button id="crop-tool" aria-pressed="false" title="Recortar (C): arrastrá un recuadro sobre el modelo, o clic para acercar ×2. Las flechas lo desplazan">Recortar</button><b id="crop-label" hidden>Recorte</b><button id="crop-back" hidden title="Vuelve al recorte anterior">Vista anterior</button><button id="crop-clear" hidden title="Muestra el cuadro entero">Quitar recorte</button></div>
+    <div class="send" role="group" aria-label="Enviar a otra tool"><button class="btn primary" id="to-waves" title="Renderiza la vista actual (luz, sombras y profundidad) y la abre en Pixel Waves como imagen">Enviar a Pixel Waves</button><button class="btn primary" id="to-depth" title="Lleva el modelo tal cual está a Pixel Depth, sobre su plano">Enviar a Pixel Depth</button></div>
     <div class="tt" role="toolbar" aria-label="Animación">
       <div class="seg" data-key="anim" aria-label="Animación">
         <button data-v="none">Quieta</button><button data-v="boil">A mano</button><button data-v="float">Flotar</button><button data-v="hover">Hover</button><button data-v="reveal">Reveal</button><button data-v="enter">Entrada</button><button data-v="paint" title="Mantené apretado sobre el lienzo: los píxeles salen del cursor y van a su lugar">Interactivo</button>
@@ -225,10 +228,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <label class="check"><input type="checkbox" data-check="bCrown"> Coronamiento y aguja</label>
         </div>
         <button class="btn" id="upload">Subir .obj, .fbx, .glb o .gltf</button>
-        <div class="btns">
-          <button class="btn" id="to-waves" title="Renderiza la vista actual (luz, sombras y profundidad) y la abre en Pixel Waves como imagen">Enviar a Pixel Waves</button>
-          <button class="btn" id="to-depth" title="Lleva el modelo tal cual está a Pixel Depth, sobre su plano">Enviar a Pixel Depth</button>
-        </div>
         <input type="file" id="file" accept=".obj,.fbx,.glb,.gltf" hidden>
         <div id="sl-yaw"></div>
         <div id="sl-pitch"></div>
@@ -332,12 +331,14 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
-  mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
+  mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
 // 1B spacing: circles keep apart by their distance; squares (Cuadrados) by the larger of their two offsets, so
 // their corners can't touch either.
+// Round pixels: 1B's circles (unless Cuadrados), or 1A with Círculos.
+const roundNow = () => S.dir === '1b' ? S.lines && !S.snap && !S.square : !!S.round1a;
 const apartD = (dx, dy) => S.square ? Math.max(Math.abs(dx), Math.abs(dy)) : Math.hypot(dx, dy);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 function rng(seed) {
@@ -730,7 +731,7 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
       // Reveal: a pixel growing in is drawn at its share of the size (p.sc), from its middle
       const s = sizeOf(p), z = p.sc === undefined ? s : s * p.sc; if (z <= .05) continue;
       // Líneas horizontales: circles
-      if (S.lines && !S.snap && !S.square) { const cx = (p.x + (p.dx || 0) - ox), cy = (p.y + (p.dy || 0) - oy); ctx.moveTo(cx + z / 2, cy); ctx.arc(cx, cy, z / 2, 0, Math.PI * 2); continue; }
+      if (roundNow()) { const cx = (p.x + (p.dx || 0) - ox), cy = (p.y + (p.dy || 0) - oy); ctx.moveTo(cx + z / 2, cy); ctx.arc(cx, cy, z / 2, 0, Math.PI * 2); continue; }
       ctx.rect(Math.round((p.x + (p.dx || 0) - z / 2 - ox) * q) / q, Math.round((p.y + (p.dy || 0) - z / 2 - oy) * q) / q, z, z);
     }
     ctx.fill();
@@ -861,7 +862,7 @@ function sync(fast) {
 }
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
 function render() {
-  const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 48) / AW, (r.height - 128) / AH));
+  const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 48) / AW, (r.height - 176) / AH));
   const w = Math.round(AW * k), h = Math.round(AH * k), dpr = devicePixelRatio || 1;
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
   const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
@@ -1368,7 +1369,7 @@ $('#svg').addEventListener('click', () => {
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
   if (S.bgExport) out.push(`<rect width="${w}" height="${h}" fill="${S.bg}"/>`);
   const groups = new Map();
-  const round = S.lines && !S.snap && !S.square;
+  const round = roundNow();
   for (const p of gridded() ? snapList(exportList()) : exportList()) { const z = sizeOf(p), zz = p.sc === undefined ? z : z * p.sc, ss = n(zz); if (zz <= .05) continue; const c = colorOf(p), X0 = p.x + (p.dx || 0) - b.x0, Y0 = p.y + (p.dy || 0) - b.y0; groups.set(c, (groups.get(c) || '') + (round ? `M${n(X0 - zz / 2)} ${n(Y0)}a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${ss} 0a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${-ss} 0Z` : `M${n(X0 - zz / 2)} ${n(Y0 - zz / 2)}h${ss}v${ss}h${-ss}z`)); }
   for (const [c, d] of groups) out.push(`<path fill="${c}" d="${d}"/>`);
   out.push('</svg>');
@@ -1511,15 +1512,16 @@ $('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.s
 
 // The mode bar (top middle): in 1A Caótico (loose, overlapping), Engrillado (one per cell) or Pasaje (from one to the
 // other across the picture: Dirección, Dónde ocurre, Largo); in 1B the circles' Caos.
-const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label="Modo"><button data-ord="chaos" title="Píxeles sueltos que se superponen">Caótico</button><button data-ord="grid" title="Cada píxel en su celda, separado de los demás">Engrillado</button><button data-ord="blend" title="De desorden a orden en una misma composición">Pasaje</button></div>
+const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label="Modo"><button data-ord="chaos" title="Píxeles sueltos que se superponen">Caótico</button><button data-ord="grid" title="Cada píxel en su celda, separado de los demás">Engrillado</button><button data-ord="blend" title="De desorden a orden en una misma composición">Pasaje</button></div><label class="pm-sq" id="pm-rd" title="Puntos redondos en vez de cuadrados"><input type="checkbox" id="pm-round"> Círculos</label>
   <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label><label class="pm-sq" id="pm-sq" title="Píxeles cuadrados en vez de redondos, igual de separados"><input type="checkbox" id="pm-square"> Cuadrados</label>`);
 const ordOf = () => S.blend ? 'blend' : S.snap ? 'grid' : 'chaos';
 modeBar.querySelector('#pm-1a').addEventListener('click', e => { const b = e.target.closest('[data-ord]'); if (!b) return; S.snap = b.dataset.ord === 'grid'; S.blend = b.dataset.ord === 'blend'; sync(); });
 modeBar.querySelector('#pm-chaos').addEventListener('input', e => { S.chaos = +e.target.value; sync(); });
 modeBar.querySelector('#pm-square').addEventListener('change', e => { S.square = e.target.checked; sync(); });
+modeBar.querySelector('#pm-round').addEventListener('change', e => { S.round1a = e.target.checked; sync(); });
 function syncModeBar() {
   const b1 = S.dir === '1b';
-  modeBar.querySelector('#pm-1a').hidden = b1; modeBar.querySelector('#pm-1b').hidden = modeBar.querySelector('#pm-sq').hidden = !b1; modeBar.querySelector('#pm-square').checked = S.square;
+  modeBar.querySelector('#pm-1a').hidden = modeBar.querySelector('#pm-rd').hidden = b1; modeBar.querySelector('#pm-round').checked = !!S.round1a; modeBar.querySelector('#pm-1b').hidden = modeBar.querySelector('#pm-sq').hidden = !b1; modeBar.querySelector('#pm-square').checked = S.square;
   modeBar.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ord === ordOf()));
   const ch = modeBar.querySelector('#pm-chaos'); if (+ch.value !== S.chaos) ch.value = S.chaos; ch.style.setProperty('--p', S.chaos * 100 + '%');
   modeBar.querySelector('#pm-chaos-out').textContent = Math.round(S.chaos * 100) + '%';

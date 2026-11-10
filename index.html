@@ -1603,15 +1603,16 @@ $('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.s
 
 // The mode bar (top middle): in 1A Caótico (loose, overlapping), Engrillado (one per cell) or Pasaje (from one to the
 // other across the picture: Dirección, Dónde ocurre, Largo); in 1B the circles' Caos.
-const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label="Modo"><button data-ord="chaos" title="Píxeles sueltos que se superponen">Caótico</button><button data-ord="grid" title="Cada píxel en su celda, separado de los demás">Engrillado</button><button data-ord="blend" title="De desorden a orden en una misma composición">Pasaje</button></div>
+const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label="Modo"><button data-ord="chaos" title="Píxeles sueltos que se superponen">Caótico</button><button data-ord="grid" title="Cada píxel en su celda, separado de los demás">Engrillado</button><button data-ord="blend" title="De desorden a orden en una misma composición">Pasaje</button></div><label class="pm-sq" id="pm-rd" title="Puntos redondos en vez de cuadrados"><input type="checkbox" id="pm-round"> Círculos</label>
   <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label><label class="pm-sq" id="pm-sq" title="Píxeles cuadrados en vez de redondos, igual de separados"><input type="checkbox" id="pm-square"> Cuadrados</label>`);
 const ordOf = () => S.blend ? 'blend' : S.snap ? 'grid' : 'chaos';
 modeBar.querySelector('#pm-1a').addEventListener('click', e => { const b = e.target.closest('[data-ord]'); if (!b) return; S.snap = b.dataset.ord === 'grid'; S.blend = b.dataset.ord === 'blend'; sync(); });
 modeBar.querySelector('#pm-chaos').addEventListener('input', e => { S.chaos = +e.target.value; sync(); });
 modeBar.querySelector('#pm-square').addEventListener('change', e => { S.square = e.target.checked; sync(); });
+modeBar.querySelector('#pm-round').addEventListener('change', e => { S.circle = e.target.checked; sync(); });
 function syncModeBar() {
   const b1 = S.dir === '1b';
-  modeBar.querySelector('#pm-1a').hidden = b1; modeBar.querySelector('#pm-1b').hidden = modeBar.querySelector('#pm-sq').hidden = !b1; modeBar.querySelector('#pm-square').checked = S.square;
+  modeBar.querySelector('#pm-1a').hidden = modeBar.querySelector('#pm-rd').hidden = b1; modeBar.querySelector('#pm-round').checked = !!S.circle; modeBar.querySelector('#pm-1b').hidden = modeBar.querySelector('#pm-sq').hidden = !b1; modeBar.querySelector('#pm-square').checked = S.square;
   modeBar.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ord === ordOf()));
   const ch = modeBar.querySelector('#pm-chaos'); if (+ch.value !== S.chaos) ch.value = S.chaos; ch.style.setProperty('--p', S.chaos * 100 + '%');
   modeBar.querySelector('#pm-chaos-out').textContent = Math.round(S.chaos * 100) + '%';

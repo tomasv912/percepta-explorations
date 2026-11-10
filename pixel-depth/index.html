@@ -236,7 +236,7 @@ const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 const AW = 1920, AH = 1080, RES = 2, PW = 3, CELL = 1 / 150;
 const DEFAULTS = {
   disp: .3, start: .35, soft: .7, rise: .35, thin: .35, fadeA: .5,
-  square: false, dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, cut: false, lines: false, lGap: 14, lDot: 1, mdens: 3.5, cull: true, cityN: 16, cityGreen: .35, citySeed: 1, wave: .5, waveScale: .5, depth: 2.4,
+  square: false, round1a: false, dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, cut: false, lines: false, lGap: 14, lDot: 1, mdens: 3.5, cull: true, cityN: 16, cityGreen: .35, citySeed: 1, wave: .5, waveScale: .5, depth: 2.4,
   pitch: 24, yaw: 0, persp: .55, zoom: 1.3, frameY: .02,
   count: 45000, size: 2.5, depthSize: .6, seed: 1, snap: false, cell: 5, cellGap: 1,
   palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'ink', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
@@ -244,6 +244,8 @@ const DEFAULTS = {
 const S = structuredClone(DEFAULTS);
 // 1B spacing: circles keep apart by their distance; squares (Cuadrados) by the larger of their two offsets, so
 // their corners can't touch either.
+// Round pixels: 1B's circles (unless Cuadrados), or 1A with Círculos.
+const roundNow = () => S.dir === '1b' ? S.lines && !S.snap && !S.square : !!S.round1a;
 const apartD = (dx, dy) => S.square ? Math.max(Math.abs(dx), Math.abs(dy)) : Math.hypot(dx, dy);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
@@ -748,7 +750,7 @@ function snapped(items) {
 }
 function draw(ctx, items) {
   items = snapped(items);
-  const round = S.lines && !S.snap && !S.square;
+  const round = roundNow();
   for (const [x, y, s, p, a] of items) { ctx.globalAlpha = a; ctx.fillStyle = colorOf(p); if (round) { ctx.beginPath(); ctx.arc(x, y, s / 2, 0, Math.PI * 2); ctx.fill(); } else ctx.fillRect(x - s / 2, y - s / 2, s, s); }
   ctx.globalAlpha = 1;
 }
@@ -988,7 +990,7 @@ $('#svg').addEventListener('click', () => {
   const groups = new Map();
   for (const [x, y, s, p, a] of snapped(list)) {
     const key = colorOf(p) + '|' + Math.max(1, Math.round(a * 10)) / 10;
-    groups.set(key, (groups.get(key) || '') + (S.lines && !S.snap && !S.square ? `M${n(x - s / 2)} ${n(y)}a${n(s / 2)} ${n(s / 2)} 0 1 0 ${n(s)} 0a${n(s / 2)} ${n(s / 2)} 0 1 0 ${-n(s)} 0Z` : `M${n(x - s / 2)} ${n(y - s / 2)}h${n(s)}v${n(s)}h${-n(s)}z`));
+    groups.set(key, (groups.get(key) || '') + (roundNow() ? `M${n(x - s / 2)} ${n(y)}a${n(s / 2)} ${n(s / 2)} 0 1 0 ${n(s)} 0a${n(s / 2)} ${n(s / 2)} 0 1 0 ${-n(s)} 0Z` : `M${n(x - s / 2)} ${n(y - s / 2)}h${n(s)}v${n(s)}h${-n(s)}z`));
   }
   for (const [key, d] of groups) { const [c, a] = key.split('|'); out.push(`<path fill="${c}"${a < 1 ? ` fill-opacity="${a}"` : ''} d="${d}"/>`); }
   out.push('</svg>');
@@ -1010,15 +1012,16 @@ $('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.s
 
 // The mode bar (top middle): in 1A Caótico (loose, overlapping), Engrillado (one per cell) or Pasaje (from one to the
 // other across the picture: Dirección, Dónde ocurre, Largo); in 1B the circles' Caos.
-const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label="Modo"><button data-ord="chaos" title="Píxeles sueltos que se superponen">Caótico</button><button data-ord="grid" title="Cada píxel en su celda, separado de los demás">Engrillado</button><button data-ord="blend" title="De desorden a orden en una misma composición">Pasaje</button></div>
+const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label="Modo"><button data-ord="chaos" title="Píxeles sueltos que se superponen">Caótico</button><button data-ord="grid" title="Cada píxel en su celda, separado de los demás">Engrillado</button><button data-ord="blend" title="De desorden a orden en una misma composición">Pasaje</button></div><label class="pm-sq" id="pm-rd" title="Puntos redondos en vez de cuadrados"><input type="checkbox" id="pm-round"> Círculos</label>
   <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label><label class="pm-sq" id="pm-sq" title="Píxeles cuadrados en vez de redondos, igual de separados"><input type="checkbox" id="pm-square"> Cuadrados</label>`);
 const ordOf = () => S.blend ? 'blend' : S.snap ? 'grid' : 'chaos';
 modeBar.querySelector('#pm-1a').addEventListener('click', e => { const b = e.target.closest('[data-ord]'); if (!b) return; S.snap = b.dataset.ord === 'grid'; S.blend = b.dataset.ord === 'blend'; sync(); });
 modeBar.querySelector('#pm-chaos').addEventListener('input', e => { S.chaos = +e.target.value; sync(); });
 modeBar.querySelector('#pm-square').addEventListener('change', e => { S.square = e.target.checked; sync(); });
+modeBar.querySelector('#pm-round').addEventListener('change', e => { S.round1a = e.target.checked; sync(); });
 function syncModeBar() {
   const b1 = S.dir === '1b';
-  modeBar.querySelector('#pm-1a').hidden = b1; modeBar.querySelector('#pm-1b').hidden = modeBar.querySelector('#pm-sq').hidden = !b1; modeBar.querySelector('#pm-square').checked = S.square;
+  modeBar.querySelector('#pm-1a').hidden = modeBar.querySelector('#pm-rd').hidden = b1; modeBar.querySelector('#pm-round').checked = !!S.round1a; modeBar.querySelector('#pm-1b').hidden = modeBar.querySelector('#pm-sq').hidden = !b1; modeBar.querySelector('#pm-square').checked = S.square;
   modeBar.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ord === ordOf()));
   const ch = modeBar.querySelector('#pm-chaos'); if (+ch.value !== S.chaos) ch.value = S.chaos; ch.style.setProperty('--p', S.chaos * 100 + '%');
   modeBar.querySelector('#pm-chaos-out').textContent = Math.round(S.chaos * 100) + '%';
