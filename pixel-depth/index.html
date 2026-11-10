@@ -238,7 +238,7 @@ const DEFAULTS = {
   disp: .3, start: .35, soft: .7, rise: .35, thin: .35, fadeA: .5,
   dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, cut: false, lines: false, lGap: 14, lDot: 1, mdens: 3.5, cull: true, cityN: 16, cityGreen: .35, citySeed: 1, wave: .5, waveScale: .5, depth: 2.4,
   pitch: 24, yaw: 0, persp: .55, zoom: 1.3, frameY: .02,
-  count: 45000, size: 2.5, depthSize: .6, seed: 1, snap: false, cell: 5, cellGap: .2,
+  count: 45000, size: 2.5, depthSize: .6, seed: 1, snap: false, cell: 5, cellGap: 1,
   palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'ink', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
@@ -730,16 +730,16 @@ function colorOf(p) {
 // (the front one), all at that size, so they sit side by side and never on top of each other.
 // The pixels sampled: Cantidad, or with Engrillar enough to fill cells of Tamaño de la celda.
 const gridded = () => (S.snap || S.blend) && !S.lines;
-const count = () => S.snap && !S.blend && !S.lines ? PerceptaCells(S.count, S.size, S.cell, 250000) : S.count;
+const count = () => S.snap && !S.blend && !S.lines ? PerceptaCells(S.count, S.size, (S.size + S.cellGap), 250000) : S.count;
 // Pasaje: only the pixels the order reaches (by where they are on the picture and a chance of their own) go on the
 // grid; the rest stay loose where they are.
 function snapped(items) {
   if (!gridded()) return items;
   const on = items.map((it, i) => !S.blend || PerceptaChance(i) < PerceptaOrder(it[0] / AW, it[1] / AH, S.blendA, S.blendB));
-  const sn = PerceptaSnap(items.length, i => on[i] ? items[i][0] : NaN, i => items[i][1], S.cell), out = [];
+  const sn = PerceptaSnap(items.length, i => on[i] ? items[i][0] : NaN, i => items[i][1], (S.size + S.cellGap)), out = [];
   for (let i = 0; i < items.length; i++) {
     if (!on[i]) out.push(items[i]);
-    else if (sn.keep[i]) out.push([sn.x[i], sn.y[i], S.cell * (1 - S.cellGap), items[i][3], items[i][4], items[i][5]]);
+    else if (sn.keep[i]) out.push([sn.x[i], sn.y[i], S.size, items[i][3], items[i][4], items[i][5]]);
   }
   return out;
 }
@@ -775,7 +775,7 @@ const SLIDERS = {
   zoom: { label: 'Escala', min: .3, max: 4, step: .01, fmt: v => '×' + v.toFixed(2) },
   frameY: { label: 'Encuadre', min: -.6, max: .6, step: .01, fmt: pct },
   cell: { label: 'Tamaño de la celda', min: 2, max: 30, step: 1, fmt: v => v + ' px', emph: true },
-  cellGap: { label: 'Separación entre píxeles', min: .05, max: .7, step: .01, fmt: v => Math.round(v * 100) + '%' },
+  cellGap: { label: 'Espacio entre píxeles', min: 0, max: 30, step: .1, fmt: v => v.toLocaleString('es', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' px', emph: true },
   count: { label: 'Cantidad', min: 5000, max: 150000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño del píxel', min: 1, max: 12, step: .5, fmt: v => v + ' px', emph: true },
   depthSize: { label: 'Más chicos al fondo', min: 0, max: 1, step: .01, fmt: pct },
@@ -850,7 +850,7 @@ function sync() {
   $('#lines-row').hidden = true; $('#snap-row').hidden = true;
   $('#sl-lGap').hidden = $('#sl-lDot').hidden = !S.lines;
   const gridOnly = S.snap && !S.blend && !S.lines;
-  $('#sl-count').hidden = $('#sl-size').hidden = gridOnly; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !gridded(); if (typeof syncModeBar === 'function') syncModeBar();
+  $('#sl-count').hidden = gridOnly; $('#sl-size').hidden = false; $('#sl-cell').hidden = true; $('#sl-cellGap').hidden = !gridded(); if (typeof syncModeBar === 'function') syncModeBar();
   markPalette(); updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   cancelAnimationFrame(raf); raf = requestAnimationFrame(render);

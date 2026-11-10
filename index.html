@@ -335,7 +335,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2, onlyPal: false, cseed: 1, dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0,
+  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: 1, onlyPal: false, cseed: 1, dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0,
   motion: 'still', flowDir: 'r', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
@@ -476,7 +476,7 @@ function generate(st) {
   const [W, H] = st.orient === 'v' ? [...SIZES[st.aspect]].reverse() : SIZES[st.aspect], r = rng(st.seed), rand = r, mono = st.style === 'mono', image = st.source === 'image' && img;
   const gridRows = image ? Math.max(1, Math.round(st.gridCols / img.ar)) : 0, grid = image && st.grid;
   const lines = image && st.imgLines && img.depth;
-  const n = lines ? Math.min(4e6, (Math.ceil(W / (st.size + st.dPx)) + 2) * (Math.ceil(H / st.dGap) + 2) * 3) : grid ? st.gridCols * gridRows : st.snap && !st.blend && st.dir !== '1b' ? PerceptaCells(st.count, st.size, st.cell, 300000) : st.count;
+  const n = lines ? Math.min(4e6, (Math.ceil(W / (st.size + st.dPx)) + 2) * (Math.ceil(H / st.dGap) + 2) * 3) : grid ? st.gridCols * gridRows : st.snap && !st.blend && st.dir !== '1b' ? PerceptaCells(st.count, st.size, (st.size + st.cellGap), 300000) : st.count;
   const px = new Float32Array(n), py = new Float32Array(n), size = new Float32Array(n), shade = new Uint8Array(n);
   const pal = new Uint8Array(n), rgb = new Uint32Array(n), tlen = new Float32Array(n), dep = new Float32Array(n);
   let got = 0;
@@ -902,7 +902,7 @@ function snapFor(st) {
   if (st.dir === '1b' || !(st.snap || st.blend)) return null;
   const on = new Uint8Array(gen.n);
   for (let i = 0; i < gen.n; i++) on[i] = !st.blend || PerceptaChance(i) < PerceptaOrder((X[i] + panX) / gen.W, (Y[i] + panY) / gen.H, st.blendA, st.blendB) ? 1 : 0;
-  const sn = PerceptaSnap(gen.n, i => gone[i] || gen.del[i] || !on[i] ? NaN : X[i], i => Y[i], st.cell);
+  const sn = PerceptaSnap(gen.n, i => gone[i] || gen.del[i] || !on[i] ? NaN : X[i], i => Y[i], (st.size + st.cellGap));
   if (st.blend) for (let i = 0; i < gen.n; i++) if (!on[i]) { sn.keep[i] = 1; sn.x[i] = X[i]; sn.y[i] = Y[i]; }
   sn.ord = on;
   return sn;
@@ -951,7 +951,7 @@ function eachShape(st, fn, lev = null, grow = 0) {
       }
       if (polys.length) fn(color, (1 - (b - .5) / TRAIL_BANDS) * fade, polys);
     }
-    fn(color, fade, idx.map(i => { const h = (SNAP && SNAP.ord[i] ? st.cell * (1 - st.cellGap) : gen.size[i]) / 2 + grow, x = SNAP ? SNAP.x[i] : X[i], y = SNAP ? SNAP.y[i] : Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }), true);
+    fn(color, fade, idx.map(i => { const h = (SNAP && SNAP.ord[i] ? st.size : gen.size[i]) / 2 + grow, x = SNAP ? SNAP.x[i] : X[i], y = SNAP ? SNAP.y[i] : Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }), true);
   }
 }
 // Filled in small batches: one huge path of overlapping polygons rasterizes far slower than many small ones.
@@ -1064,7 +1064,7 @@ const SLIDERS = {
   contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
   threshold: { label: 'Umbral', min: 0, max: .99, step: .01, fmt: pct, emph: true },
   cell: { label: 'Tamaño de la celda', min: 2, max: 60, step: 1, fmt: v => v + ' px', emph: true },
-  cellGap: { label: 'Separación entre píxeles', min: .05, max: .7, step: .01, fmt: v => Math.round(v * 100) + '%' },
+  cellGap: { label: 'Espacio entre píxeles', min: 0, max: 30, step: .1, fmt: v => v.toLocaleString('es', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' px', emph: true },
   count: { label: 'Cubos', values: steps(10, [10, 100], [100, 200], [200, 2000], [1000, 150000]), fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño', values: steps(1, [.5, 50], [10, 200]), fmt: v => v + ' px' },
   mod: { label: 'Tamaño según profundidad o tono', min: 0, max: 1, step: .01, fmt: pct },
@@ -1164,13 +1164,13 @@ function sync() {
   const b1 = S.dir === '1b';
   $('#depth-controls').hidden = !S.imgLines; $('#circle-row').hidden = $('#imgLines-row').hidden = true; $('#snap-row').hidden = true; $('#sl-dPx').hidden = !b1; $('#grid-row').hidden = S.imgLines; if (image && S.imgLines) ensureDepth();
   $('#sl-gridCols').hidden = !S.grid || S.imgLines; const gridOnly = S.snap && !S.blend && S.dir !== '1b', cells = (S.snap || S.blend) && S.dir !== '1b';
-  $('#sl-count').hidden = (image && S.grid) || gridOnly; $('#sl-size').hidden = gridOnly; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !cells; if (typeof syncModeBar === 'function') syncModeBar();
+  $('#sl-count').hidden = (image && S.grid) || gridOnly; $('#sl-size').hidden = false; $('#sl-cell').hidden = true; $('#sl-cellGap').hidden = !cells; if (typeof syncModeBar === 'function') syncModeBar();
   $('.rt-bar [data-tool="rotate"]').hidden = !image; if (!image && tools.tool === 'rotate') tools.setTool('scatter');
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   markPalette();
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
   const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.flowDir === 'r' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz' && S.flowDir === 'r', S.wThresh, S.contrast, S.threshold, S.invert, S.dir, S.imgLines && depthId, S.dGap, S.dPx, S.dRelief, S.dAM,
-    S.style, S.count, S.size, S.snap && !S.blend && S.cell, S.chaos, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
+    S.style, S.count, S.size, S.snap && !S.blend && (S.size + S.cellGap), S.chaos, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {
     gen0 = generate(S); genKey = key; placeKey = pkey; rebuild(true);

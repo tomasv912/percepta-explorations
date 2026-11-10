@@ -322,7 +322,7 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
-  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: .2, onlyPal: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
+  shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -641,19 +641,19 @@ function colorOf(p) {
 // there), so they sit side by side and never on top of each other.
 // The density sampled: the slider's, or with Engrillar enough to fill cells of Tamaño de la celda.
 const gridded = () => (S.snap || S.blend) && !S.lines;
-const count = () => S.snap && !S.blend && !S.lines ? PerceptaCells(S.count, S.size, S.cell, 400000) : S.count;
+const count = () => S.snap && !S.blend && !S.lines ? PerceptaCells(S.count, S.size, (S.size + S.cellGap), 400000) : S.count;
 // Pasaje: only the pixels the order reaches (by where they are and a chance of their own) go on the grid; the rest
 // stay loose. Gridded ones carry ord and are drawn at the cell's size.
 function snapList(list) {
   const on = list.map((p, i) => !S.blend || PerceptaChance(i) < PerceptaOrder((p.x + (p.dx || 0)) / AW, (p.y + (p.dy || 0)) / AH, S.blendA, S.blendB));
-  const sn = PerceptaSnap(list.length, i => on[i] ? list[i].x + (list[i].dx || 0) : NaN, i => list[i].y + (list[i].dy || 0), S.cell), out = [];
+  const sn = PerceptaSnap(list.length, i => on[i] ? list[i].x + (list[i].dx || 0) : NaN, i => list[i].y + (list[i].dy || 0), (S.size + S.cellGap)), out = [];
   for (let i = 0; i < list.length; i++) {
     if (!on[i]) out.push(list[i]);
     else if (sn.keep[i]) out.push({ x: sn.x[i], y: sn.y[i], tone: list[i].tone, pick: list[i].pick, sc: list[i].sc, ord: 1 });
   }
   return out;
 }
-const sizeOf = p => p.ord ? S.cell * (1 - S.cellGap) : S.size;
+const sizeOf = p => p.ord ? S.size : S.size;
 function draw(ctx, list, ox = 0, oy = 0, q = RES) {
   if (gridded()) list = snapList(list);
   const groups = new Map();
@@ -672,7 +672,7 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
 }
 function bounds(list) {
   if (gridded()) list = snapList(list);
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, s = Math.max(gridded() ? S.cell : 0, S.size) / 2;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, s = Math.max(gridded() ? (S.size + S.cellGap) : 0, S.size) / 2;
   for (const p of list) { const x = p.x + (p.dx || 0), y = p.y + (p.dy || 0); x0 = Math.min(x0, x - s); y0 = Math.min(y0, y - s); x1 = Math.max(x1, x + s); y1 = Math.max(y1, y + s); }
   return x0 > x1 ? null : { x0: Math.floor(Math.max(0, x0)), y0: Math.floor(Math.max(0, y0)), x1: Math.ceil(Math.min(AW, x1)), y1: Math.ceil(Math.min(AH, y1)) };
 }
@@ -691,7 +691,7 @@ const SLIDERS = {
   ambient: { label: 'Luz ambiente', min: 0, max: .8, step: .01, fmt: pct },
   shadow: { label: 'Sombras proyectadas', min: 0, max: 1, step: .01, fmt: pct },
   cell: { label: 'Tamaño de la celda', min: 2, max: 40, step: 1, fmt: v => v + ' px', emph: true },
-  cellGap: { label: 'Separación entre píxeles', min: .05, max: .7, step: .01, fmt: v => Math.round(v * 100) + '%' },
+  cellGap: { label: 'Espacio entre píxeles', min: 0, max: 30, step: .1, fmt: v => v.toLocaleString('es', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' px', emph: true },
   count: { label: 'Densidad', min: 2000, max: 200000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño del píxel', min: 1, max: 24, step: .5, fmt: v => v + ' px', emph: true },
   threshold: { label: 'Umbral', min: 0, max: .9, step: .01, fmt: v => v ? Math.round(v * 100) + '%' : 'sin umbral' },
@@ -768,7 +768,7 @@ function sync(fast) {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink'; markPalette();
   const gridOnly = S.snap && !S.blend && !S.lines;
-  $('#sl-count').hidden = $('#sl-size').hidden = gridOnly; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !gridded(); if (typeof syncModeBar === 'function') syncModeBar();
+  $('#sl-count').hidden = gridOnly; $('#sl-size').hidden = false; $('#sl-cell').hidden = true; $('#sl-cellGap').hidden = !gridded(); if (typeof syncModeBar === 'function') syncModeBar();
   $('#lines-row').hidden = true; $('#snap-row').hidden = true;
   $('#sl-lineGap').hidden = $('#sl-lineFollow').hidden = $('#sl-lineDot').hidden = $('#lineAM-row').hidden = !S.lines;
   document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn'))); });
@@ -1296,7 +1296,7 @@ $('#png').addEventListener('click', async () => {
 });
 $('#svg').addEventListener('click', () => {
   const eb = exportBox(); if (!eb) return toast('No hay píxeles en el recorte.');
-  const b = eb.b, k = expRes() * eb.z, w = (b.x1 - b.x0) * k, h = (b.y1 - b.y0) * k, n = v => Math.round(v * k * 100) / 100, z = S.snap ? S.cell * (1 - S.cellGap) : S.size, s = z * k, out = [];
+  const b = eb.b, k = expRes() * eb.z, w = (b.x1 - b.x0) * k, h = (b.y1 - b.y0) * k, n = v => Math.round(v * k * 100) / 100, z = S.snap ? S.size : S.size, s = z * k, out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`);
   if (S.bgExport) out.push(`<rect width="${w}" height="${h}" fill="${S.bg}"/>`);
   const groups = new Map();
