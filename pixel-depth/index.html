@@ -996,6 +996,13 @@ $('#svg').addEventListener('click', () => {
 });
 
 objs = city(S.citySeed);
+// From Pixel Model (Enviar a Pixel Depth): its model, alone on the plane, in the middle towards the front.
+if (PerceptaHandoff.pending() === 'model-mesh') PerceptaHandoff.take('model-mesh').then(h => {
+  if (!h || !h.pos?.length) return;
+  uploads.push({ name: h.name || 'Modelo', mesh: finish(fitted(h.pos, 9)) }); renderLib();
+  objs = [{ ...newObj('up' + (uploads.length - 1), 0, -S.depth / 2 + .7), s: 1 }]; sel = 0;
+  sync(); toast(`${h.name || 'Modelo'} desde Pixel Model`); history.replaceState(null, '', location.pathname);
+}).catch(err => { console.error('handoff', err); toast('No se pudo recibir el modelo.'); });
 // Pasaje's handles (toolbar.js) over the picture, and its two buttons.
 PerceptaBlendHandles({ frame, visible: () => S.dir !== '1b' && S.blend, get: () => [S.blendA, S.blendB], set: (A, B) => { S.blendA = A; S.blendB = B; sync(); } });
 $('#blend-swap').addEventListener('click', () => { [S.blendA, S.blendB] = [S.blendB, S.blendA]; sync(); });

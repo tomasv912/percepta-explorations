@@ -1627,6 +1627,19 @@ const direction = PerceptaDirection({
     sync();
   },
 });
+// From Pixel Model (Enviar a Pixel Waves): its render as the Imagen, and its depth map as the picture's depth.
+if (PerceptaHandoff.pending() === 'model-image') PerceptaHandoff.take('model-image').then(h => {
+  if (!h) return;
+  const el = new Image(), url = URL.createObjectURL(h.blob);
+  el.onload = () => {
+    URL.revokeObjectURL(url); loadImage(el);
+    const { gw, gh } = img, D = new Float32Array(gw * gh);
+    for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) D[j * gw + i] = h.depth.data[Math.min(h.depth.h - 1, Math.floor((j + .5) / gh * h.depth.h)) * h.depth.w + Math.min(h.depth.w - 1, Math.floor((i + .5) / gw * h.depth.w))];
+    img.depth = D; depthId++; S.source = 'image'; sync(); toast(`${h.name || 'Modelo'} desde Pixel Model`);
+    history.replaceState(null, '', location.pathname);
+  };
+  el.src = url;
+});
 sync();
 </script>
 </body>

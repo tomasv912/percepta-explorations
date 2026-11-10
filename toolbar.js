@@ -286,6 +286,17 @@
     return { paint };
   };
   window.PerceptaChance = i => { let h = Math.imul(i ^ 0x5bd1e995, 0x9e3779b1); h ^= h >>> 15; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; return (h >>> 0) / 4294967296; };
+  // Handing something from one tool to another: put() stores it in this browser (IndexedDB, so images and meshes of
+  // any size fit) and opens the other tool with ?from=…; there, take() reads it once and clears it.
+  window.PerceptaHandoff = (() => {
+    const db = () => new Promise((res, rej) => { const q = indexedDB.open('percepta-handoff', 1); q.onupgradeneeded = () => q.result.createObjectStore('h'); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+    const tx = async (mode, fn) => { const d = await db(); return new Promise((res, rej) => { const t = d.transaction('h', mode), r = fn(t.objectStore('h')); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); }); };
+    return {
+      async send(path, key, value) { await tx('readwrite', s => s.put(value, key)); location.href = new URL(path + '?from=' + encodeURIComponent(key), root).href; },
+      async take(key) { const v = await tx('readonly', s => s.get(key)); await tx('readwrite', s => s.delete(key)); return v; },
+      pending: () => new URLSearchParams(location.search).get('from'),
+    };
+  })();
   window.PerceptaDirection = o => {
     if (!document.getElementById('pdir-style')) {
       const st = document.createElement('style'); st.id = 'pdir-style';

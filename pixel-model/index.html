@@ -225,6 +225,10 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <label class="check"><input type="checkbox" data-check="bCrown"> Coronamiento y aguja</label>
         </div>
         <button class="btn" id="upload">Subir .obj, .fbx, .glb o .gltf</button>
+        <div class="btns">
+          <button class="btn" id="to-waves" title="Renderiza la vista actual (luz, sombras y profundidad) y la abre en Pixel Waves como imagen">Enviar a Pixel Waves</button>
+          <button class="btn" id="to-depth" title="Lleva el modelo tal cual está a Pixel Depth, sobre su plano">Enviar a Pixel Depth</button>
+        </div>
         <input type="file" id="file" accept=".obj,.fbx,.glb,.gltf" hidden>
         <div id="sl-yaw"></div>
         <div id="sl-pitch"></div>
@@ -1528,6 +1532,37 @@ PerceptaDirection({
   get: () => S.dir,
   set: v => { S.dir = v; if (v === '1a') S.lines = false; else { S.lines = true; S.snap = false; S.blend = false; } sync(); },
 });
+// ---------- Enviar a otra tool ----------
+// Pixel Waves: the view as it is now, rendered (the light, the cast shadows: grey on white) with its depth map (near
+// light), cropped to the model; Waves takes it as its Imagen and, in 1B, lays its lines over that depth. Pixel Depth:
+// the model's triangles (y up, as they are here, variations included), placed on its plane alone.
+$('#to-waves').addEventListener('click', async () => {
+  if (!model) return;
+  const tris = viewTris(), box = viewBoxNow(), az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180;
+  const light = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.abs(Math.cos(el) * Math.sin(az)) + .35];
+  const buf = Stipple3D.render(tris, box, 1400, light, { ambient: S.ambient, shadowDim: 1 - S.shadow }), { W, H, mask, lit, depth } = buf;
+  let x0 = W, y0 = H, x1 = 0, y1 = 0, lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < W * H; i++) if (mask[i]) { const x = i % W, y = (i - x) / W; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); lo = Math.min(lo, depth[i]); hi = Math.max(hi, depth[i]); }
+  if (x1 < x0) return toast('No hay modelo en la vista.');
+  const m = Math.round(Math.max(x1 - x0, y1 - y0) * .04); x0 = Math.max(0, x0 - m); y0 = Math.max(0, y0 - m); x1 = Math.min(W - 1, x1 + m); y1 = Math.min(H - 1, y1 + m);
+  const w = x1 - x0 + 1, h = y1 - y0 + 1, c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d'), im = ctx.createImageData(w, h), D = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y + y0) * W + x + x0, o = y * w + x, v = mask[i] ? Math.round(255 * Math.min(1, Math.max(0, lit[i]))) : 255;
+    im.data[o * 4] = im.data[o * 4 + 1] = im.data[o * 4 + 2] = v; im.data[o * 4 + 3] = 255;
+    D[o] = mask[i] ? (depth[i] - lo) / ((hi - lo) || 1) * .85 + .15 : 0;
+  }
+  ctx.putImageData(im, 0, 0);
+  const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+  PerceptaHandoff.send('', 'model-image', { name: modelName, blob, depth: { w, h, data: D } });
+});
+$('#to-depth').addEventListener('click', () => {
+  if (!model) return;
+  const pos = new Float32Array(model.length / 2);
+  for (let t = 0, q = 0; t < model.length; t += 18) for (let j = 0; j < 9; j++) pos[q++] = model[t + j];
+  PerceptaHandoff.send('pixel-depth/', 'model-mesh', { name: modelName, pos });
+});
+
 loadPreset();
 sync();
 </script>
