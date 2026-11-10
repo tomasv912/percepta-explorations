@@ -263,6 +263,14 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="palsets"></div>
         <div id="palette-box">
           <div class="palette" id="palette"></div>
+          <div class="row" style="margin-top:10px">
+            <span>Colores</span>
+            <input class="text" id="cseed" inputmode="numeric" aria-label="Semilla de color" title="Semilla de color">
+            <button class="btn icon" id="creseed" title="Generar otro reparto de colores" aria-label="Generar otro reparto de colores">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg>
+            </button>
+          </div>
+          <p class="hint">Cada color en la misma proporción, también en lo que pintás con el pincel.</p>
         </div>
         <div class="row" style="grid-template-columns:56px 1fr auto">
           <span>Fondo</span>
@@ -327,7 +335,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2, onlyPal: false, dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0,
+  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: .2, onlyPal: false, cseed: 1, dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0,
   motion: 'still', flowDir: 'r', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
@@ -806,6 +814,17 @@ const linesOn = st => st.source === 'image' && st.imgLines && !!img?.depth;
 const usablePal = st => { const P = st.palette.filter(c => c.toLowerCase() !== st.bg.toLowerCase()); return P.length ? P : st.palette; };
 const palOnly = (c, st, k = 0) => { const U = usablePal(st); return U.some(u => u.toLowerCase() === c.toLowerCase()) ? c : U[k % U.length]; };
 const accentOf = st => PerceptaBg.pick(st.bg, st.bgFlip);
+// Al azar, in equal shares: the cubes taken K at a time (in the order they were made, brush strokes after), and in each
+// group of K every colour once, in an order drawn from the colour seed (Colores). So every colour has the same share,
+// in any part of the picture and in what the brush adds, and a new seed deals them again.
+function balanced(i, K, seed) {
+  const b = Math.floor(i / K), j = i - b * K;
+  let h = Math.imul(b ^ 0x2545f491, 0x9e3779b1) ^ Math.imul(seed + 0x632be5ab, 0x85ebca6b);
+  // the group's order: a Fisher–Yates shuffle of 0…K-1 driven by the hash (K is small)
+  const perm = []; for (let k = 0; k < K; k++) perm.push(k);
+  for (let k = K - 1; k > 0; k--) { h ^= h >>> 13; h = Math.imul(h, 0x27d4eb2d); h ^= h >>> 15; const r = (h >>> 0) % (k + 1); [perm[k], perm[r]] = [perm[r], perm[k]]; }
+  return perm[j];
+}
 function colorOf(i, st) {
   if (st.colorMode === 'image' && img && st.source === 'image') {
     const c = gen.rgb[i] & 0xF8F8F8;
@@ -815,8 +834,8 @@ function colorOf(i, st) {
   // one (on a coloured ground, whichever of the two stands out more).
   let c = st.ink;
   if (st.colorMode === 'random') {
-    if (st.onlyPal) { const U = usablePal(st); c = U[gen.pal[i] % U.length]; }
-    else { const P = st.palette, k = gen.pal[i] % (P.length + 1); c = k < P.length ? P[k] : accentOf(st); }
+    if (st.onlyPal) { const U = usablePal(st); c = U[balanced(i, U.length, st.cseed)]; }
+    else { const P = st.palette, k = balanced(i, P.length + 1, st.cseed); c = k < P.length ? P[k] : accentOf(st); }
   } else if (st.onlyPal) c = palOnly(c, st);
   const base = st.onlyPal ? c : onBg(c, st.bg);
   return st.style === 'mono' ? base : tint(base, gen.shade[i], st.grain);
@@ -1094,6 +1113,8 @@ $('#blModel').addEventListener('change', e => { S.blModel = e.target.value; sync
 const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => S.palette, () => S.bg, v => { S.bg = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
+$('#cseed').addEventListener('input', e => { S.cseed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); wake(); });
+$('#creseed').addEventListener('click', () => { S.cseed = Math.floor(Math.random() * 1e6); $('#cseed').value = S.cseed; wake(); });
 $('#reseed').addEventListener('click', reseed); $('#bl-reseed').addEventListener('click', reseed);
 $('#reform').addEventListener('click', () => {
   if (!gen) return;
@@ -1123,6 +1144,7 @@ function sync() {
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
+  const cs = $('#cseed'); if (document.activeElement !== cs && cs.value !== String(S.cseed)) cs.value = S.cseed;
   const waves = S.source === 'waves', image = S.source === 'image', mono = S.style === 'mono';
   $('#wave-controls').hidden = !waves && S.source !== 'bloom';
   $('#motion-sec').hidden = false; $('#flowdir-row').hidden = S.motion === 'still'; $('#sl-wThresh').hidden = !waves; $('#motion-controls').hidden = S.motion === 'still';
