@@ -39,7 +39,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
 [hidden] { display: none !important; }
 
 .app { display: grid; flex: 1; min-height: 0; grid-template-columns: 1fr 280px; }
-main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding: 24px 24px 52px; }
+main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding: 64px 24px 52px; }
 .frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); }
 .frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .hud { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
@@ -190,6 +190,11 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <label class="check" id="snap-row" title="Los píxeles se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
         <div id="sl-cell"></div>
         <div id="sl-cellGap"></div>
+        <div id="blend-controls">
+          <div class="seg" data-key="blendDir" aria-label="Dirección del pasaje"><button data-v="ltr" title="Desorden a la izquierda, orden a la derecha">→</button><button data-v="rtl" title="Desorden a la derecha, orden a la izquierda">←</button><button data-v="ttb" title="Desorden arriba, orden abajo">↓</button><button data-v="btt" title="Desorden abajo, orden arriba">↑</button></div>
+          <div id="sl-blendAt"></div>
+          <div id="sl-blendSoft"></div>
+        </div>
         <div class="row">
           <span>Semilla</span>
           <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
@@ -232,7 +237,7 @@ const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 const AW = 1920, AH = 1080, RES = 2, PW = 3, CELL = 1 / 150;
 const DEFAULTS = {
   disp: .3, start: .35, soft: .7, rise: .35, thin: .35, fadeA: .5,
-  dir: '1a', cut: false, lines: false, lGap: 14, lDot: 1, mdens: 3.5, cull: true, cityN: 16, cityGreen: .35, citySeed: 1, wave: .5, waveScale: .5, depth: 2.4,
+  dir: '1a', blend: false, blendDir: 'ltr', blendAt: .5, blendSoft: .5, chaos: 0, cut: false, lines: false, lGap: 14, lDot: 1, mdens: 3.5, cull: true, cityN: 16, cityGreen: .35, citySeed: 1, wave: .5, waveScale: .5, depth: 2.4,
   pitch: 24, yaw: 0, persp: .55, zoom: 1.3, frameY: .02,
   count: 45000, size: 2.5, depthSize: .6, seed: 1, snap: false, cell: 5, cellGap: .2,
   palette: window.PERCEPTA_PALETTES[0].colors.slice(), colorMode: 'ink', ink: INK, bg: WHITE, bgFlip: false, bgExport: false,
@@ -702,6 +707,9 @@ function project(cam) {
   }
   out.sort((a, b) => b[5] - a[5]);
   if (!S.lines) return out;
+  // Caos: each circle moved off its line (by its own random direction and amount, up to a few line spacings)
+  // before the spacing check, so they loosen, keep the form and never overlap.
+  if (S.chaos > 0) { const J = S.chaos * S.lGap * .7; for (const it of out) { it[0] += it[3].dx * it[3].amt * J; it[1] += it[3].dy * it[3].amt * J; } }
   // Líneas horizontales: circles, the nearest placed first, none closer to another than Espacio entre píxeles
   const keep = [], cell = S.size * 3 + S.lDot, grid = new Map(), key = (a, b) => a * 100003 + b;
   for (let q = out.length - 1; q >= 0; q--) {
@@ -722,11 +730,18 @@ function colorOf(p) {
 // Engrillar: every pixel moved to the middle of its cell on a grid of the pixel size (Tamaño del píxel), one per cell
 // (the front one), all at that size, so they sit side by side and never on top of each other.
 // The pixels sampled: Cantidad, or with Engrillar enough to fill cells of Tamaño de la celda.
-const count = () => S.snap ? PerceptaCells(S.count, S.size, S.cell, 250000) : S.count;
+const gridded = () => (S.snap || S.blend) && !S.lines;
+const count = () => S.snap && !S.blend && !S.lines ? PerceptaCells(S.count, S.size, S.cell, 250000) : S.count;
+// Pasaje: only the pixels the order reaches (by where they are on the picture and a chance of their own) go on the
+// grid; the rest stay loose where they are.
 function snapped(items) {
-  if (!S.snap) return items;
-  const sn = PerceptaSnap(items.length, i => items[i][0], i => items[i][1], S.cell), out = [];
-  for (let i = 0; i < items.length; i++) if (sn.keep[i]) out.push([sn.x[i], sn.y[i], S.cell * (1 - S.cellGap), items[i][3], items[i][4], items[i][5]]);
+  if (!gridded()) return items;
+  const on = items.map((it, i) => !S.blend || PerceptaChance(i) < PerceptaOrder(it[0] / AW, it[1] / AH, S.blendDir, S.blendAt, S.blendSoft));
+  const sn = PerceptaSnap(items.length, i => on[i] ? items[i][0] : NaN, i => items[i][1], S.cell), out = [];
+  for (let i = 0; i < items.length; i++) {
+    if (!on[i]) out.push(items[i]);
+    else if (sn.keep[i]) out.push([sn.x[i], sn.y[i], S.cell * (1 - S.cellGap), items[i][3], items[i][4], items[i][5]]);
+  }
   return out;
 }
 function draw(ctx, items) {
@@ -761,6 +776,8 @@ const SLIDERS = {
   zoom: { label: 'Escala', min: .3, max: 4, step: .01, fmt: v => '×' + v.toFixed(2) },
   frameY: { label: 'Encuadre', min: -.6, max: .6, step: .01, fmt: pct },
   cell: { label: 'Tamaño de la celda', min: 2, max: 30, step: 1, fmt: v => v + ' px', emph: true },
+  blendAt: { label: 'Dónde ocurre el pasaje', min: 0, max: 1, step: .01, fmt: v => Math.round(v * 100) + '%' },
+  blendSoft: { label: 'Largo del pasaje', min: .02, max: 1, step: .01, fmt: v => Math.round(v * 100) + '%' },
   cellGap: { label: 'Separación entre píxeles', min: .05, max: .7, step: .01, fmt: v => Math.round(v * 100) + '%' },
   count: { label: 'Cantidad', min: 5000, max: 150000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño del píxel', min: 1, max: 12, step: .5, fmt: v => v + ' px', emph: true },
@@ -833,9 +850,10 @@ function sync() {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink';
   $('#cut-hint').hidden = !S.cut;
-  $('#lines-row').hidden = true; $('#snap-row').hidden = S.dir === '1b';
+  $('#lines-row').hidden = true; $('#snap-row').hidden = true;
   $('#sl-lGap').hidden = $('#sl-lDot').hidden = !S.lines;
-  $('#sl-count').hidden = $('#sl-size').hidden = S.snap; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !S.snap;
+  const gridOnly = S.snap && !S.blend && !S.lines;
+  $('#sl-count').hidden = $('#sl-size').hidden = gridOnly; $('#sl-cell').hidden = $('#sl-cellGap').hidden = !gridded(); if (typeof syncModeBar === 'function') syncModeBar();
   markPalette(); updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   cancelAnimationFrame(raf); raf = requestAnimationFrame(render);
@@ -978,11 +996,27 @@ $('#svg').addEventListener('click', () => {
 });
 
 objs = city(S.citySeed);
+// The mode bar (top middle): in 1A Caótico (loose, overlapping), Engrillado (one per cell) or Pasaje (from one to the
+// other across the picture: Dirección, Dónde ocurre, Largo); in 1B the circles' Caos.
+const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label="Modo"><button data-ord="chaos" title="Píxeles sueltos que se superponen">Caótico</button><button data-ord="grid" title="Cada píxel en su celda, separado de los demás">Engrillado</button><button data-ord="blend" title="De desorden a orden en una misma composición">Pasaje</button></div>
+  <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label>`);
+const ordOf = () => S.blend ? 'blend' : S.snap ? 'grid' : 'chaos';
+modeBar.querySelector('#pm-1a').addEventListener('click', e => { const b = e.target.closest('[data-ord]'); if (!b) return; S.snap = b.dataset.ord === 'grid'; S.blend = b.dataset.ord === 'blend'; sync(); });
+modeBar.querySelector('#pm-chaos').addEventListener('input', e => { S.chaos = +e.target.value; sync(); });
+function syncModeBar() {
+  const b1 = S.dir === '1b';
+  modeBar.querySelector('#pm-1a').hidden = b1; modeBar.querySelector('#pm-1b').hidden = !b1;
+  modeBar.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ord === ordOf()));
+  const ch = modeBar.querySelector('#pm-chaos'); if (+ch.value !== S.chaos) ch.value = S.chaos; ch.style.setProperty('--p', S.chaos * 100 + '%');
+  modeBar.querySelector('#pm-chaos-out').textContent = Math.round(S.chaos * 100) + '%';
+  $('#blend-controls').hidden = b1 || !S.blend;
+}
+
 // Dirección (toolbar.js): 1A square pixels scattered over the plane and the models; 1B round pixels on horizontal
 // lines that follow the plane and the models, never overlapping.
 PerceptaDirection({
   get: () => S.dir,
-  set: v => { S.dir = v; S.lines = v === '1b'; if (S.lines) S.snap = false; sync(); },
+  set: v => { S.dir = v; S.lines = v === '1b'; if (S.lines) { S.snap = false; S.blend = false; } sync(); },
 });
 sync();
 </script>
