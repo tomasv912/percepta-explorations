@@ -257,7 +257,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section>
         <h2>Color</h2>
         <div class="seg" data-key="colorMode" aria-label="Color de los cubos">
-          <button data-v="single">Un color</button><button data-v="random">Al azar</button><button data-v="image" id="cm-image">Imagen</button>
+          <button data-v="single">Un color</button><button data-v="random">Al azar</button><button data-v="image" id="cm-image" title="Cada partícula con el color original de la imagen bajo ella">Original</button>
         </div>
         <div class="inks" id="inks" aria-label="Color"></div>
         <div id="palsets"></div>
@@ -1636,7 +1636,7 @@ if (PerceptaHandoff.pending() === 'model-image') PerceptaHandoff.take('model-ima
     URL.revokeObjectURL(url); loadImage(el);
     const { gw, gh } = img, D = new Float32Array(gw * gh);
     for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) D[j * gw + i] = h.depth.data[Math.min(h.depth.h - 1, Math.floor((j + .5) / gh * h.depth.h)) * h.depth.w + Math.min(h.depth.w - 1, Math.floor((i + .5) / gw * h.depth.w))];
-    img.depth = D; depthId++; S.source = 'image'; sync(); toast(`${h.name || 'Modelo'} desde Pixel Model`);
+    img.depth = D; depthId++; S.source = 'image'; if (h.colored) S.colorMode = 'image'; sync(); toast(`${h.name || 'Modelo'} desde Pixel Model`);
     history.replaceState(null, '', location.pathname);
   };
   el.src = url;

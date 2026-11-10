@@ -15,7 +15,9 @@
     const W = res, H = Math.max(1, Math.round(res * (box.y1 - box.y0) / (box.x1 - box.x0))), k = W / (box.x1 - box.x0);
     const depth = new Float32Array(W * H).fill(-Infinity), nrm = new Float32Array(W * H * 3), n = tris.length / 18;
     const L = norm3(light);
-    raster(tris, n, W, H, (x, y) => [(x - box.x0) * k, (y - box.y0) * k], depth, nrm);
+    // tid: which triangle each pixel shows (for colour by triangle)
+    const tid = new Int32Array(W * H).fill(-1);
+    raster(tris, n, W, H, (x, y) => [(x - box.x0) * k, (y - box.y0) * k], depth, nrm, tid);
     // Shadow map: the scene seen along the light, orthographic, nearest surface to the light kept.
     let shadow = null;
     if (opts.shadows !== false) {
@@ -51,11 +53,11 @@
       }
       lit[i] = amb + (1 - amb) * d;
     }
-    return { W, H, k, box, depth, nrm, lit, mask };
+    return { W, H, k, box, depth, nrm, lit, mask, tid };
   }
   // Barycentric fill of each triangle's bounding box; keeps the largest z (nearest to the viewer, or to the
   // light for the shadow map) and, when nrm is given, its interpolated normal.
-  function raster(tris, n, W, H, map, depth, nrm) {
+  function raster(tris, n, W, H, map, depth, nrm, tid) {
     for (let t = 0; t < n; t++) {
       const o = t * 18, a = map(tris[o], tris[o + 1]), b = map(tris[o + 3], tris[o + 4]), c = map(tris[o + 6], tris[o + 7]);
       const za = tris[o + 2], zb = tris[o + 5], zc = tris[o + 8];
@@ -71,7 +73,7 @@
         if (w0 < 0 || w1 < 0 || w2 < 0) continue;
         const z = w0 * za + w1 * zb + w2 * zc, i = y * W + x;
         if (z <= depth[i]) continue;
-        depth[i] = z;
+        depth[i] = z; if (tid) tid[i] = t;
         if (nrm) for (let q = 0; q < 3; q++) nrm[i * 3 + q] = w0 * tris[o + 9 + q] + w1 * tris[o + 12 + q] + w2 * tris[o + 15 + q];
       }
     }
@@ -137,17 +139,28 @@
   }
 
   // ---------- Loaders: positions as a flat triangle list, 9 per triangle ----------
-  function parseOBJ(text) {
-    const v = [], out = [];
+  // mtl (optional): { name: 0xRRGGBB } from parseMTL; the result then carries .col, one colour per triangle.
+  function parseOBJ(text, mtl) {
+    const v = [], out = [], col = [];
+    let cur = 0x808080;
     for (const line of text.split('\n')) {
       const p = line.trim().split(/\s+/);
       if (p[0] === 'v') v.push([+p[1], +p[2], +p[3]]);
+      else if (p[0] === 'usemtl' && mtl) cur = mtl[p[1]] ?? cur;
       else if (p[0] === 'f') {
         const ids = p.slice(1).map(s => { const i = parseInt(s, 10); return i < 0 ? v.length + i : i - 1; });
-        for (let j = 1; j + 1 < ids.length; j++) for (const i of [ids[0], ids[j], ids[j + 1]]) out.push(...(v[i] || [0, 0, 0]));
+        for (let j = 1; j + 1 < ids.length; j++) { for (const i of [ids[0], ids[j], ids[j + 1]]) out.push(...(v[i] || [0, 0, 0])); col.push(cur); }
       }
     }
-    return new Float32Array(out);
+    const r = new Float32Array(out); if (mtl) r.col = Uint32Array.from(col); return r;
+  }
+  // A .mtl's diffuse colours (Kd, linear) as sRGB 0xRRGGBB by material name.
+  const lin2srgb = c => Math.round(255 * (c <= .0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - .055));
+  const rgbOf = (r, g, b) => lin2srgb(Math.min(1, Math.max(0, r))) << 16 | lin2srgb(Math.min(1, Math.max(0, g))) << 8 | lin2srgb(Math.min(1, Math.max(0, b)));
+  function parseMTL(text) {
+    const m = {}; let name = null;
+    for (const line of text.split('\n')) { const p = line.trim().split(/\s+/); if (p[0] === 'newmtl') name = p[1]; else if (p[0] === 'Kd' && name) m[name] = rgbOf(+p[1], +p[2], +p[3]); }
+    return m;
   }
   // glTF 2.0, binary (.glb) or JSON (.gltf with embedded data: buffers): every mesh primitive in the default
   // scene, with its node transforms applied.
@@ -187,19 +200,21 @@
         2 * (qx * qy - qz * qw) * sy, (1 - 2 * (qx * qx + qz * qz)) * sy, 2 * (qy * qz + qx * qw) * sy, 0,
         2 * (qx * qz + qy * qw) * sz, 2 * (qy * qz - qx * qw) * sz, (1 - 2 * (qx * qx + qy * qy)) * sz, 0, tx, ty, tz, 1];
     };
-    const out = [];
+    const out = [], col = [];
     const visit = (ni, parent) => {
       const nd = json.nodes[ni], m = mul(parent, local(nd));
       if (nd.mesh != null) for (const pr of json.meshes[nd.mesh].primitives) {
         if ((pr.mode ?? 4) !== 4 || pr.attributes.POSITION == null) continue;
         const P = read(pr.attributes.POSITION), I = pr.indices != null ? read(pr.indices) : Array.from({ length: P.length / 3 }, (_, i) => i);
+        const bc = json.materials?.[pr.material]?.pbrMetallicRoughness?.baseColorFactor || [.5, .5, .5], c = rgbOf(bc[0], bc[1], bc[2]);
+        for (let t = 0; t < I.length / 3; t++) col.push(c);
         for (const i of I) { const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2]; out.push(m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14]); }
       }
       for (const c of nd.children || []) visit(c, m);
     };
     const I4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], scene = json.scenes ? json.scenes[json.scene || 0] : { nodes: json.nodes.map((_, i) => i) };
     for (const ni of scene.nodes) visit(ni, I4);
-    return new Float32Array(out);
+    const r = new Float32Array(out); r.col = Uint32Array.from(col); return r;
   }
   // FBX, binary or ASCII: every mesh (Geometry) with the transforms of the models it hangs from (Lcl Translation,
   // Rotation in X then Y then Z, Scaling, parent to child). Polygons are fanned into triangles. Async, since binary
@@ -297,5 +312,5 @@
     }
     return root;
   }
-  window.Stipple3D = { render, edges, sample, withNormals, parseOBJ, parseGLB, parseFBX };
+  window.Stipple3D = { render, edges, sample, withNormals, parseOBJ, parseMTL, parseGLB, parseFBX };
 })();

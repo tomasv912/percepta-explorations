@@ -207,7 +207,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <h2>Color</h2>
         <div id="palsets"></div>
         <div class="seg" data-key="colorMode" aria-label="Color">
-          <button data-v="ink">Un color</button><button data-v="height">Por altura</button><button data-v="random">Al azar</button>
+          <button data-v="ink">Un color</button><button data-v="height">Por altura</button><button data-v="random">Al azar</button><button data-v="orig" title="El color original de los modelos subidos o enviados (sus materiales), uno por partícula; el resto, de la paleta">Original</button>
         </div>
         <div class="inks" id="inks" aria-label="Color"></div>
         <div class="row" style="grid-template-columns:56px 1fr auto">
@@ -266,8 +266,9 @@ const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], cross = (a, b) =>
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], unit = v => { const l = Math.hypot(...v) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
 const mesh = () => ({ T: [], bases: [] });
 // A triangle whose normal points away from ctr (a point inside the solid); two-sided when ctr is null.
-function tri(m, a, b, c, ctr) {
-  let n = cross(sub(b, a), sub(c, a)); const l = Math.hypot(...n); if (l < 1e-12) return; n = [n[0] / l, n[1] / l, n[2] / l];
+function tri(m, a, b, c, ctr, col) {
+  let n = cross(sub(b, a), sub(c, a)); const l = Math.hypot(...n); if (l < 1e-12) return;
+  if (col !== undefined) (m.C || (m.C = [])).length = m.T.length / 13, m.C.push(col); // its own colour (Original) n = [n[0] / l, n[1] / l, n[2] / l];
   if (ctr && dot(n, sub([(a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3, (a[2] + b[2] + c[2]) / 3], ctr)) < 0) n = [-n[0], -n[1], -n[2]];
   m.T.push(...a, ...b, ...c, ...n, ctr ? 0 : 1);
 }
@@ -320,12 +321,12 @@ function leaf(m, p0, az, L, W, rise, droop, n = 8) {
   }
 }
 // Flora3D's plants and uploads: their triangles fitted to the footprint, lowest point on the ground.
-function fitted(pos, stride) {
+function fitted(pos, stride, col) {
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, z0 = Infinity, z1 = -Infinity;
   for (let i = 0; i < pos.length; i += stride) for (let j = 0; j < 9; j += 3) { x0 = Math.min(x0, pos[i + j]); x1 = Math.max(x1, pos[i + j]); y0 = Math.min(y0, pos[i + j + 1]); z0 = Math.min(z0, pos[i + j + 2]); z1 = Math.max(z1, pos[i + j + 2]); }
   const k = 1 / (Math.max(x1 - x0, z1 - z0) || 1), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, m = mesh();
   const P = (i) => [(pos[i] - cx) * k, (pos[i + 1] - y0) * k, (pos[i + 2] - cz) * k];
-  for (let i = 0; i < pos.length; i += stride) tri(m, P(i), P(i + 3), P(i + 6), null);
+  for (let i = 0; i < pos.length; i += stride) tri(m, P(i), P(i + 3), P(i + 6), null, col ? col[i / stride] : undefined);
   return m;
 }
 
@@ -583,12 +584,12 @@ function modelPoints(o, i, per) {
   const W = worldTris(o), r = rng((S.seed * 7919 + o.seed * 31 + i * 104729) >>> 0), cdf = new Float64Array(W.length / 13), gy = groundAt(o.x, o.z);
   let sum = 0;
   for (let t = 0, q = 0; t < W.length; t += 13, q++) { const u = [W[t + 3] - W[t], W[t + 4] - W[t + 1], W[t + 5] - W[t + 2]], v = [W[t + 6] - W[t], W[t + 7] - W[t + 1], W[t + 8] - W[t + 2]]; cdf[q] = sum += Math.hypot(...cross(u, v)) / 2; }
-  const M = Math.round(sum * per * S.mdens), out = [];
+  const M = Math.round(sum * per * S.mdens), out = [], mc = meshOf(o.kind, o.seed).C;
   for (let k = 0; k < M; k++) {
     const q = r() * sum; let lo = 0, hi = cdf.length - 1; while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < q) lo = mid + 1; else hi = mid; }
     let a = r(), b = r(); if (a + b > 1) { a = 1 - a; b = 1 - b; }
     const t = lo * 13, P = [0, 1, 2].map(c => W[t + c] + (W[t + 3 + c] - W[t + c]) * a + (W[t + 6 + c] - W[t + c]) * b);
-    out.push(pointOf(r, P[0], P[1], P[2], gy, [W[t + 9], W[t + 10], W[t + 11]], W[t + 12]));
+    const pt = pointOf(r, P[0], P[1], P[2], gy, [W[t + 9], W[t + 10], W[t + 11]], W[t + 12]); pt.rgb = mc ? mc[lo] : undefined; out.push(pt);
   }
   objPts.set(o, { key, pts: out });
   return out;
@@ -621,7 +622,7 @@ function linePoints() {
   const a = S.yaw * Math.PI / 180, fx = -Math.sin(a) * Math.SQRT1_2, fz = Math.cos(a) * Math.SQRT1_2, fy = Math.SQRT1_2;
   const lev = (x, y, z) => (x * fx + y * fy + z * fz) / g;
   const inside = (i, j) => !S.cut || j >= front[i];
-  const cut = (A, B, C, base0, n, two) => {
+  const cut = (A, B, C, base0, n, two, rgb) => {
     const la = lev(...A), lb = lev(...B), lc = lev(...C), lo = Math.ceil(Math.min(la, lb, lc)), hi = Math.floor(Math.max(la, lb, lc));
     for (let L = lo; L <= hi; L++) {
       const pts2 = [];
@@ -629,7 +630,7 @@ function linePoints() {
       if (pts2.length < 2) continue;
       const [s0, s1] = pts2, dx = s1[0] - s0[0], len = Math.hypot(dx, s1[1] - s0[1], s1[2] - s0[2]);
       if (len < 1e-9) continue;
-      const at = u => { const x = s0[0] + (s1[0] - s0[0]) * u, y = s0[1] + (s1[1] - s0[1]) * u, z = s0[2] + (s1[2] - s0[2]) * u; out.push(pointOf(r, x, y, z, base0 ?? y, n, two)); };
+      const at = u => { const x = s0[0] + (s1[0] - s0[0]) * u, y = s0[1] + (s1[1] - s0[1]) * u, z = s0[2] + (s1[2] - s0[2]) * u; const q = pointOf(r, x, y, z, base0 ?? y, n, two); q.rgb = rgb; out.push(q); };
       if (Math.abs(dx) >= len * .5) { // across: on the columns of the world grid
         const x0 = Math.min(s0[0], s1[0]), x1 = Math.max(s0[0], s1[0]);
         for (let c = Math.ceil((x0 - X0) / step - .5); X0 + (c + .5) * step < x1; c++) at((X0 + (c + .5) * step - s0[0]) / dx);
@@ -645,7 +646,8 @@ function linePoints() {
   }
   for (const o of objs) {
     const W = worldTris(o), gy = groundAt(o.x, o.z);
-    for (let t = 0; t < W.length; t += 13) cut([W[t], W[t + 1], W[t + 2]], [W[t + 3], W[t + 4], W[t + 5]], [W[t + 6], W[t + 7], W[t + 8]], gy, [W[t + 9], W[t + 10], W[t + 11]], W[t + 12]);
+    const mc = meshOf(o.kind, o.seed).C;
+    for (let t = 0; t < W.length; t += 13) cut([W[t], W[t + 1], W[t + 2]], [W[t + 3], W[t + 4], W[t + 5]], [W[t + 6], W[t + 7], W[t + 8]], gy, [W[t + 9], W[t + 10], W[t + 11]], W[t + 12], mc ? mc[t / 13] : undefined);
   }
   return out;
 }
@@ -727,6 +729,7 @@ function project(cam) {
   return keep.reverse();
 }
 function colorOf(p) {
+  if (S.colorMode === 'orig' && p.rgb !== undefined) return '#' + p.rgb.toString(16).padStart(6, '0');
   const P = S.palette;
   const c = S.colorMode === 'height' ? [INK, ...P][clamp(Math.floor(p.lift / field.top * (P.length + 1) * .999), 0, P.length)] : S.colorMode === 'random' ? [...P, PerceptaBg.pick(S.bg, S.bgFlip)][Math.floor(p.pick * (P.length + 1))] : S.ink;
   return onBg(c, S.bg);
@@ -947,7 +950,7 @@ async function openFile(file) {
     const name = file.name.toLowerCase();
     const pos = name.endsWith('.obj') ? Stipple3D.parseOBJ(await file.text()) : name.endsWith('.fbx') ? await Stipple3D.parseFBX(await file.arrayBuffer()) : Stipple3D.parseGLB(await file.arrayBuffer());
     if (!pos.length) throw new Error('empty');
-    uploads.push({ name: file.name.replace(/\.[^.]+$/, ''), mesh: finish(fitted(pos, 9)) });
+    uploads.push({ name: file.name.replace(/\.[^.]+$/, ''), mesh: finish(fitted(pos, 9, pos.col)) });
     renderLib();
     objs.push({ ...newObj('up' + (uploads.length - 1), 0, -S.depth / 2 + .4), s: .45 }); sel = objs.length - 1;
     sync(); toast(`${file.name}: ${(pos.length / 9).toLocaleString('es')} triángulos`);
@@ -1001,7 +1004,7 @@ objs = city(S.citySeed);
 // From Pixel Model (Enviar a Pixel Depth): its model, alone on the plane, in the middle towards the front.
 if (PerceptaHandoff.pending() === 'model-mesh') PerceptaHandoff.take('model-mesh').then(h => {
   if (!h || !h.pos?.length) return;
-  uploads.push({ name: h.name || 'Modelo', mesh: finish(fitted(h.pos, 9)) }); renderLib();
+  uploads.push({ name: h.name || 'Modelo', mesh: finish(fitted(h.pos, 9, h.col || undefined)) }); renderLib();
   objs = [{ ...newObj('up' + (uploads.length - 1), 0, -S.depth / 2 + .7), s: 1 }]; sel = 0;
   sync(); toast(`${h.name || 'Modelo'} desde Pixel Model`); history.replaceState(null, '', location.pathname);
 }).catch(err => { console.error('handoff', err); toast('No se pudo recibir el modelo.'); });
