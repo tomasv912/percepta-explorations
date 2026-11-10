@@ -228,7 +228,7 @@
     if (t <= 0) return 0; if (t >= 1) return 1; return t * t * (3 - 2 * t);
   };
   // The Pasaje's handles over the picture: A (Caos, hollow) and B (Orden, filled) joined by a line, each draggable, and
-  // the line's middle moves both. o: { frame, visible(), get() → [A, B], set(A, B), view() → { x, y, w, h } (the part
+  // the line's middle moves both (Shift: 15° steps). o: { frame, visible(), get() → [A, B], set(A, B), view() → { x, y, w, h } (the part
   // of the artboard the frame shows, in fractions; whole by default) }.
   window.PerceptaBlendHandles = o => {
     if (!document.getElementById('pbh-style')) {
@@ -244,7 +244,7 @@
       document.head.appendChild(st);
     }
     const el = document.createElement('div'); el.className = 'pbh';
-    el.innerHTML = '<svg aria-hidden="true"><line stroke="#3d7bff" stroke-width="1.5" stroke-dasharray="5 4"/></svg><div class="h a" title="Desde acá empieza el orden (antes, todo caos)"></div><div class="h m" title="Mover el pasaje"></div><div class="h b" title="Desde acá todo ordenado"></div><span class="lab la">Caos</span><span class="lab lb">Orden</span>';
+    el.innerHTML = '<svg aria-hidden="true"><line stroke="#3d7bff" stroke-width="1.5" stroke-dasharray="5 4"/></svg><div class="h a" title="Desde acá empieza el orden (antes, todo caos). Shift: ángulos de 15°"></div><div class="h m" title="Mover el pasaje (Shift: en un eje)"></div><div class="h b" title="Desde acá todo ordenado. Shift: ángulos de 15°"></div><span class="lab la">Caos</span><span class="lab lb">Orden</span>';
     o.frame.appendChild(el);
     const [ha, hm, hb] = el.querySelectorAll('.h'), line = el.querySelector('line'), la = el.querySelector('.la'), lb = el.querySelector('.lb');
     const view = () => o.view ? o.view() : { x: 0, y: 0, w: 1, h: 1 };
@@ -254,7 +254,19 @@
       h.addEventListener('pointerdown', e => {
         e.stopPropagation(); e.preventDefault(); h.setPointerCapture(e.pointerId);
         const [A0, B0] = o.get(), p0 = fromEv(e);
-        const mv = ev => { ev.stopPropagation(); const p = fromEv(ev), d = [p[0] - p0[0], p[1] - p0[1]];
+        const mv = ev => {
+          ev.stopPropagation(); let p = fromEv(ev);
+          // Shift: the line keeps to steps of 15° (measured on screen), its length as dragged; the middle handle moves
+          // along one axis
+          if (ev.shiftKey) {
+            const r = o.frame.getBoundingClientRect(), v = view(), sx = r.width / v.w, sy = r.height / v.h;
+            if (which === 'm') { const dx = (p[0] - p0[0]) * sx, dy = (p[1] - p0[1]) * sy; p = Math.abs(dx) >= Math.abs(dy) ? [p[0], p0[1]] : [p0[0], p[1]]; }
+            else {
+              const q = which === 'a' ? B0 : A0, dx = (p[0] - q[0]) * sx, dy = (p[1] - q[1]) * sy, len = Math.hypot(dx, dy), st = Math.PI / 12, ang = Math.round(Math.atan2(dy, dx) / st) * st;
+              p = [q[0] + Math.cos(ang) * len / sx, q[1] + Math.sin(ang) * len / sy];
+            }
+          }
+          const d = [p[0] - p0[0], p[1] - p0[1]];
           if (which === 'a') o.set(p, B0); else if (which === 'b') o.set(A0, p); else o.set([A0[0] + d[0], A0[1] + d[1]], [B0[0] + d[0], B0[1] + d[1]]); paint(); };
         const up = () => { h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up); };
         h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
