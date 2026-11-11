@@ -278,8 +278,12 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
       <section>
         <h2>Color</h2>
-        <div class="seg" data-key="colorMode" aria-label="Color">
-          <button data-v="ink">Un color</button><button data-v="tone">Por tono</button><button data-v="random">Al azar</button><button data-v="orig" title="El color original del modelo (sus materiales), uno por partícula">Original</button>
+        <div class="seg" data-key="colorSrc" aria-label="Color">
+          <button data-v="ink">Un color</button><button data-v="pal" title="Los 3 colores de la paleta, más el negro o el blanco opuesto al fondo">Paleta</button><button data-v="orig" title="El color original del modelo (sus materiales), uno por partícula">Original</button>
+        </div>
+        <div class="row" id="how-row" style="grid-template-columns:auto 1fr">
+          <span>Comportamiento</span>
+          <label class="swatch bg-pick"><select id="colorHow" aria-label="Comportamiento del color"><option value="tone">Por tono</option><option value="random">Al azar</option></select></label>
         </div>
         <label class="check" title="Cada partícula dibujada con su contorno en vez de rellena; la línea queda adentro, así no cambia el tamaño"><input type="checkbox" data-check="stroke"> Contorno (sin relleno)</label>
         <div id="sl-strokeW"></div>
@@ -289,7 +293,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <span>Fondo</span>
           <label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label><button class="btn icon bg-flip" id="bg-flip" hidden aria-label="Blanco o negro para el color del fondo"><i></i></button>
         </div>
-        <label class="check" title="Los cubos usan solamente los 3 colores de la paleta: nunca blanco ni negro (tampoco el color del fondo)"><input type="checkbox" data-check="onlyPal"> Solo los 3 colores (sin blanco ni negro)</label>
+        <label class="check" id="onlypal-row" title="Los cubos usan solamente los 3 colores de la paleta: nunca blanco ni negro (tampoco el color del fondo)"><input type="checkbox" data-check="onlyPal"> Solo los 3 colores (sin blanco ni negro)</label>
         <label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label>
       </section>
 
@@ -337,7 +341,7 @@ const DEFAULTS = {
   count: 40000, size: 3, contrast: 1, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
-  colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false, stroke: false, strokeW: .5,
+  colorMode: 'ink', colorSrc: 'ink', colorHow: 'tone', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false, stroke: false, strokeW: .5,
   mzCount: '1', mzHeight: 1.5, bzFlowers: .5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
@@ -583,7 +587,8 @@ function noise3(seed) {
   return (x, y, z, oct = 3) => { let a = 0, w = .5, n = 0; for (let o = 0; o < oct; o++) { a += w * v(x, y, z); n += w; x *= 2.03; y *= 2.03; z *= 2.03; w *= .5; } return a / n; };
 }
 // Tones from dark to light: bark, leaves, blossom.
-const BARK = [0x3B271B, 0x573A28, 0x75533A, 0x94714F], LEAF = [0x264A27, 0x3A6634, 0x587F40, 0x86A85A], BLOOM = [0x5B3C93, 0x7F5BBF, 0xA486DC, 0xC9B4F2];
+// They follow the palette's violets (OKLCH lightness .6–.9, soft chroma): the same pastel light, other hues.
+const BARK = [0x9C785D, 0xBB9274, 0xD6B298, 0xEDD6C5], LEAF = [0x769F6D, 0x8CBE81, 0xAAD5A1, 0xD2E9CD], BLOOM = [0x8D8BC4, 0xA8A5EB, 0xC2C0FD, 0xDEDEFF];
 const tone = (stops, t) => {
   t = clamp(t) * (stops.length - 1); const i = Math.min(stops.length - 2, Math.floor(t)), f = t - i, a = stops[i], b = stops[i + 1];
   return [16, 8, 0].reduce((c, sh) => c | Math.round(mix(a >> sh & 255, b >> sh & 255, f)) << sh, 0);
@@ -851,11 +856,20 @@ function stipple(n, r, sc = scene) {
 // disappear on the background becomes another palette colour, chosen by k.
 const usablePal = st => { const P = st.palette.filter(c => c.toLowerCase() !== st.bg.toLowerCase()); return P.length ? P : st.palette; };
 const palOnly = (c, st, k = 0) => { const U = usablePal(st); return U.some(u => u.toLowerCase() === c.toLowerCase()) ? c : U[k % U.length]; };
+const lum = h => { const n = parseInt(h.slice(1), 16); return .2126 * (n >> 16 & 255) + .7152 * (n >> 8 & 255) + .0722 * (n & 255); };
+let toneMemo = { k: '', v: null };
+function toneList() {
+  const k = S.palette.join() + S.onlyPal + S.bg + S.bgFlip;
+  if (toneMemo.k !== k) toneMemo = { k, v: [...(S.onlyPal ? usablePal(S) : S.palette)].sort((a, b) => lum(b) - lum(a)).concat(S.onlyPal ? [] : [PerceptaBg.pick(S.bg, S.bgFlip)]) };
+  return toneMemo.v;
+}
 function colorOf(p) {
   // Original: the material's colour in the light that falls on it (like a render), never quite reaching the paper
-  if (S.colorMode === 'orig' && p.rgb !== undefined) { const k = .2 + .7 * clamp(p.tone ?? 1), c = p.rgb;
+  // (Por tono: shaded by its light; Al azar: the colour as it is)
+  if (S.colorMode === 'orig' && p.rgb !== undefined) { const k = S.colorHow === 'random' ? 1 : .45 + .55 * clamp(p.tone ?? 1), c = p.rgb;
     return '#' + (((c >> 16 & 255) * k) << 16 | ((c >> 8 & 255) * k) << 8 | (c & 255) * k | 1 << 24).toString(16).slice(1); }
-  const P = S.onlyPal ? usablePal(S) : S.palette, c = S.colorMode === 'tone' ? P[clamp(Math.floor((1 - p.tone) * P.length), 0, P.length - 1)]
+  // Paleta por tono: light to dark over the palette (by lightness) and, last, the background's opposite
+  const P = S.onlyPal ? usablePal(S) : S.palette, T = S.colorMode === 'tone' ? toneList() : null, c = T ? T[clamp(Math.floor((1 - p.tone) * T.length), 0, T.length - 1)]
     : S.colorMode === 'random' ? (S.onlyPal ? P[Math.floor(p.pick * P.length)] : [...P, PerceptaBg.pick(S.bg, S.bgFlip)][Math.floor(p.pick * (P.length + 1))]) : S.ink; // Al azar: with the background's opposite too
   return S.onlyPal ? palOnly(c, S) : onBg(c, S.bg);
 }
@@ -976,6 +990,7 @@ const renderInks = () => { $('#inks').innerHTML = [...S.palette, ...(S.onlyPal ?
 renderInks();
 const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.palette = colors; renderInks(); sync(); });
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
+$('#colorHow').addEventListener('change', e => { S.colorHow = e.target.value; sync(); });
 const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => S.palette, () => S.bg, v => { S.bg = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
 document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = b.dataset.v; sync(); } }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; if (inp.dataset.check === 'onlyPal') renderInks(); sync(); }));
@@ -989,6 +1004,7 @@ addEventListener('keydown', e => { if (!e.metaKey && !e.ctrlKey && !e.altKey && 
 let key = '', prevAnim = 'none';
 let artKey = '';
 function sync(fast) {
+  S.colorMode = S.colorSrc === 'pal' ? S.colorHow : S.colorSrc; // Color: its source, and for the palette its behaviour
   for (const k of Object.keys(SLIDERS)) {
     const input = $('#in-' + k), d = SLIDERS[k], at = d.values ? d.values.reduce((b, v, i) => Math.abs(v - S[k]) < Math.abs(d.values[b] - S[k]) ? i : b, 0) : S[k];
     if (+input.value !== at) input.value = at;
@@ -998,7 +1014,7 @@ function sync(fast) {
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
-  $('#inks').hidden = S.colorMode !== 'ink'; $('#sl-strokeW').hidden = !S.stroke; markPalette();
+  $('#inks').hidden = S.colorSrc !== 'ink'; $('#how-row').hidden = S.colorSrc === 'ink'; $('#colorHow').value = S.colorHow; $('#onlypal-row').hidden = S.colorSrc !== 'pal'; $('#palsets').hidden = S.colorSrc === 'orig'; $('#sl-strokeW').hidden = !S.stroke; markPalette();
   const gridOnly = S.snap && !S.blend && !S.lines;
   $('#sl-count').hidden = gridOnly; $('#sl-size').hidden = false; $('#sl-cell').hidden = true; $('#sl-cellGap').hidden = !gridded(); if (typeof syncModeBar === 'function') syncModeBar();
   $('#lines-row').hidden = true; $('#snap-row').hidden = true;
