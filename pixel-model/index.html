@@ -625,27 +625,29 @@ function bonsaiCol(base) {
   if (paintCache.sig !== sig) { const wood = base.col[0]; paintCache.sig = sig; paintCache.col = paintBonsai(base.P, base.I, t => base.col[t] === wood, S.seed, S.bzFlowers); }
   return paintCache.col;
 }
-let icoBase = null;
-function icoUnit() {
-  if (icoBase) return icoBase;
+const icoBase = {};
+function icoUnit(level = 3) {
+  if (icoBase[level]) return icoBase[level];
   const t = (1 + Math.sqrt(5)) / 2, nrm = v => { const l = Math.hypot(...v); return v.map(c => c / l); };
   let V = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]].map(nrm);
   let F = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
-  for (let s = 0; s < 3; s++) {
+  for (let s = 0; s < level; s++) {
     const mid = new Map(), m = (a, b) => { const key = Math.min(a, b) + ':' + Math.max(a, b); if (!mid.has(key)) { V.push(nrm(V[a].map((c, i) => (c + V[b][i]) / 2))); mid.set(key, V.length - 1); } return mid.get(key); };
     F = F.flatMap(([a, b, c]) => { const ab = m(a, b), bc = m(b, c), ca = m(c, a); return [[a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]]; });
   }
-  return icoBase = { V, F };
+  return icoBase[level] = { V, F };
 }
-// Bonsai procedural: a trunk that winds up from a flared, rooted base and leans, branches round it in turn
-// (shorter towards the top, drooping a little, some with twigs), and at every tip a pad of foliage: a few lumpy,
-// flat-bottomed clouds. Each seed another tree. Wood and leaves are told apart for paintBonsai.
+// Bonsai procedural, after the scanned one: a short, massive trunk that leaves its rooted base almost lying down,
+// then turns up into the crown; a wide, low dome of a crown, offset over the trunk's lean; thin limbs fanning into
+// it, each splitting into twigs; and the foliage as hundreds of small loose clusters about the twigs (airy, with
+// gaps), not solid pads. Each seed another tree of the same kind. Wood and leaves are told apart for paintBonsai.
 function bonsaiGen(seed) {
   const r = rng(seed * 4241 + 7), nz = noise3(seed * 17 + 11), T = Math.PI * 2, P = [], I = [], wood = [];
   const vert = (x, y, z) => (P.push(x, y, z), P.length / 3 - 1);
   const add = (a, b) => a.map((v, i) => v + b[i]), sub = (a, b) => a.map((v, i) => v - b[i]), mul = (a, s) => a.map(v => v * s);
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-  const nrm = a => mul(a, 1 / (Math.hypot(...a) || 1));
+  const nrm = a => mul(a, 1 / (Math.hypot(...a) || 1)), lerp = (a, b, t) => add(mul(a, 1 - t), mul(b, t));
+  const bez = (p0, p1, p2, p3, t) => { const u = 1 - t; return add(add(mul(p0, u * u * u), mul(p1, 3 * u * u * t)), add(mul(p2, 3 * u * t * t), mul(p3, t * t * t))); };
   // a tube along pts, radius rad(i, angle), rings carried along the path; closed at its end
   const tube = (pts, rad, sides) => {
     const rings = []; let N0 = null;
@@ -659,54 +661,64 @@ function bonsaiGen(seed) {
       const a = rings[i] + k, b = rings[i] + (k + 1) % sides, c = rings[i + 1] + (k + 1) % sides, d = rings[i + 1] + k;
       I.push(a, b, c, a, c, d); wood.push(1, 1);
     }
-    const tip = vert(...pts[pts.length - 1]), L = rings[rings.length - 1];
-    for (let k = 0; k < sides; k++) { I.push(L + k, L + (k + 1) % sides, tip); wood.push(1); }
+    const tip = vert(...pts[pts.length - 1]), L = rings[rings.length - 1], foot = vert(...pts[0]), F0 = rings[0];
+    for (let k = 0; k < sides; k++) { I.push(L + k, L + (k + 1) % sides, tip, F0 + (k + 1) % sides, F0 + k, foot); wood.push(1, 1); }
   };
-  // a pad of foliage: 2–4 clouds about c, size s
-  const { V, F } = icoUnit();
-  const pad = (c, s) => {
-    const nb = 2 + Math.floor(r() * 3);
-    for (let b = 0; b < nb; b++) {
-      const o = b ? [(r() - .5) * s * 1.2, (r() - .35) * s * .25, (r() - .5) * s * 1.2] : [0, 0, 0], rx = s * (.55 + r() * .3), ry = rx * (.42 + r() * .18), rz = rx * (.75 + r() * .35), yaw = r() * T, cy = Math.cos(yaw), sy = Math.sin(yaw), base = P.length / 3;
-      for (const v of V) {
-        const lx = v[0] * rx, ly = v[1] * ry * (v[1] < 0 ? .5 : 1), lz = v[2] * rz, x = c[0] + o[0] + lx * cy - lz * sy, y = c[1] + o[1] + ly, z = c[2] + o[2] + lx * sy + lz * cy;
-        const f = 1 + .5 * (nz(x * 14, y * 14, z * 14, 2) - .5);
-        vert(c[0] + o[0] + (x - c[0] - o[0]) * f, c[1] + o[1] + (y - c[1] - o[1]) * f, c[2] + o[2] + (z - c[2] - o[2]) * f);
-      }
-      for (const [a, b2, c2] of F) { I.push(base + a, base + b2, base + c2); wood.push(0); }
-    }
-  };
-  // the trunk
-  const H = .85 + r() * .4, lean = (r() - .5) * .8, la = r() * T, dx = Math.cos(la), dz = Math.sin(la), amp = .05 + r() * .13, turns = .8 + r() * 1.3, ph = r() * T, ph2 = r() * T;
-  const r0 = .07 + r() * .05, roots = 3 + Math.floor(r() * 3), rph = r() * T, NS = 22, trunk = [];
-  const tR = h => r0 * (1 - .8 * h) + r0 * .9 * Math.exp(-h * 14);
-  for (let i = 0; i <= NS; i++) {
-    const h = i / NS, ramp = Math.min(1, h * 3), w = amp * Math.sin(h * turns * T + ph) * ramp, w2 = amp * .6 * Math.sin(h * turns * T * .7 + ph2) * ramp, along = Math.sin(lean) * h * H + w2;
-    trunk.push([along * dx - w * dz, h * H * Math.cos(lean * .7), along * dz + w * dx]);
+  // the trunk's lean (d, along the ground) and the crown: a low dome over the lean, wider than tall
+  const la = r() * T, d = [Math.cos(la), 0, Math.sin(la)], side = [-d[2], 0, d[0]], up = [0, 1, 0];
+  const reach = .45 + r() * .2, Ax = .8 + r() * .2, Ay = .32 + r() * .08, Az = .6 + r() * .15;
+  const C = add(add(mul(d, reach), mul(side, (r() - .5) * .2)), [0, .34 + r() * .08, 0]);
+  // a point of the dome: u along the lean, v up, w across, each in [-1, 1] (v ≥ 0 its upper half)
+  const dome = (u, v, w) => add(C, add(add(mul(d, u * Ax), mul(up, v * Ay)), mul(side, w * Az)));
+  const inDome = p => { const q = sub(p, C); return (dot(q, d) / Ax) ** 2 + (q[1] / Ay) ** 2 * (q[1] < 0 ? .4 : 1) + (dot(q, side) / Az) ** 2; };
+  // the trunk: leaves the ground low (12–35° up), bends up and ends inside the crown
+  const r0 = .09 + r() * .04, rise = .2 + r() * .4, NS = 26;
+  const t0 = [0, 0, 0], t1 = add(mul(d, .32 + r() * .1), [0, .15 * rise + .02, 0]), t2 = add(add(mul(d, reach * .75), mul(side, (r() - .5) * .3)), [0, .14 + r() * .08, 0]), t3 = add(C, [0, -.04 - r() * .06, 0]);
+  const trunk = Array.from({ length: NS + 1 }, (_, i) => bez(t0, t1, t2, t3, i / NS));
+  const tR = h => r0 * (1 - .75 * Math.pow(h, .7)) + r0 * .55 * Math.exp(-h * 12);
+  const roots = 3 + Math.floor(r() * 3), rph = r() * T;
+  tube(trunk, (i, th) => { const h = i / NS; return tR(h) * (1 + .3 * Math.exp(-h * 8) * Math.max(0, Math.sin(roots * th + rph)) ** 2) * (1 + .22 * (nz(Math.cos(th) * 3, h * 9, Math.sin(th) * 3) - .5)); }, 16);
+  // exposed roots (nebari): short, thick, along the ground from the base
+  for (let k = 0, n = 4 + Math.floor(r() * 4); k < n; k++) {
+    const a = rph + k / n * T + (r() - .5) * .7, dir = [Math.cos(a), 0, Math.sin(a)], len = .12 + r() * .18, pts = [];
+    for (let j = 0; j <= 6; j++) { const t = j / 6; pts.push(add(mul(dir, len * t + r0 * .4), [0, r0 * .5 * (1 - t) * (1 - t) - .01 * t, 0])); }
+    tube(pts, i => Math.max(.004, r0 * .45 * (1 - i / 6 * .85)), 7);
   }
-  tube(trunk, (i, th) => { const h = i / NS; return tR(h) * (1 + .5 * Math.exp(-h * 9) * Math.max(0, Math.sin(roots * th + rph)) ** 2) * (1 + .25 * (nz(Math.cos(th) * 3, h * 8, Math.sin(th) * 3) - .5)); }, 14);
-  const at = h => { const f = h * NS, i = Math.min(NS - 1, Math.floor(f)), u = f - i; return add(mul(trunk[i], 1 - u), mul(trunk[i + 1], u)); };
-  // a limb from p0 along direction d (azimuth a), length len, radius ra → its tip, which gets a pad
-  const limb = (p0, a, rise, len, ra, depth) => {
-    const M = 7, pts = [], bend = (r() - .5) * .5, droop = .15 + r() * .25;
-    for (let j = 0; j <= M; j++) {
-      const t = j / M, aa = a + bend * t;
-      pts.push([p0[0] + Math.cos(aa) * len * t, p0[1] + (rise * t - droop * t * t) * len, p0[2] + Math.sin(aa) * len * t]);
+  // the base sits on the ground: nothing of the wood below it (a flat foot, as if on soil)
+  for (let i = 1; i < P.length; i += 3) P[i] = Math.max(P[i], 0);
+  // foliage: small loose clusters, a little flat, lumpy
+  const ico = icoUnit(1), leaf = (c, s) => {
+    const base = P.length / 3, sy = .55 + r() * .25, yaw = r() * T, cy = Math.cos(yaw), sn = Math.sin(yaw);
+    for (const v of ico.V) {
+      const f = s * (1 + .45 * (nz(c[0] * 30 + v[0], c[1] * 30 + v[1], c[2] * 30 + v[2], 2) - .5)), x = v[0] * f, z = v[2] * f;
+      vert(c[0] + x * cy - z * sn, c[1] + v[1] * f * sy, c[2] + x * sn + z * cy);
     }
-    tube(pts, i => Math.max(.006, ra * (1 - .75 * i / M)), depth ? 6 : 8);
-    if (!depth) for (const t of [.5, .78]) if (r() < .65) {
-      const j = Math.round(t * M), side = r() < .5 ? -1 : 1;
-      limb(pts[j], a + side * (.6 + r() * .5), .3 + r() * .4, len * (.35 + r() * .2), ra * (1 - .75 * t) * .7, 1);
-    }
-    pad(add(pts[M], [0, .02, 0]), .07 + len * (depth ? .45 : .32) + r() * .04);
+    for (const [a, b, c2] of ico.F) { I.push(base + a, base + b, base + c2); wood.push(0); }
   };
-  const nb = 5 + Math.floor(r() * 5), a0 = r() * T;
-  for (let k = 0; k < nb; k++) {
-    const h = Math.min(.93, .3 + .63 * (k + r() * .5) / nb), a = a0 + k * 2.4 + (r() - .5) * .6;
-    limb(at(h), a, .2 + r() * .35, (.28 + r() * .25) * H * (1.1 - .6 * (h - .3) / .63), tR(h) * .6, 0);
+  const tuft = (c, n, spread) => { for (let k = 0; k < n; k++) { const p = add(c, [(r() - .5) * spread, (r() - .3) * spread * .6, (r() - .5) * spread]); if (inDome(p) < 1.15) leaf(p, .011 + r() * .015); } };
+  // a branch from p0 to p1 through a bent middle; twigs off it towards nearby points of the dome; leaves at the end
+  const branch = (p0, p1, ra, depth) => {
+    const M = depth ? 6 : 9, bend = mul(nrm([r() - .5, r() * .6, r() - .5]), sub(p1, p0).length ? Math.hypot(...sub(p1, p0)) * .25 : 0), pts = [];
+    const m1 = add(lerp(p0, p1, .33), bend), m2 = add(lerp(p0, p1, .66), mul(bend, .5));
+    for (let j = 0; j <= M; j++) pts.push(bez(p0, m1, m2, p1, j / M));
+    tube(pts, i => Math.max(.004, ra * (1 - .8 * i / M)), depth ? 5 : 7);
+    if (depth < 2) for (let k = 0, n = depth ? 2 + Math.floor(r() * 2) : 3 + Math.floor(r() * 3); k < n; k++) {
+      const j = Math.floor(M * (.35 + .55 * r())), from = pts[j], q = sub(from, C);
+      const u = clamp(dot(q, d) / Ax + (r() - .5) * .9, -1, 1), w = clamp(dot(q, side) / Az + (r() - .5) * .9, -1, 1), v = Math.sqrt(Math.max(0, 1 - u * u - w * w)) * (r() * 1.4 - .4);
+      branch(from, dome(u * (.8 + r() * .2), v, w * (.8 + r() * .2)), ra * (1 - .8 * j / M) * .65, depth + 1);
+    }
+    // leaves: along the outer part and round the tip
+    for (let j = Math.floor(M * .5); j <= M; j += 2) tuft(pts[j], depth ? 2 : 1, .14);
+    tuft(p1, depth === 2 ? 10 + Math.floor(r() * 6) : 4, .2);
+  };
+  // limbs: from the trunk's upper part, fanning out into the dome (more towards the lean)
+  for (let k = 0, n = 5 + Math.floor(r() * 4); k < n; k++) {
+    const h = .5 + .5 * Math.pow(r(), .7), from = trunk[Math.round(h * NS)], a = k / n * T + r() * .8;
+    const u = Math.cos(a) * (.55 + r() * .4), w = Math.sin(a) * (.55 + r() * .4), v = Math.sqrt(Math.max(0, 1 - u * u - w * w)) * (r() * 1.1 - .2);
+    branch(from, dome(u, v, w), tR(h) * .55, 0);
   }
-  // the apex: a bigger crown on the top of the trunk
-  pad(add(trunk[NS], [0, .03, 0]), .15 + r() * .08);
+  // fill: a few more clusters through the dome, so the crown reads whole (still airy)
+  for (let k = 0; k < 70; k++) { const u = r() * 2 - 1, w = r() * 2 - 1, v = r() * 1.6 - .6; if (u * u + w * w + v * v < 1) tuft(dome(u, v, w), 2, .08); }
   return { P: Float32Array.from(P), I: Uint32Array.from(I), wood };
 }
 const presetSig = () => preset + ':' + (preset === 'blocks' ? [S.seed, S.mzCount, S.mzHeight].join() : preset === 'shapes' ? S.shape + ':' + S.seed : preset === 'bonsai' || preset === 'pbonsai' ? [S.seed, S.bzFlowers].join() : preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
