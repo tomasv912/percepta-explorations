@@ -358,9 +358,10 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
   frame.addEventListener('pointermove', e => { [H.px, H.py] = toArt(e); H.inside = true; });
   frame.addEventListener('pointerleave', () => { H.inside = false; });
 
-  let dirty = true, flowT = 0, last = performance.now();
+  let dirty = true, flowT = 0, last = performance.now(), filming = false;
   function tick(now) {
     const dt = Math.min(.05, (now - last) / 1000); last = now;
+    if (filming) { requestAnimationFrame(tick); return; }
     const flowing = P.flow && !reduce.matches;
     if (flowing) { flowT += dt * P.speed; dirty = true; }
     if (dirty) { generate(flowT); $('#stats').textContent = `${count.toLocaleString('es')} puntos · ${AW} × ${AH}`; }
@@ -478,8 +479,44 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     });
   }
 
+  // ---- film: a scripted pointer over the dots, every frame stepped at 1/fps, for offline video renders ----
+  // keys: [[time s, x, y], …] in artboard px; moves eased in and out with a slight arc, holds where two keys match.
+  const ARROW = new Path2D('M1 1 L1 18.6 L5.3 14.6 L8.2 21.3 L11.1 20.1 L8.3 13.6 L14.2 13.6 Z');
+  const easeIO = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  function pathAt(keys, t) {
+    let k = 0; while (k < keys.length - 2 && t > keys[k + 1][0]) k++;
+    const [t0, x0, y0] = keys[k], [t1, x1, y1] = keys[k + 1];
+    const u = t1 > t0 ? easeIO(clamp01((t - t0) / (t1 - t0))) : 1;
+    const bow = Math.sin(u * Math.PI) * Math.hypot(x1 - x0, y1 - y0) * .1, nx = -(y1 - y0), ny = x1 - x0, nl = Math.hypot(nx, ny) || 1;
+    return [x0 + (x1 - x0) * u + nx / nl * bow, y0 + (y1 - y0) * u + ny / nl * bow];
+  }
+  function film(c, W, fps, keys, cursorScale = 1.4) {
+    filming = true; act.fill(0); on.fill(0); hubCol.fill(0); H.targets = []; H.hub = -1; H.vis = 0; H.age = 0; H.lost = 0;
+    generate(flowT); H.inside = true; let t = 0;
+    return i => {
+      const tt = i / fps;
+      while (t < tt - 1e-9) { const dt = Math.min(1 / fps, tt - t); t += dt; [H.px, H.py] = pathAt(keys, t); if (P.flow) { flowT += dt * P.speed; generate(flowT); } stepHover(dt); }
+      if (i === 0) [H.px, H.py] = pathAt(keys, 0);
+      const s = W / AW; draw(c, s);
+      c.save(); c.translate(H.px - 1, H.py - 1); c.scale(cursorScale, cursorScale);
+      c.lineJoin = 'round'; c.lineWidth = 1.6; c.strokeStyle = '#fff'; c.fillStyle = '#000';
+      c.shadowColor = 'rgba(0,0,0,.25)'; c.shadowBlur = 2; c.shadowOffsetY = .6; c.stroke(ARROW); c.shadowColor = 'transparent'; c.fill(ARROW); c.restore();
+    };
+  }
+  // DialKit-shaped values ({"Forma.Semilla": 1, …}, as "Copy parameters" gives them) applied to the page and the dials
+  function apply(vals) {
+    const upd = {};
+    for (const [path, v] of Object.entries(vals)) {
+      const key = MAP[path]; if (!key) continue;
+      const [g, k] = path.split('.'); (upd[g] = upd[g] || {})[k] = v;
+      if (key === 'seed') applySeed(v); else P[key] = v;
+    }
+    if (kit) kit.setValues(upd);
+    layout(); photoTone = photoField(); H.targets = []; setHub(-1); dirty = true;
+  }
+
   seedNoise(P.seed); layout(); requestAnimationFrame(tick);
-  window.Murmuraciones = { P, regenerate: () => { dirty = true; }, setMode, loadPhotoURL: url => fetch(url).then(r => r.blob()).then(b => loadPhoto(new File([b], url.split('/').pop(), { type: b.type || 'image/png' }))) };
+  window.Murmuraciones = { P, regenerate: () => { dirty = true; }, setMode, film, apply, release: () => { filming = false; dirty = true; }, dots: () => { const o = []; for (let i = 0; i < D.length; i++) if (D[i] > 0) o.push([X[i], Y[i], D[i]]); return o; }, loadPhotoURL: url => fetch(url).then(r => r.blob()).then(b => loadPhoto(new File([b], url.split('/').pop(), { type: b.type || 'image/png' }))) };
 })();
 </script>
 </body>
