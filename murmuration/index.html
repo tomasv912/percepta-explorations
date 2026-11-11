@@ -48,6 +48,12 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
 .drop .ph { width: 40px; height: 40px; border-radius: 6px; flex: none; display: grid; place-items: center; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
 .drop b { display: block; color: var(--text); font-weight: 500; }
 .hint { margin: 0; color: var(--text-3); font-size: 11px; line-height: 1.45; }
+.m3d { display: flex; flex-direction: column; gap: 8px; }
+.field { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; color: var(--text-2); font-size: 12px; }
+.field select { grid-column: 1 / -1; height: 28px; border-radius: 8px; border: 0; padding: 0 8px; background: var(--fill); color: var(--text); font: 500 12px var(--font); box-shadow: inset 0 0 0 1px var(--line); }
+.field output { font: 12px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.field input[type=range] { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--text); }
+.field select:focus-visible, .field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .stats { margin: 0; font: 11px var(--mono); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .toast { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); padding: 8px 12px; border-radius: 8px; background: var(--text); color: var(--page); font: 500 12px var(--font); opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; }
 .toast.on { opacity: 1; }
@@ -63,6 +69,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     <div class="seg" id="mode" role="group" aria-label="Fuente">
       <button type="button" data-v="gen" aria-pressed="true">Generar</button>
       <button type="button" data-v="photo" aria-pressed="false">Foto</button>
+      <button type="button" data-v="model" aria-pressed="false">3D</button>
     </div>
     <button type="button" class="drop" id="drop" title="Elegí una foto o soltala sobre el lienzo">
       <span class="ph" id="thumb-ph" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="15" height="12" rx="2"/><circle cx="7.5" cy="8.5" r="1.5"/><path d="m3 14.5 4.5-4 3 2.5 3-3 4 3.5"/></svg></span>
@@ -70,6 +77,15 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
       <span><b id="drop-t">Subir una foto</b><span id="drop-s">o soltala sobre el lienzo</span></span>
     </button>
     <input type="file" id="file" accept="image/*" hidden>
+    <div class="m3d" id="m3d" hidden>
+      <label class="field"><span>Modelo</span>
+        <select id="model">
+          <option value="sphere">Esfera</option><option value="cube" selected>Cubo</option><option value="cylinder">Cilindro</option><option value="cone">Cono</option>
+          <option value="torus">Toro</option><option value="pyramid">Pirámide</option><option value="octahedron">Octaedro</option>
+        </select>
+      </label>
+      <label class="field slide"><span>Vuelta</span><output id="turn-out">8 s</output><input type="range" id="turn" min="2" max="60" step="0.5" value="8" aria-label="Segundos por vuelta"></label>
+    </div>
     <div class="btns">
       <button type="button" class="btn" id="seed" title="Otra variación con los mismos parámetros (R)">Nueva semilla</button>
     </div>
@@ -105,8 +121,9 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     format: '16:9',
     hover: true, radius: 165, count: 11, minDist: 40,
     flow: false, speed: .15,
+    model: 'cube', turn: 8,
   };
-  let mode = 'gen', photo = null, photoTone = null, AW = 1920, AH = 1080;
+  let mode = 'gen', photo = null, photoTone = null, AW = 1920, AH = 1080, modelT = 0, modelTone = null;
 
   // ---- noise (seeded gradient noise + fbm) ----
   let perm = new Uint8Array(512), gx = new Float32Array(256), gy = new Float32Array(256);
@@ -196,6 +213,61 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     return clamp01((v - P.thresh) / Math.max(.01, 1 - P.thresh));
   };
 
+  // ---- 3D models: basic solids, ray-marched once per lattice cell, turning about the vertical axis ----
+  // Each cell casts one ray (perspective, camera at z = −5). Where it hits, the tone is the shading (the side away from
+  // the light gets more and bigger dots, like ink), with a light texture fixed to the surface so the turn reads on round
+  // solids too; misses near the silhouette fade with distance so the outline doesn't flicker as it turns.
+  const len3 = (x, y, z) => Math.sqrt(x * x + y * y + z * z);
+  const SDF = {
+    sphere: (x, y, z) => len3(x, y, z) - 1,
+    cube: (x, y, z) => { const r = .06, qx = Math.abs(x) - .72 + r, qy = Math.abs(y) - .72 + r, qz = Math.abs(z) - .72 + r; return len3(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qy, qz), 0) - r; },
+    cylinder: (x, y, z) => { const dx = Math.hypot(x, z) - .72, dy = Math.abs(y) - .9; return Math.min(Math.max(dx, dy), 0) + Math.hypot(Math.max(dx, 0), Math.max(dy, 0)); },
+    cone: (x, y, z) => { // tip up, height 2, base radius .9
+      const h = 2, r = .9, qx = Math.hypot(x, z), qy = y + 1; // base at y = −1
+      const k = r / h, side = (qx - r + k * qy) / Math.sqrt(1 + k * k); return Math.max(side, -qy, qy - h);
+    },
+    torus: (x, y, z) => Math.hypot(Math.hypot(x, z) - .86, y) - .27,
+    pyramid: (x, y, z) => { // square base 1.7 at y = −.85, apex at y = .95
+      const b = .85, hgt = 1.8, yy = y + .85, k = b / hgt, n = Math.sqrt(1 + k * k);
+      return Math.max((Math.abs(x) - b + k * yy) / n, (Math.abs(z) - b + k * yy) / n, -yy, yy - hgt);
+    },
+    octahedron: (x, y, z) => (Math.abs(x) + Math.abs(y) + Math.abs(z) - 1.2) * .57735,
+  };
+  const TILT = -.52, LX = -.55, LY = .78, LZ = -.3; // a slight look from above; light from up left, in front
+  function modelField(t) {
+    const { cols, rows, step: s, ox, oy } = L, out = modelTone && modelTone.length === cols * rows ? modelTone : new Float32Array(cols * rows);
+    const f = SDF[P.model] || SDF.cube, th = (reduce.matches ? .6 : 2 * Math.PI * t / Math.max(.5, P.turn)) + .6;
+    const tilt = P.model === 'torus' ? -.95 : TILT, ct = Math.cos(tilt), st = Math.sin(tilt), cy = Math.cos(th), sy = Math.sin(th);
+    const sc = AH * .34, sd = (x, y, z) => { // world → object: tilt about x, then turn about y
+      const y1 = y * ct - z * st, z1 = y * st + z * ct; return f(x * cy - z1 * sy, y1, x * sy + z1 * cy);
+    };
+    const ll = len3(LX, LY, LZ), lx = LX / ll, ly = LY / ll, lz = LZ / ll;
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+      const id = j * cols + i, u = (ox + i * s - AW / 2) / sc, v = -(oy + j * s - AH / 2) / sc;
+      let dx = u * .2, dy = v * .2, dz = 1; const dl = len3(dx, dy, dz); dx /= dl; dy /= dl; dz /= dl;
+      // bounding sphere (r 1.45 at the origin): most cells never march
+      const b = -5 * dz, c = 25 - 1.45 * 1.45, disc = b * b - c;
+      if (disc < 0) { out[id] = 0; continue; }
+      let tt = Math.max(0, -b - Math.sqrt(disc)), tEnd = -b + Math.sqrt(disc), minD = 1e9, hit = false, px = 0, py = 0, pz = 0;
+      for (let k = 0; k < 64 && tt < tEnd; k++) {
+        px = dx * tt; py = dy * tt; pz = -5 + dz * tt;
+        const d = sd(px, py, pz); if (d < minD) minD = d;
+        if (d < .002) { hit = true; break; }
+        tt += d * .9;
+      }
+      if (!hit) { out[id] = .35 * smooth(.05, 0, minD); continue; }
+      const e = .003;
+      let nx = sd(px + e, py, pz) - sd(px - e, py, pz), ny = sd(px, py + e, pz) - sd(px, py - e, pz), nz = sd(px, py, pz + e) - sd(px, py, pz - e);
+      const nl = len3(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+      const lam = Math.max(0, nx * lx + ny * ly + nz * lz), rim = Math.pow(1 - Math.abs(nx * dx + ny * dy + nz * dz), 2);
+      // texture fixed to the object, so it travels with the turn
+      const y1 = py * ct - pz * st, z1 = py * st + pz * ct, ox3 = px * cy - z1 * sy, oz3 = px * sy + z1 * cy;
+      const tex = clamp01(noise(ox3 * 2.6 + oz3 * 1.3 + 9.1, y1 * 2.6 - oz3 * 1.7) * 1.2 + .5);
+      out[id] = clamp01(.1 + .9 * Math.pow(1 - lam, 1.25) + .18 * rim) * (.8 + .2 * tex);
+    }
+    return modelTone = out;
+  }
+
   // ---- the lattice and its dots ----
   const L = { cols: 0, rows: 0, ox: 0, oy: 0, step: 15 };
   let X = new Float32Array(0), Y = new Float32Array(0), D = new Float32Array(0), CL = new Uint8Array(0);
@@ -217,12 +289,13 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
   let count = 0;
   function generate(t) {
     const { cols, rows, step: s, ox, oy } = L, sk = s * P.scale;
-    const cum = [], useP = mode === 'photo' && photoTone;
+    const cum = [], useP = mode === 'photo' && photoTone, useM = mode === 'model', mt = useM ? modelField(modelT) : null;
     count = 0;
     for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
       const id = j * cols + i, x = ox + i * s, y = oy + j * s;
       let v;
-      if (useP) {
+      if (useM) v = mt[id];
+      else if (useP) {
         v = toneOf(photoTone[id]);
         if (P.grain > 0) v *= 1 - P.grain + P.grain * clamp01(fbm(x / AH * 9 + 3, y / AH * 9 + t * .4) * 1.6 + .6);
         if (P.shapeMix > 0) v *= 1 - P.shapeMix + P.shapeMix * shapeValue(x / AH, y / AH, t);
@@ -364,6 +437,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     if (filming) { requestAnimationFrame(tick); return; }
     const flowing = P.flow && !reduce.matches;
     if (flowing) { flowT += dt * P.speed; dirty = true; }
+    if (mode === 'model' && !reduce.matches) { modelT += dt; dirty = true; }
     if (dirty) { generate(flowT); $('#stats').textContent = `${count.toLocaleString('es')} puntos · ${AW} × ${AH}`; }
     const busy = stepHover(dt);
     if (dirty || busy || H.inside) draw(ctx, cv.width / AW);
@@ -378,8 +452,17 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     if (m === 'photo' && !photo) { $('#file').click(); return; }
     mode = m;
     for (const b of document.querySelectorAll('#mode button')) b.setAttribute('aria-pressed', String(b.dataset.v === m));
+    $('#m3d').hidden = m !== 'model';
+    if (m === 'model') modelT = 0;
     dirty = true;
   }
+  const syncModelUI = () => { $('#model').value = P.model; $('#turn').value = P.turn; $('#turn-out').textContent = `${+P.turn} s`; };
+  $('#model').addEventListener('change', e => { P.model = e.target.value; kit?.setValues({ 'Modelo 3D': { 'Modelo': P.model } }); dirty = true; });
+  $('#turn').addEventListener('input', e => {
+    // keep the angle where it is when the speed changes
+    const nt = +e.target.value; modelT = modelT * nt / P.turn; P.turn = nt; $('#turn-out').textContent = `${nt} s`;
+    kit?.setValues({ 'Modelo 3D': { 'Vuelta (s)': nt } }); dirty = true;
+  });
   $('#mode').addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (b) setMode(b.dataset.v); });
   $('#drop').addEventListener('click', () => $('#file').click());
   function loadPhoto(file) {
@@ -409,7 +492,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
   addEventListener('keydown', e => { if (e.key.toLowerCase() === 'r' && !e.metaKey && !e.ctrlKey && !e.target.closest('input, textarea, [contenteditable], [class*="dialkit"]')) newSeed(); });
 
   const save = (name, blob) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
-  const base = () => `murmuracion-${mode === 'photo' ? 'foto' : { wave: 'ola', flock: 'bandada', cloud: 'nube', swirl: 'remolino' }[P.shape]}-${P.seed}`;
+  const base = () => `murmuracion-${mode === 'model' ? '3d-' + P.model : mode === 'photo' ? 'foto' : { wave: 'ola', flock: 'bandada', cloud: 'nube', swirl: 'remolino' }[P.shape]}-${P.seed}`;
   // PNG at twice the artboard (3840 wide for 16:9), without the hover
   $('#png').addEventListener('click', () => {
     const c = document.createElement('canvas'); c.width = AW * 2; c.height = AH * 2;
@@ -437,6 +520,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     'Lienzo.Formato': 'format',
     'Hover.Conectar': 'hover', 'Hover.Radio': 'radius', 'Hover.Cantidad': 'count', 'Hover.Distancia mínima': 'minDist',
     'Animación.Fluir': 'flow', 'Animación.Velocidad': 'speed',
+    'Modelo 3D.Modelo': 'model', 'Modelo 3D.Vuelta (s)': 'turn',
   };
   if (DK) {
     DK.createDialRoot({ position: 'bottom-left', theme: 'system', defaultOpen: false });
@@ -460,6 +544,10 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
       'Lienzo': { 'Formato': { type: 'select', options: Object.keys(FORMATS).map(k => ({ value: k, label: `${k} · ${FORMATS[k][0]} × ${FORMATS[k][1]}` })), default: P.format } },
       'Hover': { 'Conectar': P.hover, 'Radio': [P.radius, 60, 400, 1], 'Cantidad': [P.count, 3, 24, 1], 'Distancia mínima': [P.minDist, 0, 100, 1] },
       'Animación': { 'Fluir': P.flow, 'Velocidad': [P.speed, .01, 1, .01] },
+      'Modelo 3D': {
+        'Modelo': { type: 'select', options: [['sphere', 'Esfera'], ['cube', 'Cubo'], ['cylinder', 'Cilindro'], ['cone', 'Cono'], ['torus', 'Toro'], ['pyramid', 'Pirámide'], ['octahedron', 'Octaedro']].map(([value, label]) => ({ value, label })), default: P.model },
+        'Vuelta (s)': [P.turn, 2, 60, .5],
+      },
     });
     kit.subscribe(v => {
       let relayout = false, rephoto = false;
@@ -468,6 +556,8 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
         if (val === undefined || val === P[key]) continue;
         if (/^(bg|dot|accent|floorColor)$/.test(key) && !/^#[0-9a-f]{6}/i.test(val)) continue;
         if (key === 'seed') { applySeed(val); continue; }
+        if (key === 'turn') modelT = modelT * val / P.turn;
+        if (key === 'model' && mode !== 'model') setTimeout(() => setMode('model'));
         P[key] = val;
         if (key === 'step' || key === 'format') relayout = true;
         if (key === 'fit') rephoto = true;
@@ -475,7 +565,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
       }
       if (relayout) layout();
       if (rephoto) photoTone = photoField();
-      dirty = true;
+      syncModelUI(); dirty = true;
     });
   }
 
@@ -491,11 +581,11 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     return [x0 + (x1 - x0) * u + nx / nl * bow, y0 + (y1 - y0) * u + ny / nl * bow];
   }
   function film(c, W, fps, keys, cursorScale = 1.4) {
-    filming = true; act.fill(0); on.fill(0); hubCol.fill(0); H.targets = []; H.hub = -1; H.vis = 0; H.age = 0; H.lost = 0;
+    filming = true; modelT = 0; act.fill(0); on.fill(0); hubCol.fill(0); H.targets = []; H.hub = -1; H.vis = 0; H.age = 0; H.lost = 0;
     generate(flowT); H.inside = true; let t = 0;
     return i => {
       const tt = i / fps;
-      while (t < tt - 1e-9) { const dt = Math.min(1 / fps, tt - t); t += dt; [H.px, H.py] = pathAt(keys, t); if (P.flow) { flowT += dt * P.speed; generate(flowT); } stepHover(dt); }
+      while (t < tt - 1e-9) { const dt = Math.min(1 / fps, tt - t); t += dt; [H.px, H.py] = pathAt(keys, t); if (P.flow) flowT += dt * P.speed; if (mode === 'model') modelT += dt; if (P.flow || mode === 'model') generate(flowT); stepHover(dt); }
       if (i === 0) [H.px, H.py] = pathAt(keys, 0);
       const s = W / AW; draw(c, s);
       c.save(); c.translate(H.px - 1, H.py - 1); c.scale(cursorScale, cursorScale);
@@ -512,7 +602,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
       if (key === 'seed') applySeed(v); else P[key] = v;
     }
     if (kit) kit.setValues(upd);
-    layout(); photoTone = photoField(); H.targets = []; setHub(-1); dirty = true;
+    syncModelUI(); layout(); photoTone = photoField(); H.targets = []; setHub(-1); dirty = true;
   }
 
   seedNoise(P.seed); layout(); requestAnimationFrame(tick);
