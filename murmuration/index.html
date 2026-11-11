@@ -53,6 +53,8 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
 .field select { grid-column: 1 / -1; height: 28px; border-radius: 8px; border: 0; padding: 0 8px; background: var(--fill); color: var(--text); font: 500 12px var(--font); box-shadow: inset 0 0 0 1px var(--line); }
 .field output { font: 12px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
 .field input[type=range] { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--text); }
+.check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); cursor: pointer; }
+.check input { margin: 0; accent-color: var(--text); }
 .field select:focus-visible, .field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .stats { margin: 0; font: 11px var(--mono); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .toast { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); padding: 8px 12px; border-radius: 8px; background: var(--text); color: var(--page); font: 500 12px var(--font); opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; }
@@ -84,6 +86,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
           <option value="torus">Toro</option><option value="pyramid">Pirámide</option><option value="octahedron">Octaedro</option>
         </select>
       </label>
+      <label class="check"><input type="checkbox" id="stick" checked> Seguir el modelo</label>
       <label class="field slide"><span>Vuelta</span><output id="turn-out">8 s</output><input type="range" id="turn" min="2" max="60" step="0.5" value="8" aria-label="Segundos por vuelta"></label>
     </div>
     <div class="btns">
@@ -121,9 +124,10 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     format: '16:9',
     hover: true, radius: 165, count: 11, minDist: 40,
     flow: false, speed: .15,
-    model: 'cube', turn: 8,
+    model: 'cube', turn: 8, stick: true,
+    lightAz: 130, lightEl: 35, lightK: 1.25, ambient: 0,
   };
-  let mode = 'gen', photo = null, photoTone = null, AW = 1920, AH = 1080, modelT = 0, modelTone = null;
+  let mode = 'gen', photo = null, photoTone = null, AW = 1920, AH = 1080, modelT = 0, modelTone = null, modelZ = null;
 
   // ---- noise (seeded gradient noise + fbm) ----
   let perm = new Uint8Array(512), gx = new Float32Array(256), gy = new Float32Array(256);
@@ -233,20 +237,30 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     },
     octahedron: (x, y, z) => (Math.abs(x) + Math.abs(y) + Math.abs(z) - 1.2) * .57735,
   };
-  const TILT = -.52, LX = -.55, LY = .78, LZ = -.3; // a slight look from above; light from up left, in front
+  const TILT = .45; // a slight look from above (the torus more, so its hole shows)
+  // the pose at time t: tilt about x, turn about y (world → object), as cos/sin pairs
+  const pose = t => {
+    const th = (reduce.matches ? .6 : 2 * Math.PI * t / Math.max(.5, P.turn)) + .6, tilt = P.model === 'torus' ? .95 : TILT;
+    return { ct: Math.cos(tilt), st: Math.sin(tilt), cy: Math.cos(th), sy: Math.sin(th) };
+  };
+  // the light, in camera space: Ángulo turns it around the view (0° right, 90° top), Altura lifts it toward the camera
+  const lightDir = () => { const a = P.lightAz * Math.PI / 180, e = P.lightEl * Math.PI / 180; return [Math.cos(a) * Math.cos(e), Math.sin(a) * Math.cos(e), -Math.sin(e)]; };
+  // tone (more and bigger dots) from the lighting: the side away from the light is the dense one, like ink
+  const toneLit = (lam, rim) => clamp01(.08 + .92 * Math.pow(clamp01(1 - (P.ambient + (1 - P.ambient) * lam)), P.lightK) + .18 * rim);
   function modelField(t) {
     const { cols, rows, step: s, ox, oy } = L, out = modelTone && modelTone.length === cols * rows ? modelTone : new Float32Array(cols * rows);
-    const f = SDF[P.model] || SDF.cube, th = (reduce.matches ? .6 : 2 * Math.PI * t / Math.max(.5, P.turn)) + .6;
-    const tilt = P.model === 'torus' ? -.95 : TILT, ct = Math.cos(tilt), st = Math.sin(tilt), cy = Math.cos(th), sy = Math.sin(th);
+    if (!modelZ || modelZ.length !== cols * rows) modelZ = new Float32Array(cols * rows);
+    const f = SDF[P.model] || SDF.cube, { ct, st, cy, sy } = pose(t);
     const sc = AH * .34, sd = (x, y, z) => { // world → object: tilt about x, then turn about y
       const y1 = y * ct - z * st, z1 = y * st + z * ct; return f(x * cy - z1 * sy, y1, x * sy + z1 * cy);
     };
-    const ll = len3(LX, LY, LZ), lx = LX / ll, ly = LY / ll, lz = LZ / ll;
+    const [lx, ly, lz] = lightDir();
     for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
       const id = j * cols + i, u = (ox + i * s - AW / 2) / sc, v = -(oy + j * s - AH / 2) / sc;
       let dx = u * .2, dy = v * .2, dz = 1; const dl = len3(dx, dy, dz); dx /= dl; dy /= dl; dz /= dl;
       // bounding sphere (r 1.45 at the origin): most cells never march
       const b = -5 * dz, c = 25 - 1.45 * 1.45, disc = b * b - c;
+      modelZ[id] = Infinity;
       if (disc < 0) { out[id] = 0; continue; }
       let tt = Math.max(0, -b - Math.sqrt(disc)), tEnd = -b + Math.sqrt(disc), minD = 1e9, hit = false, px = 0, py = 0, pz = 0;
       for (let k = 0; k < 64 && tt < tEnd; k++) {
@@ -256,6 +270,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
         tt += d * .9;
       }
       if (!hit) { out[id] = .35 * smooth(.05, 0, minD); continue; }
+      modelZ[id] = tt;
       const e = .003;
       let nx = sd(px + e, py, pz) - sd(px - e, py, pz), ny = sd(px, py + e, pz) - sd(px, py - e, pz), nz = sd(px, py, pz + e) - sd(px, py, pz - e);
       const nl = len3(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
@@ -263,60 +278,124 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
       // texture fixed to the object, so it travels with the turn
       const y1 = py * ct - pz * st, z1 = py * st + pz * ct, ox3 = px * cy - z1 * sy, oz3 = px * sy + z1 * cy;
       const tex = clamp01(noise(ox3 * 2.6 + oz3 * 1.3 + 9.1, y1 * 2.6 - oz3 * 1.7) * 1.2 + .5);
-      out[id] = clamp01(.1 + .9 * Math.pow(1 - lam, 1.25) + .18 * rim) * (.8 + .2 * tex);
+      out[id] = toneLit(lam, rim) * (.8 + .2 * tex);
     }
     return modelTone = out;
+  }
+
+  // ---- particles that follow the model: points fixed on its surface, turning with it ----
+  // Sampled once per model and spacing: a 3D grid at the lattice step (in object units), the cells the surface passes
+  // through, each pulled onto the surface along the normal; flat faces come out as the same square lattice as the
+  // page. Each frame they are turned, projected, lit by their own normal, hidden on the back and behind nearer parts.
+  let surf = null;
+  function surfacePoints() {
+    const g = P.step / (AH * .34), key = P.model + '|' + g.toFixed(5);
+    if (surf && surf.key === key) return surf;
+    const f = SDF[P.model] || SDF.cube, Rr = 1.5, n = Math.ceil(2 * Rr / g), e = g * .05, seen = new Set();
+    const px = [], py = [], pz = [], nx = [], ny = [], nz = [];
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) {
+      let x = -Rr + (i + .5) * g, y = -Rr + (j + .5) * g, z = -Rr + (k + .5) * g;
+      const d = f(x, y, z); if (Math.abs(d) >= g * .5) continue;
+      let gx = f(x + e, y, z) - f(x - e, y, z), gy = f(x, y + e, z) - f(x, y - e, z), gz = f(x, y, z + e) - f(x, y, z - e);
+      const gl = len3(gx, gy, gz) || 1; gx /= gl; gy /= gl; gz /= gl;
+      x -= gx * d; y -= gy * d; z -= gz * d;
+      const h = Math.round(x / (g * .7)) + ',' + Math.round(y / (g * .7)) + ',' + Math.round(z / (g * .7)); // no two points in one spot
+      if (seen.has(h)) continue; seen.add(h);
+      px.push(x); py.push(y); pz.push(z); nx.push(gx); ny.push(gy); nz.push(gz);
+    }
+    return surf = { key, g, n: px.length, px: Float32Array.from(px), py: Float32Array.from(py), pz: Float32Array.from(pz), nx: Float32Array.from(nx), ny: Float32Array.from(ny), nz: Float32Array.from(nz) };
   }
 
   // ---- the lattice and its dots ----
   const L = { cols: 0, rows: 0, ox: 0, oy: 0, step: 15 };
   let X = new Float32Array(0), Y = new Float32Array(0), D = new Float32Array(0), CL = new Uint8Array(0);
-  let act, on, hubCol;
+  let act, on, hubCol, nDots = 0, binHead = new Int32Array(0), binNext = new Int32Array(0);
+  function ensureCap(n) {
+    if (X.length >= n) return;
+    X = new Float32Array(n); Y = new Float32Array(n); D = new Float32Array(n); CL = new Uint8Array(n); binNext = new Int32Array(n);
+    act = new Float32Array(n); on = new Uint8Array(n); hubCol = new Float32Array(n); H.hub = -1; H.targets = []; H.vis = 0;
+  }
   function layout() {
     [AW, AH] = FORMATS[P.format] || FORMATS['16:9'];
     const s = P.step, cols = Math.floor(AW / s) + 1, rows = Math.floor(AH / s) + 1;
     const changed = cols !== L.cols || rows !== L.rows;
     Object.assign(L, { cols, rows, step: s, ox: (AW - (cols - 1) * s) / 2, oy: (AH - (rows - 1) * s) / 2 });
     if (changed) {
-      const n = cols * rows;
-      X = new Float32Array(n); Y = new Float32Array(n); D = new Float32Array(n); CL = new Uint8Array(n);
-      act = new Float32Array(n); on = new Uint8Array(n); hubCol = new Float32Array(n); H.hub = -1; H.targets = []; H.vis = 0;
+      ensureCap(cols * rows); binHead = new Int32Array(cols * rows);
       photoTone = photoField();
     }
     frame.style.width = AW + 'px'; frame.style.height = AH + 'px';
     fit();
   }
   let count = 0;
+  // one dot from its field value: presence and size class from its hashes (stable per id), eased so moving fields
+  // grow and fade dots instead of popping them
+  function place(id, v, x, y, sk, jitStep) {
+    const p = P.density * v + P.strays * (1 - v) * (v > 0 ? 1 : .6), h1 = hash(id, 1);
+    const pres = smooth(h1 - .035, h1 + .035, p);
+    if (pres <= 0) { D[id] = 0; CL[id] = 0; return; }
+    const wBig = P.big * Math.pow(v, 1.5), wMid = P.mid * v, wSm = P.small * (.4 + .6 * v);
+    const c0 = wBig, c1 = wBig + wMid, c2 = wBig + wMid + wSm, h2 = hash(id, 2);
+    const k = h2 < c0 ? (hash(id, 3) < .2 ? 4 : 3) : h2 < c1 ? 2 : h2 < c2 ? 1 : 0;
+    let d = SIZE_K[k] * sk;
+    if (k === 0 && c2 - h2 > -.03) d += (SIZE_K[1] - SIZE_K[0]) * sk * smooth(.03, 0, h2 - c2);
+    D[id] = d * (.35 + .65 * pres); CL[id] = k;
+    // big dots sit a little off the grid, as in the hero
+    const jit = k >= 2 ? P.jitter * jitStep * .6 : 0;
+    X[id] = x + (hash(id, 4) - .5) * 2 * jit; Y[id] = y + (hash(id, 5) - .5) * 2 * jit;
+    count++;
+  }
   function generate(t) {
     const { cols, rows, step: s, ox, oy } = L, sk = s * P.scale;
-    const cum = [], useP = mode === 'photo' && photoTone, useM = mode === 'model', mt = useM ? modelField(modelT) : null;
+    const useP = mode === 'photo' && photoTone, useM = mode === 'model';
     count = 0;
-    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
-      const id = j * cols + i, x = ox + i * s, y = oy + j * s;
-      let v;
-      if (useM) v = mt[id];
-      else if (useP) {
-        v = toneOf(photoTone[id]);
-        if (P.grain > 0) v *= 1 - P.grain + P.grain * clamp01(fbm(x / AH * 9 + 3, y / AH * 9 + t * .4) * 1.6 + .6);
-        if (P.shapeMix > 0) v *= 1 - P.shapeMix + P.shapeMix * shapeValue(x / AH, y / AH, t);
-      } else v = shapeValue(x / AH, y / AH, t);
-      // presence: dense where the field is high, a few strays where it is low; eased so a flowing field fades dots
-      const p = P.density * v + P.strays * (1 - v) * (v > 0 ? 1 : .6), h1 = hash(id, 1);
-      const pres = smooth(h1 - .035, h1 + .035, p);
-      if (pres <= 0) { D[id] = 0; CL[id] = 0; continue; }
-      // size: the class falls out of the weights, which grow with the field (big dots live in the dense core)
-      const wBig = P.big * Math.pow(v, 1.5), wMid = P.mid * v, wSm = P.small * (.4 + .6 * v);
-      cum[0] = wBig; cum[1] = wBig + wMid; cum[2] = wBig + wMid + wSm;
-      const h2 = hash(id, 2);
-      let k = h2 < cum[0] ? (hash(id, 3) < .2 ? 4 : 3) : h2 < cum[1] ? 2 : h2 < cum[2] ? 1 : 0;
-      // ease across class borders so a moving field grows dots instead of popping them
-      let d = SIZE_K[k] * sk;
-      if (k === 0 && cum[2] - h2 > -.03) d += (SIZE_K[1] - SIZE_K[0]) * sk * smooth(.03, 0, h2 - cum[2]);
-      D[id] = d * (.35 + .65 * pres); CL[id] = k;
-      // big dots sit a little off the grid, as in the hero
-      const jit = k >= 2 ? P.jitter * s * .6 : 0;
-      X[id] = x + (hash(id, 4) - .5) * 2 * jit; Y[id] = y + (hash(id, 5) - .5) * 2 * jit;
-      count++;
+    if (useM && P.stick) generateSurface(t, sk);
+    else {
+      const mt = useM ? modelField(modelT) : null;
+      nDots = cols * rows;
+      for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+        const id = j * cols + i, x = ox + i * s, y = oy + j * s;
+        let v;
+        if (useM) v = mt[id];
+        else if (useP) {
+          v = toneOf(photoTone[id]);
+          if (P.grain > 0) v *= 1 - P.grain + P.grain * clamp01(fbm(x / AH * 9 + 3, y / AH * 9 + t * .4) * 1.6 + .6);
+          if (P.shapeMix > 0) v *= 1 - P.shapeMix + P.shapeMix * shapeValue(x / AH, y / AH, t);
+        } else v = shapeValue(x / AH, y / AH, t);
+        place(id, v, x, y, sk, s);
+      }
+    }
+    buildBins();
+  }
+  function generateSurface(t, sk) {
+    const S3 = surfacePoints(), { cols, rows, step: s, ox, oy } = L, sc = AH * .34;
+    modelField(modelT); // the depth of the nearest surface per cell, to hide points behind nearer parts (torus)
+    ensureCap(Math.max(S3.n, cols * rows)); nDots = S3.n;
+    const { ct, st, cy, sy } = pose(modelT), [lx, ly, lz] = lightDir(), tol = S3.g * 3;
+    for (let i = 0; i < S3.n; i++) {
+      // object → world: undo the turn, then the tilt (points and normals alike)
+      const a = S3.px[i], b = S3.py[i], c = S3.pz[i], x1 = a * cy + c * sy, z1 = -a * sy + c * cy;
+      const wx = x1, wy = b * ct + z1 * st, wz = -b * st + z1 * ct;
+      const na = S3.nx[i], nb = S3.ny[i], nc = S3.nz[i], n1 = na * cy + nc * sy, m1 = -na * sy + nc * cy;
+      const vx = n1, vy = nb * ct + m1 * st, vz = -nb * st + m1 * ct;
+      const zc = wz + 5, dl = len3(wx, wy, zc), facing = -(vx * wx + vy * wy + vz * zc) / dl;
+      if (facing <= 0) { D[i] = 0; continue; }
+      const x = AW / 2 + wx / (zc * .2) * sc, y = AH / 2 - wy / (zc * .2) * sc;
+      const ci = Math.round((x - ox) / s), cj = Math.round((y - oy) / s);
+      if (ci < 0 || cj < 0 || ci >= cols || cj >= rows) { D[i] = 0; continue; }
+      if (dl > modelZ[cj * cols + ci] + tol) { D[i] = 0; continue; }
+      const lam = Math.max(0, vx * lx + vy * ly + vz * lz), v = toneLit(lam, Math.pow(1 - facing, 2)) * smooth(0, .55, facing); // faces seen edge-on thin out instead of crowding
+      place(i, v, x, y, sk * 5 / zc, s);
+    }
+  }
+  function buildBins() {
+    const { cols, rows, step: s, ox, oy } = L;
+    if (binHead.length !== cols * rows) binHead = new Int32Array(cols * rows);
+    binHead.fill(-1);
+    for (let i = 0; i < nDots; i++) {
+      if (D[i] <= 0) continue;
+      const ci = Math.min(cols - 1, Math.max(0, Math.round((X[i] - ox) / s))), cj = Math.min(rows - 1, Math.max(0, Math.round((Y[i] - oy) / s))), c = cj * cols + ci;
+      binNext[i] = binHead[c]; binHead[c] = i;
     }
   }
 
@@ -327,8 +406,8 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     const { cols, rows, step: s, ox, oy } = L, pad = s;
     const i0 = Math.max(0, Math.floor((x - r - pad - ox) / s)), i1 = Math.min(cols - 1, Math.ceil((x + r + pad - ox) / s));
     const j0 = Math.max(0, Math.floor((y - r - pad - oy) / s)), j1 = Math.min(rows - 1, Math.ceil((y + r + pad - oy) / s));
-    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-      const id = j * cols + i; if (!live(id)) continue;
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) for (let id = binHead[j * cols + i]; id >= 0; id = binNext[id]) {
+      if (!live(id)) continue;
       const dx = X[id] - x, dy = Y[id] - y, d = Math.hypot(dx, dy); if (d <= r) fn(id, d, dx, dy);
     }
   }
@@ -371,7 +450,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     H.vis = instant ? +(H.hub >= 0) : H.hub >= 0 ? Math.min(1, H.vis + dt / (IN * .5)) : Math.max(0, H.vis - dt / OUT);
     const grow = instant || H.age >= DELAY;
     let busy = H.vis > 0;
-    for (let i = 0; i < D.length; i++) {
+    for (let i = 0; i < nDots; i++) {
       const tgt = i === H.hub ? 1 : 0, v = hubCol[i];
       if (v !== tgt) { hubCol[i] = instant ? tgt : tgt ? Math.min(1, v + dt / (IN * .4)) : Math.max(0, v - dt / OUT); busy = true; }
       const a = act[i];
@@ -393,7 +472,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
       g.addColorStop(0, `rgba(${f},0)`); g.addColorStop(1, `rgb(${f})`);
       c.fillStyle = g; c.fillRect(0, y0, AW, AH - y0);
     }
-    const B = rgb(P.dot), A = rgb(P.accent), n = D.length;
+    const B = rgb(P.dot), A = rgb(P.accent), n = nDots;
     if (withHover && (H.vis > 0 || H.targets.length)) {
       c.lineWidth = 1; c.lineCap = 'round';
       for (let i = 0; i < n; i++) {
@@ -456,8 +535,9 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     if (m === 'model') modelT = 0;
     dirty = true;
   }
-  const syncModelUI = () => { $('#model').value = P.model; $('#turn').value = P.turn; $('#turn-out').textContent = `${+P.turn} s`; };
-  $('#model').addEventListener('change', e => { P.model = e.target.value; kit?.setValues({ 'Modelo 3D': { 'Modelo': P.model } }); dirty = true; });
+  $('#stick').addEventListener('change', e => { P.stick = e.target.checked; kit?.setValues({ 'Modelo 3D': { 'Seguir el modelo': P.stick } }); H.targets = []; setHub(-1); dirty = true; });
+  const syncModelUI = () => { $('#stick').checked = P.stick; $('#model').value = P.model; $('#turn').value = P.turn; $('#turn-out').textContent = `${+P.turn} s`; };
+  $('#model').addEventListener('change', e => { P.model = e.target.value; H.targets = []; setHub(-1); kit?.setValues({ 'Modelo 3D': { 'Modelo': P.model } }); dirty = true; });
   $('#turn').addEventListener('input', e => {
     // keep the angle where it is when the speed changes
     const nt = +e.target.value; modelT = modelT * nt / P.turn; P.turn = nt; $('#turn-out').textContent = `${nt} s`;
@@ -503,7 +583,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     const f = n => +n.toFixed(2), out = [`<svg xmlns="http://www.w3.org/2000/svg" width="${AW}" height="${AH}" viewBox="0 0 ${AW} ${AH}">`, `<rect width="${AW}" height="${AH}" fill="${P.bg}"/>`];
     if (P.floor) out.push(`<defs><linearGradient id="floor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${P.floorColor}" stop-opacity="0"/><stop offset="1" stop-color="${P.floorColor}"/></linearGradient></defs><rect y="${f(AH * .76)}" width="${AW}" height="${f(AH * .24)}" fill="url(#floor)"/>`);
     out.push(`<g fill="${P.dot}">`);
-    for (let i = 0; i < D.length; i++) if (D[i] > 0) out.push(`<circle cx="${f(X[i])}" cy="${f(Y[i])}" r="${f(D[i] / 2)}"/>`);
+    for (let i = 0; i < nDots; i++) if (D[i] > 0) out.push(`<circle cx="${f(X[i])}" cy="${f(Y[i])}" r="${f(D[i] / 2)}"/>`);
     out.push('</g></svg>');
     save(base() + '.svg', new Blob([out.join('\n')], { type: 'image/svg+xml' })); toast('SVG exportado');
   });
@@ -520,7 +600,8 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
     'Lienzo.Formato': 'format',
     'Hover.Conectar': 'hover', 'Hover.Radio': 'radius', 'Hover.Cantidad': 'count', 'Hover.Distancia mínima': 'minDist',
     'Animación.Fluir': 'flow', 'Animación.Velocidad': 'speed',
-    'Modelo 3D.Modelo': 'model', 'Modelo 3D.Vuelta (s)': 'turn',
+    'Modelo 3D.Modelo': 'model', 'Modelo 3D.Vuelta (s)': 'turn', 'Modelo 3D.Seguir el modelo': 'stick',
+    'Luz 3D.Ángulo': 'lightAz', 'Luz 3D.Altura': 'lightEl', 'Luz 3D.Contraste': 'lightK', 'Luz 3D.Ambiente': 'ambient',
   };
   if (DK) {
     DK.createDialRoot({ position: 'bottom-left', theme: 'system', defaultOpen: false });
@@ -546,8 +627,9 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
       'Animación': { 'Fluir': P.flow, 'Velocidad': [P.speed, .01, 1, .01] },
       'Modelo 3D': {
         'Modelo': { type: 'select', options: [['sphere', 'Esfera'], ['cube', 'Cubo'], ['cylinder', 'Cilindro'], ['cone', 'Cono'], ['torus', 'Toro'], ['pyramid', 'Pirámide'], ['octahedron', 'Octaedro']].map(([value, label]) => ({ value, label })), default: P.model },
-        'Vuelta (s)': [P.turn, 2, 60, .5],
+        'Vuelta (s)': [P.turn, 2, 60, .5], 'Seguir el modelo': P.stick,
       },
+      'Luz 3D': { 'Ángulo': [P.lightAz, 0, 360, 1], 'Altura': [P.lightEl, 0, 90, 1], 'Contraste': [P.lightK, .3, 4, .01], 'Ambiente': [P.ambient, 0, 1, .01] },
     });
     kit.subscribe(v => {
       let relayout = false, rephoto = false;
@@ -561,7 +643,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
         P[key] = val;
         if (key === 'step' || key === 'format') relayout = true;
         if (key === 'fit') rephoto = true;
-        if (['radius', 'count', 'minDist', 'hover'].includes(key)) { H.targets = []; setHub(-1); }
+        if (['radius', 'count', 'minDist', 'hover', 'stick', 'model'].includes(key)) { H.targets = []; setHub(-1); }
       }
       if (relayout) layout();
       if (rephoto) photoTone = photoField();
@@ -606,7 +688,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
   }
 
   seedNoise(P.seed); layout(); requestAnimationFrame(tick);
-  window.Murmuraciones = { P, regenerate: () => { dirty = true; }, setMode, film, apply, release: () => { filming = false; dirty = true; }, dots: () => { const o = []; for (let i = 0; i < D.length; i++) if (D[i] > 0) o.push([X[i], Y[i], D[i]]); return o; }, loadPhotoURL: url => fetch(url).then(r => r.blob()).then(b => loadPhoto(new File([b], url.split('/').pop(), { type: b.type || 'image/png' }))) };
+  window.Murmuraciones = { P, regenerate: () => { dirty = true; }, setMode, film, apply, release: () => { filming = false; dirty = true; }, dots: () => { const o = []; for (let i = 0; i < nDots; i++) if (D[i] > 0) o.push([X[i], Y[i], D[i]]); return o; }, loadPhotoURL: url => fetch(url).then(r => r.blob()).then(b => loadPhoto(new File([b], url.split('/').pop(), { type: b.type || 'image/png' }))) };
 })();
 </script>
 </body>
