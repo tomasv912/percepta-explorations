@@ -256,9 +256,14 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
       <section>
         <h2>Color</h2>
-        <div class="seg" data-key="colorMode" aria-label="Color de los cubos">
-          <button data-v="single">Un color</button><button data-v="random">Al azar</button><button data-v="image" id="cm-image" title="Cada partícula con el color original de la imagen bajo ella">Original</button>
+        <div class="seg" data-key="colorSrc" aria-label="Color de los cubos">
+          <button data-v="single">Un color</button><button data-v="pal" title="Los 3 colores de la paleta, más el negro o el blanco opuesto al fondo">Paleta</button><button data-v="image" id="cm-image" title="Cada partícula con el color original de la imagen bajo ella">Original</button>
         </div>
+        <div class="row" id="how-row" style="grid-template-columns:auto 1fr">
+          <span>Comportamiento</span>
+          <label class="swatch bg-pick"><select id="colorHow" aria-label="Comportamiento del color"><option value="tone">Por tono</option><option value="random">Al azar</option></select></label>
+        </div>
+        <label class="check" id="pastel-row" title="Los colores de la foto con la luz y la saturación de la paleta (el mismo tono de color, más claros y suaves)"><input type="checkbox" data-check="pastel"> Llevar a la paleta (luz y saturación)</label>
         <label class="check" title="Cada partícula dibujada con su contorno en vez de rellena; la línea queda adentro, así no cambia el tamaño"><input type="checkbox" data-check="stroke"> Contorno (sin relleno)</label>
         <div id="sl-strokeW"></div>
         <div class="inks" id="inks" aria-label="Color"></div>
@@ -278,7 +283,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <span>Fondo</span>
           <label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label><button class="btn icon bg-flip" id="bg-flip" hidden aria-label="Blanco o negro para el color del fondo"><i></i></button>
         </div>
-        <label class="check" title="Los cubos usan solamente los 3 colores de la paleta: nunca blanco ni negro (tampoco el color del fondo)"><input type="checkbox" data-check="onlyPal"> Solo los 3 colores (sin blanco ni negro)</label>
+        <label class="check" id="onlypal-row" title="Los cubos usan solamente los 3 colores de la paleta: nunca blanco ni negro (tampoco el color del fondo)"><input type="checkbox" data-check="onlyPal"> Solo los 3 colores (sin blanco ni negro)</label>
         <label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label>
       </section>
 
@@ -334,7 +339,7 @@ const DEFAULTS = {
   blModel: 'hortensia', blYaw: 0, blPitch: 0, blTravel: .5, blStem: .3, blLength: 1, blChannel: .45, blFlowers: 1, blSize: .5, blFlorets: 32, blShare: .5, orient: 'h',
   contrast: 1.2, threshold: .1, invert: false, grid: false, gridCols: 140, rotX: 0, rotY: 0, rotZ: 0,
   style: 'mono', count: 45000, size: 3.5, mod: .6, variation: .35, grain: .12,
-  colorMode: 'single', ink: '#272727', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF'],
+  colorMode: 'single', colorSrc: 'single', colorHow: 'tone', pastel: true, ink: '#272727', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF'],
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#F6F6F6', bgExport: false,
@@ -831,15 +836,31 @@ function balanced(i, K, seed) {
   for (let k = K - 1; k > 0; k--) { h ^= h >>> 13; h = Math.imul(h, 0x27d4eb2d); h ^= h >>> 15; const r = (h >>> 0) % (k + 1); [perm[k], perm[r]] = [perm[r], perm[k]]; }
   return perm[j];
 }
+// Por tono: each cube's light (a photo's own, else its depth: the far, the lighter), 0 dark to 1 light.
+const lumOf = c => (.2126 * (c >> 16 & 255) + .7152 * (c >> 8 & 255) + .0722 * (c & 255)) / 255;
+const toneOf = (i, st) => st.source === 'image' && img ? lumOf(gen.rgb[i]) : gen.dep ? gen.dep[i] : .5;
+const hexLum = h => lumOf(parseInt(h.slice(1), 16));
+let toneMemo = { k: '', v: null };
+// the palette from light to dark (by lightness) and, last, the background's opposite
+function toneList(st) {
+  const k = st.palette.join() + st.onlyPal + st.bg + st.bgFlip;
+  if (toneMemo.k !== k) toneMemo = { k, v: [...(st.onlyPal ? usablePal(st) : st.palette)].sort((a, b) => hexLum(b) - hexLum(a)).concat(st.onlyPal ? [] : [accentOf(st)]) };
+  return toneMemo.v;
+}
 function colorOf(i, st) {
+  // Original: the photo's colour under the cube (Por tono), or one of the photo's colours dealt at random (Al azar),
+  // with Llevar a la paleta brought to the palette's light and saturation
   if (st.colorMode === 'image' && img && st.source === 'image') {
-    const c = gen.rgb[i] & 0xF8F8F8;
+    let c = st.colorHow === 'random' ? gen.rgb[((Math.imul(i ^ 0x5bd1e995, 0x9e3779b1) ^ Math.imul(st.cseed + 7, 0x85ebca6b)) >>> 0) % gen.n] : gen.rgb[i];
+    if (st.pastel) c = PerceptaPastel(c & 0xFCFCFC);
+    c &= 0xF8F8F8;
     return rgbHex(c >> 16 & 255, c >> 8 & 255, c & 255);
   }
-  // Al azar: the palette's colours and, with them, the background's opposite: black on a white ground, white on a black
-  // one (on a coloured ground, whichever of the two stands out more).
+  // Paleta, Al azar: the palette's colours and, with them, the background's opposite: black on a white ground, white on a
+  // black one (on a coloured ground, whichever of the two stands out more). Por tono: light to dark over them.
   let c = st.ink;
-  if (st.colorMode === 'random') {
+  if (st.colorMode === 'tone') { const T = toneList(st); c = T[clamp(Math.floor((1 - toneOf(i, st)) * T.length), 0, T.length - 1)]; }
+  else if (st.colorMode === 'random') {
     if (st.onlyPal) { const U = usablePal(st); c = U[balanced(i, U.length, st.cseed)]; }
     else { const P = st.palette, k = balanced(i, P.length + 1, st.cseed); c = k < P.length ? P[k] : accentOf(st); }
   } else if (st.onlyPal) c = palOnly(c, st);
@@ -1119,6 +1140,7 @@ document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e
   S[seg.dataset.key] = b.dataset.v; sync();
 }));
 document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
+$('#colorHow').addEventListener('change', e => { S.colorHow = e.target.value; sync(); });
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; if (inp.dataset.check === 'onlyPal') renderPalette(); sync(); }));
 // The palette's colours (one swatch each, editable) and the Un color swatches (the palette plus black and white;
 // the picker below takes any other) are redrawn when a palette is chosen, since palettes differ in length.
@@ -1155,7 +1177,8 @@ function paintSwatch(el, hex) {
 }
 function sync() {
   if (S.source === 'image' && !img) S.source = 'waves';
-  if (S.colorMode === 'image' && S.source !== 'image') S.colorMode = 'single';
+  if (S.colorSrc === 'image' && S.source !== 'image') S.colorSrc = 'single';
+  S.colorMode = S.colorSrc === 'pal' ? S.colorHow : S.colorSrc; // Color: its source, and for the palette its behaviour
   for (const key of Object.keys(SLIDERS)) {
     const input = $('#in-' + key), d = SLIDERS[key];
     const at = d.values ? stopOf(d, S[key]) : S[key];
@@ -1179,8 +1202,8 @@ function sync() {
   $('#source-hint').textContent = image ? 'Más cubos en las zonas oscuras, menos en las claras.' : 'También podés arrastrar o pegar una imagen: más cubos en lo oscuro, menos en lo claro.';
   $('#cm-image').hidden = !image;
   $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = mono;
-  $('#inks').hidden = S.colorMode !== 'single'; $('#sl-strokeW').hidden = !S.stroke;
-  document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase())); $('#palette-box').hidden = S.colorMode !== 'random';
+  $('#inks').hidden = S.colorSrc !== 'single'; $('#how-row').hidden = S.colorSrc === 'single'; $('#colorHow').value = S.colorHow; $('#onlypal-row').hidden = S.colorSrc !== 'pal'; $('#pastel-row').hidden = S.colorSrc !== 'image'; $('#palsets').hidden = S.colorSrc === 'image'; $('#sl-strokeW').hidden = !S.stroke;
+  document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase())); $('#palette-box').hidden = S.colorSrc !== 'pal';
   $('#blModel').value = S.blModel; $('#sl-blFlorets').hidden = S.blModel !== 'hortensia';
   updateBg(S.bgFlip);
   const b1 = S.dir === '1b';
@@ -1655,7 +1678,7 @@ if (PerceptaHandoff.pending() === 'model-image') PerceptaHandoff.take('model-ima
     URL.revokeObjectURL(url); loadImage(el);
     const { gw, gh } = img, D = new Float32Array(gw * gh);
     for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) D[j * gw + i] = h.depth.data[Math.min(h.depth.h - 1, Math.floor((j + .5) / gh * h.depth.h)) * h.depth.w + Math.min(h.depth.w - 1, Math.floor((i + .5) / gw * h.depth.w))];
-    img.depth = D; depthId++; S.source = 'image'; if (h.colored) S.colorMode = 'image'; sync(); toast(`${h.name || 'Modelo'} desde Pixel Model`);
+    img.depth = D; depthId++; S.source = 'image'; if (h.colored) S.colorSrc = 'image'; sync(); toast(`${h.name || 'Modelo'} desde Pixel Model`);
     history.replaceState(null, '', location.pathname);
   };
   el.src = url;

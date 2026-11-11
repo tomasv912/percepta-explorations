@@ -512,3 +512,21 @@ window.PerceptaStroke = {
   // SVG attributes for a group of outlines
   attrs: (c, w) => `fill="none" stroke="${c}" stroke-width="${Math.round(w * 1000) / 1000}"`,
 };
+
+// A photo's colours brought to the palette's way (its violets: OKLCH lightness ~.6–.93, soft chroma): the same hue,
+// the light squeezed into the palette's range (its order kept) and the saturation softened. rgb int → rgb int.
+window.PerceptaPastel = (() => {
+  const memo = new Map();
+  const s2l = c => { c /= 255; return c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4; };
+  const l2s = c => { c = Math.min(1, Math.max(0, c)); return Math.round(255 * (c <= .0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - .055)); };
+  return c => {
+    let v = memo.get(c); if (v !== undefined) return v;
+    const r = s2l(c >> 16 & 255), g = s2l(c >> 8 & 255), b = s2l(c & 255);
+    const l = Math.cbrt(.4122214708 * r + .5363325363 * g + .0514459929 * b), m = Math.cbrt(.2119034982 * r + .6806995451 * g + .1073969566 * b), s = Math.cbrt(.0883024619 * r + .2817188376 * g + .6299787005 * b);
+    const L = .2104542553 * l + .7936177850 * m - .0040720468 * s, A = 1.9779984951 * l - 2.4285922050 * m + .4505937099 * s, B = .0259040371 * l + .7827717662 * m - .8086757660 * s;
+    const C = Math.hypot(A, B), k = C > 1e-6 ? Math.min(.105, C * .75) / C : 0, L2 = .55 + .38 * L, a = A * k, bb = B * k;
+    const l2 = (L2 + .3963377774 * a + .2158037573 * bb) ** 3, m2 = (L2 - .1055613458 * a - .0638541728 * bb) ** 3, s3 = (L2 - .0894841775 * a - 1.2914855480 * bb) ** 3;
+    v = l2s(4.0767416621 * l2 - 3.3077115913 * m2 + .2309699292 * s3) << 16 | l2s(-1.2684380046 * l2 + 2.6097574011 * m2 - .3413193965 * s3) << 8 | l2s(-.0041960863 * l2 - .7034186147 * m2 + 1.7076147010 * s3);
+    if (memo.size > 40000) memo.clear(); memo.set(c, v); return v;
+  };
+})();
