@@ -259,6 +259,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div class="seg" data-key="colorMode" aria-label="Color de los cubos">
           <button data-v="single">Un color</button><button data-v="random">Al azar</button><button data-v="image" id="cm-image" title="Cada partícula con el color original de la imagen bajo ella">Original</button>
         </div>
+        <label class="check" title="Cada partícula dibujada con su contorno en vez de rellena; la línea queda adentro, así no cambia el tamaño"><input type="checkbox" data-check="stroke"> Contorno (sin relleno)</label>
+        <div id="sl-strokeW"></div>
         <div class="inks" id="inks" aria-label="Color"></div>
         <div id="palsets"></div>
         <div id="palette-box">
@@ -325,6 +327,7 @@ const BACKGROUNDS = window.PERCEPTA_BACKGROUNDS;
 const WHITE = '#F6F6F6', INK = '#272727';
 const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 const DEFAULTS = {
+  stroke: false, strokeW: .5,
   seed: 1, aspect: '3:2', source: 'waves',
   layers: 2, amp: .55, freq: 1.1, complexity: 3, persp: .55, thickness: .25, fade: .5, waveCenter: true,
   rfChannels: 3, rfFocus: .42, rfChaos: .7, rfSpread: .6, rfAmp: .5, rfFreq: 1, rfOrder: .7, rfWaist: 0,
@@ -957,21 +960,31 @@ function eachShape(st, fn, lev = null, grow = 0) {
     fn(color, fade, idx.map(i => { const h = (SNAP && SNAP.ord[i] ? st.size : gen.size[i]) / 2 + grow, x = SNAP ? SNAP.x[i] : X[i], y = SNAP ? SNAP.y[i] : Y[i]; return [x - h, y - h, x + h, y - h, x + h, y + h, x - h, y + h]; }), true);
   }
 }
+// Contorno: a cube's square shrunk about its middle so the line's outer edge stays on the cube's edge (null: fill it).
+function inset(p, w) {
+  const h = (p[2] - p[0]) / 2, hh = PerceptaStroke.half(h, w); if (!hh) return null;
+  const cx = p[0] + h, cy = p[1] + h, f = hh / h; return p.map((v, i) => i % 2 ? cy + (v - cy) * f : cx + (v - cx) * f);
+}
 // Filled in small batches: one huge path of overlapping polygons rasterizes far slower than many small ones.
 const BATCH = 256;
 function fill(ctx, st, lev, grow) {
   // Círculos: each cube drawn as the circle inside its square (trails stay bands).
   eachShape(st, (color, alpha, polys, cube) => {
     ctx.globalAlpha = alpha; ctx.fillStyle = color;
-    const round = cube && (st.circle || linesOn(st)) && !(st.dir === '1b' && st.square);
+    const round = cube && (st.circle || linesOn(st)) && !(st.dir === '1b' && st.square), line = st.stroke;
+    if (line) { ctx.strokeStyle = color; ctx.lineWidth = st.strokeW; ctx.lineJoin = 'miter'; }
+    const add = (g, p) => {
+      if (round) { const rr = (p[2] - p[0]) / 2, cx = p[0] + rr, cy = p[1] + rr; g.moveTo(cx + rr, cy); g.arc(cx, cy, rr, 0, Math.PI * 2); return; }
+      g.moveTo(p[0], p[1]); g.lineTo(p[2], p[3]); g.lineTo(p[4], p[5]); g.lineTo(p[6], p[7]); g.closePath();
+    };
     for (let k = 0; k < polys.length; k += BATCH) {
-      ctx.beginPath();
+      ctx.beginPath(); const solid = line ? new Path2D() : null;
       for (let j = k; j < Math.min(polys.length, k + BATCH); j++) {
-        const p = polys[j];
-        if (round) { const rr = (p[2] - p[0]) / 2, cx = p[0] + rr, cy = p[1] + rr; ctx.moveTo(cx + rr, cy); ctx.arc(cx, cy, rr, 0, Math.PI * 2); continue; }
-        ctx.moveTo(p[0], p[1]); ctx.lineTo(p[2], p[3]); ctx.lineTo(p[4], p[5]); ctx.lineTo(p[6], p[7]); ctx.closePath();
+        // Contorno: the cube's outline, inset by half the line (a cube too small for it stays filled)
+        const p = line && cube ? inset(polys[j], st.strokeW) : polys[j];
+        if (p) add(ctx, p); else add(solid, polys[j]);
       }
-      ctx.fill();
+      if (line) { ctx.stroke(); ctx.fill(solid); } else ctx.fill();
     }
   }, lev, grow);
   ctx.globalAlpha = 1;
@@ -1005,8 +1018,13 @@ function toSvg(st) {
   out.push(`<g transform="matrix(${r(c * 1000) / 1000} 0 0 ${r(c * 1000) / 1000} ${r(-v.x * c)} ${r(-v.y * c)})">`);
   const paths = (lev, grow) => eachShape(st, (color, alpha, polys, cube) => {
     const round = cube && (st.circle || linesOn(st)) && !(st.dir === '1b' && st.square), circ = p => { const rr = (p[2] - p[0]) / 2; return `M${r(p[0])} ${r(p[1] + rr)}a${r(rr)} ${r(rr)} 0 1 0 ${r(rr * 2)} 0a${r(rr)} ${r(rr)} 0 1 0 ${r(-rr * 2)} 0Z`; };
-    const d = polys.filter(inView).map(q => q.map((v, k) => v + (k % 2 ? panY : panX))).map(p => round ? circ(p) : `M${r(p[0])} ${r(p[1])}L${r(p[2])} ${r(p[3])}L${r(p[4])} ${r(p[5])}L${r(p[6])} ${r(p[7])}Z`).join('');
-    if (d) out.push(`<path fill="${color}"${alpha < 1 ? ` fill-opacity="${Math.round(alpha * 1000) / 1000}"` : ''} d="${d}"/>`);
+    const shape = p => round ? circ(p) : `M${r(p[0])} ${r(p[1])}L${r(p[2])} ${r(p[3])}L${r(p[4])} ${r(p[5])}L${r(p[6])} ${r(p[7])}Z`;
+    const vis = polys.filter(inView).map(q => q.map((v, k) => v + (k % 2 ? panY : panX))), op = alpha < 1 ? Math.round(alpha * 1000) / 1000 : 0;
+    // Contorno: outlines in one path, cubes too small for their line filled in another
+    const lines = st.stroke ? vis.map(p => cube ? inset(p, st.strokeW) : p) : [];
+    const d = vis.filter((p, i) => !st.stroke || !lines[i]).map(shape).join(''), dl = lines.filter(Boolean).map(shape).join('');
+    if (d) out.push(`<path fill="${color}"${op ? ` fill-opacity="${op}"` : ''} d="${d}"/>`);
+    if (dl) out.push(`<path ${PerceptaStroke.attrs(color, st.strokeW)}${op ? ` stroke-opacity="${op}"` : ''} d="${dl}"/>`);
   }, lev, grow);
   if (!D) paths();
   else for (const k of D.order) {
@@ -1034,6 +1052,7 @@ function steps(first, ...runs) {
 }
 const stopOf = (d, x) => d.values.reduce((b, v, i) => Math.abs(v - x) < Math.abs(d.values[b] - x) ? i : b, 0);
 const SLIDERS = {
+  strokeW: { label: 'Grosor del contorno', min: .1, max: 3, step: .05, fmt: v => v.toFixed(2) + ' px' },
   layers: { label: 'Capas', min: 1, max: 4, step: 1, fmt: String },
   amp: { label: 'Altura de las olas', min: 0, max: 1.5, step: .01, fmt: pct, emph: true },
   freq: { label: 'Frecuencia', min: .3, max: 3, step: .01, fmt: v => v.toFixed(2) },
@@ -1160,7 +1179,7 @@ function sync() {
   $('#source-hint').textContent = image ? 'Más cubos en las zonas oscuras, menos en las claras.' : 'También podés arrastrar o pegar una imagen: más cubos en lo oscuro, menos en lo claro.';
   $('#cm-image').hidden = !image;
   $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = mono;
-  $('#inks').hidden = S.colorMode !== 'single';
+  $('#inks').hidden = S.colorMode !== 'single'; $('#sl-strokeW').hidden = !S.stroke;
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase())); $('#palette-box').hidden = S.colorMode !== 'random';
   $('#blModel').value = S.blModel; $('#sl-blFlorets').hidden = S.blModel !== 'hortensia';
   updateBg(S.bgFlip);

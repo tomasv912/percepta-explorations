@@ -503,3 +503,12 @@
     }, () => clickLink.call(this));
   };
 })();
+
+// Contorno: a pixel drawn as its outline instead of filled. The line sits inside the pixel (its outer edge on the
+// pixel's edge), so the pixel keeps its size; one too small for its line is simply filled.
+// half(h, w): the half-size to draw the line on, or 0 when the pixel should be filled instead.
+window.PerceptaStroke = {
+  half: (h, w) => { const hh = h - w / 2; return hh > .05 ? hh : 0; },
+  // SVG attributes for a group of outlines
+  attrs: (c, w) => `fill="none" stroke="${c}" stroke-width="${Math.round(w * 1000) / 1000}"`,
+};

@@ -276,6 +276,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div class="seg" data-key="colorMode" aria-label="Color">
           <button data-v="ink">Un color</button><button data-v="tone">Por tono</button><button data-v="random">Al azar</button><button data-v="orig" title="El color original del modelo (sus materiales), uno por partícula">Original</button>
         </div>
+        <label class="check" title="Cada partícula dibujada con su contorno en vez de rellena; la línea queda adentro, así no cambia el tamaño"><input type="checkbox" data-check="stroke"> Contorno (sin relleno)</label>
+        <div id="sl-strokeW"></div>
         <div id="palsets"></div>
         <div class="levels" id="inks" aria-label="Color"></div>
         <div class="row" style="grid-template-columns:56px 1fr auto">
@@ -330,7 +332,7 @@ const DEFAULTS = {
   count: 40000, size: 3, contrast: 1, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
-  colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false,
+  colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false, stroke: false, strokeW: .5,
   mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
@@ -741,14 +743,20 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
   for (const p of list) { const c = colorOf(p); let l = groups.get(c); if (!l) groups.set(c, l = []); l.push(p); }
   for (const [c, l] of groups) {
     ctx.fillStyle = c; ctx.beginPath();
+    // Contorno: each pixel's outline, inside the pixel; one too small for its line stays filled
+    const line = S.stroke, solid = line ? new Path2D() : null;
+    if (line) { ctx.strokeStyle = c; ctx.lineWidth = S.strokeW; ctx.lineJoin = 'miter'; }
     for (const p of l) {
       // Reveal: a pixel growing in is drawn at its share of the size (p.sc), from its middle
-      const s = sizeOf(p), z = p.sc === undefined ? s : s * p.sc; if (z <= .05) continue;
+      const s = sizeOf(p), z0 = p.sc === undefined ? s : s * p.sc; if (z0 <= .05) continue;
+      const hh = line ? PerceptaStroke.half(z0 / 2, S.strokeW) : 0, g = line && hh ? ctx : line ? solid : ctx, z = line && hh ? hh * 2 : z0;
+      const cx = p.x + (p.dx || 0) - ox, cy = p.y + (p.dy || 0) - oy;
       // Líneas horizontales: circles
-      if (roundNow()) { const cx = (p.x + (p.dx || 0) - ox), cy = (p.y + (p.dy || 0) - oy); ctx.moveTo(cx + z / 2, cy); ctx.arc(cx, cy, z / 2, 0, Math.PI * 2); continue; }
-      ctx.rect(Math.round((p.x + (p.dx || 0) - z / 2 - ox) * q) / q, Math.round((p.y + (p.dy || 0) - z / 2 - oy) * q) / q, z, z);
+      if (roundNow()) { g.moveTo(cx + z / 2, cy); g.arc(cx, cy, z / 2, 0, Math.PI * 2); continue; }
+      if (line && hh) g.rect(cx - z / 2, cy - z / 2, z, z);
+      else g.rect(Math.round((cx - z / 2) * q) / q, Math.round((cy - z / 2) * q) / q, z, z);
     }
-    ctx.fill();
+    if (line) { ctx.stroke(); ctx.fill(solid); } else ctx.fill();
   }
 }
 function bounds(list) {
@@ -764,6 +772,7 @@ const cv = $('#cv'), frame = $('#frame'), stage = $('#stage');
 let raf = 0, fastNext = false;
 const pct = v => Math.round(v * 100) + '%', deg = v => Math.round(v) + '°';
 const SLIDERS = {
+  strokeW: { label: 'Grosor del contorno', min: .1, max: 3, step: .05, fmt: v => v.toFixed(2) + ' px' },
   yaw: { label: 'Giro', min: -180, max: 180, step: 1, fmt: deg },
   pitch: { label: 'Inclinación', min: -89, max: 89, step: 1, fmt: deg },
   zoom: { label: 'Escala', min: .4, max: 2.5, step: .01, fmt: v => '×' + v.toFixed(2) },
@@ -848,7 +857,7 @@ function sync(fast) {
   document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
-  $('#inks').hidden = S.colorMode !== 'ink'; markPalette();
+  $('#inks').hidden = S.colorMode !== 'ink'; $('#sl-strokeW').hidden = !S.stroke; markPalette();
   const gridOnly = S.snap && !S.blend && !S.lines;
   $('#sl-count').hidden = gridOnly; $('#sl-size').hidden = false; $('#sl-cell').hidden = true; $('#sl-cellGap').hidden = !gridded(); if (typeof syncModeBar === 'function') syncModeBar();
   $('#lines-row').hidden = true; $('#snap-row').hidden = true;
@@ -1384,8 +1393,13 @@ $('#svg').addEventListener('click', () => {
   if (S.bgExport) out.push(`<rect width="${w}" height="${h}" fill="${S.bg}"/>`);
   const groups = new Map();
   const round = roundNow();
-  for (const p of gridded() ? snapList(exportList()) : exportList()) { const z = sizeOf(p), zz = p.sc === undefined ? z : z * p.sc, ss = n(zz); if (zz <= .05) continue; const c = colorOf(p), X0 = p.x + (p.dx || 0) - b.x0, Y0 = p.y + (p.dy || 0) - b.y0; groups.set(c, (groups.get(c) || '') + (round ? `M${n(X0 - zz / 2)} ${n(Y0)}a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${ss} 0a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${-ss} 0Z` : `M${n(X0 - zz / 2)} ${n(Y0 - zz / 2)}h${ss}v${ss}h${-ss}z`)); }
-  for (const [c, d] of groups) out.push(`<path fill="${c}" d="${d}"/>`);
+  // Contorno: outlines grouped apart (key 'line|colour') from the pixels too small for their line
+  for (const p of gridded() ? snapList(exportList()) : exportList()) {
+    const z = sizeOf(p), z0 = p.sc === undefined ? z : z * p.sc; if (z0 <= .05) continue;
+    const hh = S.stroke ? PerceptaStroke.half(z0 / 2, S.strokeW) : 0, zz = hh ? hh * 2 : z0, ss = n(zz), c = (hh ? 'line|' : '') + colorOf(p), X0 = p.x + (p.dx || 0) - b.x0, Y0 = p.y + (p.dy || 0) - b.y0;
+    groups.set(c, (groups.get(c) || '') + (round ? `M${n(X0 - zz / 2)} ${n(Y0)}a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${ss} 0a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${-ss} 0Z` : `M${n(X0 - zz / 2)} ${n(Y0 - zz / 2)}h${ss}v${ss}h${-ss}z`));
+  }
+  for (const [c, d] of groups) out.push(c.startsWith('line|') ? `<path ${PerceptaStroke.attrs(c.slice(5), S.strokeW * k)} d="${d}"/>` : `<path fill="${c}" d="${d}"/>`);
   out.push('</svg>');
   download(`pixel-model-${S.seed}${S.expScale === '1' ? '' : `@${S.expScale}x`}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));
 });
