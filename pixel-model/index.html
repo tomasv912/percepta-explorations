@@ -123,6 +123,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 #building-controls .seg { flex-wrap: wrap; }
 #building-controls .seg button, #shape-controls .seg button { flex: 1 0 30%; }
 #shape-controls .seg { flex-wrap: wrap; }
+#bonsai-controls { display: flex; flex-direction: column; gap: 10px; }
 #block-controls { display: flex; flex-direction: column; gap: 10px; }
 .crop-hud { position: absolute; bottom: 72px; left: 14px; flex-direction: column; align-items: stretch; display: flex; gap: 4px; align-items: center; white-space: nowrap; z-index: 4; padding: 4px; border-radius: 10px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); font-size: 12px; color: var(--text-2); }
 .crop-hud b { color: var(--text); font-weight: 500; margin: 4px 6px; }
@@ -204,6 +205,10 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section>
         <h2>Modelo</h2>
         <div class="presets" id="presets" aria-label="Modelos"></div>
+        <div id="bonsai-controls">
+          <div id="sl-bzFlowers"></div>
+          <p class="hint" id="bonsai-hint">Cada semilla (R) arma otro bonsái. Sus colores (tronco, hojas y flores) se ven con Color → Original.</p>
+        </div>
         <div id="block-controls">
           <div class="seg" data-key="mzCount" aria-label="Cantidad de manzanas"><button data-v="1">1</button><button data-v="2">2</button><button data-v="4">4</button><button data-v="6">6</button><button data-v="8">8</button></div>
           <div id="sl-mzHeight"></div>
@@ -333,7 +338,7 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false, stroke: false, strokeW: .5,
-  mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
+  mzCount: '1', mzHeight: 1.5, bzFlowers: .5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -343,6 +348,7 @@ const S = structuredClone(DEFAULTS);
 const roundNow = () => S.dir === '1b' ? S.lines && !S.snap && !S.square : !!S.round1a;
 const apartD = (dx, dy) => S.square ? Math.max(Math.abs(dx), Math.abs(dy)) : Math.hypot(dx, dy);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const mix = (a, b, t) => a + (b - a) * t;
 function rng(seed) {
   let a = seed >>> 0 || 1;
   return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
@@ -352,7 +358,7 @@ function rng(seed) {
 // Built-in models, each with variations from the seed (R): a bonsai and a skyscraper (scans, simplified, in models/),
 // and Building, generated here and shaped by its own settings; or an uploaded file. Positions are centred and scaled
 // to fit a unit sphere.
-const PRESETS = [['bonsai', 'Bonsai'], ['rascacielos', 'Rascacielos'], ['building', 'Building'], ['blocks', 'Manzanas'], ['shapes', 'Formas']];
+const PRESETS = [['bonsai', 'Bonsai'], ['pbonsai', 'Bonsai procedural'], ['rascacielos', 'Rascacielos'], ['building', 'Building'], ['blocks', 'Manzanas'], ['shapes', 'Formas']];
 let model = null, modelName = '', preset = 'bonsai', presetSeed = -1, loadingPreset = null;
 // An indexed mesh into 18-float triangles, with smooth normals (each vertex the area-weighted sum of its faces).
 function indexedTris(P, I) {
@@ -565,17 +571,151 @@ function shapeMesh(kind, seed) {
   return { P: Float32Array.from(P), I: Uint32Array.from(I) };
 }
 // What the current preset is made from: its seed, and Building's settings or the shape.
-const presetSig = () => preset + ':' + (preset === 'blocks' ? [S.seed, S.mzCount, S.mzHeight].join() : preset === 'shapes' ? S.shape + ':' + S.seed : preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
+// ---------- Bonsai colours and the procedural bonsai ----------
+// 3D value noise (fractal), from a seed: smooth in space, so neighbouring triangles get neighbouring tones.
+function noise3(seed) {
+  const h = (x, y, z) => { let n = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 1442695041) ^ Math.imul(seed, 1274126177); n = Math.imul(n ^ n >>> 13, 1103515245); return ((n ^ n >>> 16) >>> 0) / 4294967296; };
+  const s = t => t * t * (3 - 2 * t);
+  const v = (x, y, z) => {
+    const X = Math.floor(x), Y = Math.floor(y), Z = Math.floor(z), fx = s(x - X), fy = s(y - Y), fz = s(z - Z);
+    return mix(mix(mix(h(X, Y, Z), h(X + 1, Y, Z), fx), mix(h(X, Y + 1, Z), h(X + 1, Y + 1, Z), fx), fy), mix(mix(h(X, Y, Z + 1), h(X + 1, Y, Z + 1), fx), mix(h(X, Y + 1, Z + 1), h(X + 1, Y + 1, Z + 1), fx), fy), fz);
+  };
+  return (x, y, z, oct = 3) => { let a = 0, w = .5, n = 0; for (let o = 0; o < oct; o++) { a += w * v(x, y, z); n += w; x *= 2.03; y *= 2.03; z *= 2.03; w *= .5; } return a / n; };
+}
+// Tones from dark to light: bark, leaves, blossom.
+const BARK = [0x3B271B, 0x573A28, 0x75533A, 0x94714F], LEAF = [0x264A27, 0x3A6634, 0x587F40, 0x86A85A], BLOOM = [0x5B3C93, 0x7F5BBF, 0xA486DC, 0xC9B4F2];
+const tone = (stops, t) => {
+  t = clamp(t) * (stops.length - 1); const i = Math.min(stops.length - 2, Math.floor(t)), f = t - i, a = stops[i], b = stops[i + 1];
+  return [16, 8, 0].reduce((c, sh) => c | Math.round(mix(a >> sh & 255, b >> sh & 255, f)) << sh, 0);
+};
+// A colour per triangle: wood brown in streaks along its length, leaves in patches of greens, and the blossom
+// (Flores: its share of the leaves) in clusters, more of it on top and outside, violet.
+function paintBonsai(P, I, isWood, seed, flowers) {
+  const nt = I.length / 3, n1 = noise3(seed * 31 + 1), n2 = noise3(seed * 31 + 2), n3 = noise3(seed * 31 + 3), r = rng(seed * 977 + 5), col = new Uint32Array(nt);
+  const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
+  for (let i = 0; i < P.length; i += 3) for (let c = 0; c < 3; c++) { mn[c] = Math.min(mn[c], P[i + c]); mx[c] = Math.max(mx[c], P[i + c]); }
+  const k = 1 / Math.max(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]), cx = (mn[0] + mx[0]) / 2, cz = (mn[2] + mx[2]) / 2, C = new Float32Array(nt * 3), leaves = [];
+  for (let t = 0; t < nt; t++) for (let c = 0; c < 3; c++) C[t * 3 + c] = (P[I[t * 3] * 3 + c] + P[I[t * 3 + 1] * 3 + c] + P[I[t * 3 + 2] * 3 + c]) / 3 * k;
+  let y0 = 1e9, y1 = -1e9;
+  for (let t = 0; t < nt; t++) if (!isWood(t)) { y0 = Math.min(y0, C[t * 3 + 1]); y1 = Math.max(y1, C[t * 3 + 1]); }
+  for (let t = 0; t < nt; t++) {
+    const x = C[t * 3], y = C[t * 3 + 1], z = C[t * 3 + 2];
+    if (isWood(t)) { col[t] = tone(BARK, .15 + .75 * n1(x * 28, y * 5, z * 28) + (r() - .5) * .3); continue; }
+    col[t] = tone(LEAF, .1 + .8 * n2(x * 9, y * 9, z * 9) + (r() - .5) * .35);
+    // bloom score: clustered noise, raised on top and towards the outside of the crown
+    const up = (y - y0) / ((y1 - y0) || 1), out = Math.hypot(x - cx * k, z - cz * k) * 2;
+    leaves.push([t, n3(x * 16, y * 16, z * 16, 2) + .22 * up + .12 * out]);
+  }
+  const share = clamp(flowers) * .5;
+  if (share > 0 && leaves.length) {
+    const cut = leaves.map(l => l[1]).sort((a, b) => b - a)[Math.floor(share * (leaves.length - 1))];
+    for (const [t, sc] of leaves) if (sc >= cut) { const x = C[t * 3], y = C[t * 3 + 1], z = C[t * 3 + 2]; col[t] = tone(BLOOM, .15 + .7 * n1(x * 40 + 9, y * 40, z * 40) + (r() - .5) * .45); }
+  }
+  return col;
+}
+// The scanned bonsai's own materials say which triangles are wood (its first one) and which leaves.
+const paintCache = {};
+function bonsaiCol(base) {
+  const sig = S.seed + ':' + S.bzFlowers;
+  if (paintCache.sig !== sig) { const wood = base.col[0]; paintCache.sig = sig; paintCache.col = paintBonsai(base.P, base.I, t => base.col[t] === wood, S.seed, S.bzFlowers); }
+  return paintCache.col;
+}
+let icoBase = null;
+function icoUnit() {
+  if (icoBase) return icoBase;
+  const t = (1 + Math.sqrt(5)) / 2, nrm = v => { const l = Math.hypot(...v); return v.map(c => c / l); };
+  let V = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]].map(nrm);
+  let F = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
+  for (let s = 0; s < 3; s++) {
+    const mid = new Map(), m = (a, b) => { const key = Math.min(a, b) + ':' + Math.max(a, b); if (!mid.has(key)) { V.push(nrm(V[a].map((c, i) => (c + V[b][i]) / 2))); mid.set(key, V.length - 1); } return mid.get(key); };
+    F = F.flatMap(([a, b, c]) => { const ab = m(a, b), bc = m(b, c), ca = m(c, a); return [[a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]]; });
+  }
+  return icoBase = { V, F };
+}
+// Bonsai procedural: a trunk that winds up from a flared, rooted base and leans, branches round it in turn
+// (shorter towards the top, drooping a little, some with twigs), and at every tip a pad of foliage: a few lumpy,
+// flat-bottomed clouds. Each seed another tree. Wood and leaves are told apart for paintBonsai.
+function bonsaiGen(seed) {
+  const r = rng(seed * 4241 + 7), nz = noise3(seed * 17 + 11), T = Math.PI * 2, P = [], I = [], wood = [];
+  const vert = (x, y, z) => (P.push(x, y, z), P.length / 3 - 1);
+  const add = (a, b) => a.map((v, i) => v + b[i]), sub = (a, b) => a.map((v, i) => v - b[i]), mul = (a, s) => a.map(v => v * s);
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const nrm = a => mul(a, 1 / (Math.hypot(...a) || 1));
+  // a tube along pts, radius rad(i, angle), rings carried along the path; closed at its end
+  const tube = (pts, rad, sides) => {
+    const rings = []; let N0 = null;
+    for (let i = 0; i < pts.length; i++) {
+      const Tg = nrm(sub(pts[Math.min(pts.length - 1, i + 1)], pts[Math.max(0, i - 1)]));
+      const N = N0 ? nrm(sub(N0, mul(Tg, dot(N0, Tg)))) : nrm(cross(Tg, Math.abs(Tg[1]) < .9 ? [0, 1, 0] : [1, 0, 0])), B = cross(Tg, N); N0 = N;
+      rings.push(P.length / 3);
+      for (let k = 0; k < sides; k++) { const th = k / sides * T, rr = rad(i, th), c = Math.cos(th) * rr, s = Math.sin(th) * rr; vert(pts[i][0] + N[0] * c + B[0] * s, pts[i][1] + N[1] * c + B[1] * s, pts[i][2] + N[2] * c + B[2] * s); }
+    }
+    for (let i = 0; i + 1 < pts.length; i++) for (let k = 0; k < sides; k++) {
+      const a = rings[i] + k, b = rings[i] + (k + 1) % sides, c = rings[i + 1] + (k + 1) % sides, d = rings[i + 1] + k;
+      I.push(a, b, c, a, c, d); wood.push(1, 1);
+    }
+    const tip = vert(...pts[pts.length - 1]), L = rings[rings.length - 1];
+    for (let k = 0; k < sides; k++) { I.push(L + k, L + (k + 1) % sides, tip); wood.push(1); }
+  };
+  // a pad of foliage: 2–4 clouds about c, size s
+  const { V, F } = icoUnit();
+  const pad = (c, s) => {
+    const nb = 2 + Math.floor(r() * 3);
+    for (let b = 0; b < nb; b++) {
+      const o = b ? [(r() - .5) * s * 1.2, (r() - .35) * s * .25, (r() - .5) * s * 1.2] : [0, 0, 0], rx = s * (.55 + r() * .3), ry = rx * (.42 + r() * .18), rz = rx * (.75 + r() * .35), yaw = r() * T, cy = Math.cos(yaw), sy = Math.sin(yaw), base = P.length / 3;
+      for (const v of V) {
+        const lx = v[0] * rx, ly = v[1] * ry * (v[1] < 0 ? .5 : 1), lz = v[2] * rz, x = c[0] + o[0] + lx * cy - lz * sy, y = c[1] + o[1] + ly, z = c[2] + o[2] + lx * sy + lz * cy;
+        const f = 1 + .5 * (nz(x * 14, y * 14, z * 14, 2) - .5);
+        vert(c[0] + o[0] + (x - c[0] - o[0]) * f, c[1] + o[1] + (y - c[1] - o[1]) * f, c[2] + o[2] + (z - c[2] - o[2]) * f);
+      }
+      for (const [a, b2, c2] of F) { I.push(base + a, base + b2, base + c2); wood.push(0); }
+    }
+  };
+  // the trunk
+  const H = .85 + r() * .4, lean = (r() - .5) * .8, la = r() * T, dx = Math.cos(la), dz = Math.sin(la), amp = .05 + r() * .13, turns = .8 + r() * 1.3, ph = r() * T, ph2 = r() * T;
+  const r0 = .07 + r() * .05, roots = 3 + Math.floor(r() * 3), rph = r() * T, NS = 22, trunk = [];
+  const tR = h => r0 * (1 - .8 * h) + r0 * .9 * Math.exp(-h * 14);
+  for (let i = 0; i <= NS; i++) {
+    const h = i / NS, ramp = Math.min(1, h * 3), w = amp * Math.sin(h * turns * T + ph) * ramp, w2 = amp * .6 * Math.sin(h * turns * T * .7 + ph2) * ramp, along = Math.sin(lean) * h * H + w2;
+    trunk.push([along * dx - w * dz, h * H * Math.cos(lean * .7), along * dz + w * dx]);
+  }
+  tube(trunk, (i, th) => { const h = i / NS; return tR(h) * (1 + .5 * Math.exp(-h * 9) * Math.max(0, Math.sin(roots * th + rph)) ** 2) * (1 + .25 * (nz(Math.cos(th) * 3, h * 8, Math.sin(th) * 3) - .5)); }, 14);
+  const at = h => { const f = h * NS, i = Math.min(NS - 1, Math.floor(f)), u = f - i; return add(mul(trunk[i], 1 - u), mul(trunk[i + 1], u)); };
+  // a limb from p0 along direction d (azimuth a), length len, radius ra → its tip, which gets a pad
+  const limb = (p0, a, rise, len, ra, depth) => {
+    const M = 7, pts = [], bend = (r() - .5) * .5, droop = .15 + r() * .25;
+    for (let j = 0; j <= M; j++) {
+      const t = j / M, aa = a + bend * t;
+      pts.push([p0[0] + Math.cos(aa) * len * t, p0[1] + (rise * t - droop * t * t) * len, p0[2] + Math.sin(aa) * len * t]);
+    }
+    tube(pts, i => Math.max(.006, ra * (1 - .75 * i / M)), depth ? 6 : 8);
+    if (!depth) for (const t of [.5, .78]) if (r() < .65) {
+      const j = Math.round(t * M), side = r() < .5 ? -1 : 1;
+      limb(pts[j], a + side * (.6 + r() * .5), .3 + r() * .4, len * (.35 + r() * .2), ra * (1 - .75 * t) * .7, 1);
+    }
+    pad(add(pts[M], [0, .02, 0]), .07 + len * (depth ? .45 : .32) + r() * .04);
+  };
+  const nb = 5 + Math.floor(r() * 5), a0 = r() * T;
+  for (let k = 0; k < nb; k++) {
+    const h = Math.min(.93, .3 + .63 * (k + r() * .5) / nb), a = a0 + k * 2.4 + (r() - .5) * .6;
+    limb(at(h), a, .2 + r() * .35, (.28 + r() * .25) * H * (1.1 - .6 * (h - .3) / .63), tR(h) * .6, 0);
+  }
+  // the apex: a bigger crown on the top of the trunk
+  pad(add(trunk[NS], [0, .03, 0]), .15 + r() * .08);
+  return { P: Float32Array.from(P), I: Uint32Array.from(I), wood };
+}
+const presetSig = () => preset + ':' + (preset === 'blocks' ? [S.seed, S.mzCount, S.mzHeight].join() : preset === 'shapes' ? S.shape + ':' + S.seed : preset === 'bonsai' || preset === 'pbonsai' ? [S.seed, S.bzFlowers].join() : preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
 function loadPreset() {
   const sig = presetSig(), which = preset;
   if (which === 'blocks') { const m = blocks(S.seed); setModelTris(indexedTris(m.P, m.I), 'Manzanas'); presetSeed = sig; return; }
   if (which === 'shapes') { const m = shapeMesh(S.shape, S.seed); setModelTris(indexedTris(m.P, m.I), SHAPES.find(x => x[0] === S.shape)[1]); presetSeed = sig; return; }
   if (which === 'building') { const m = building(S.seed); setModelTris(indexedTris(m.P, m.I), 'Building'); presetSeed = sig; return; }
+  if (which === 'pbonsai') { const m = bonsaiGen(S.seed); setModelTris(indexedTris(m.P, m.I), 'Bonsai procedural', paintBonsai(m.P, m.I, t => m.wood[t], S.seed, S.bzFlowers)); presetSeed = sig; return; }
   if (loadingPreset) return;
   loadingPreset = (which === 'bonsai' ? bonsaiMesh() : skyMesh()).then(base => {
     loadingPreset = null;
     if (preset !== which || modelName.includes('.')) return loadPreset();
-    setModelTris(indexedTris(variant(base, S.seed, which === 'bonsai' ? BONSAI_VAR : SKY_VAR), base.I), which === 'bonsai' ? 'Bonsai' : 'Rascacielos', base.col || null); presetSeed = presetSig(); key = ''; sync();
+    setModelTris(indexedTris(variant(base, S.seed, which === 'bonsai' ? BONSAI_VAR : SKY_VAR), base.I), which === 'bonsai' ? 'Bonsai' : 'Rascacielos', which === 'bonsai' ? bonsaiCol(base) : base.col || null); presetSeed = presetSig(); key = ''; sync();
   }, () => { loadingPreset = null; toast('No se pudo cargar el modelo.'); });
 }
 // Triangles with normals (18 per triangle): centred and scaled like setModel, normals kept.
@@ -772,6 +912,7 @@ const cv = $('#cv'), frame = $('#frame'), stage = $('#stage');
 let raf = 0, fastNext = false;
 const pct = v => Math.round(v * 100) + '%', deg = v => Math.round(v) + '°';
 const SLIDERS = {
+  bzFlowers: { label: 'Flores', min: 0, max: 1, step: .01, fmt: v => v ? Math.round(v * 100) + '%' : 'sin flores' },
   strokeW: { label: 'Grosor del contorno', min: .1, max: 3, step: .05, fmt: v => v.toFixed(2) + ' px' },
   yaw: { label: 'Giro', min: -180, max: 180, step: 1, fmt: deg },
   pitch: { label: 'Inclinación', min: -89, max: 89, step: 1, fmt: deg },
@@ -870,6 +1011,8 @@ function sync(fast) {
   $('#building-controls').hidden = preset !== 'building' || modelName.includes('.');
   $('#shape-controls').hidden = preset !== 'shapes' || modelName.includes('.');
   $('#block-controls').hidden = preset !== 'blocks' || modelName.includes('.');
+  $('#bonsai-controls').hidden = (preset !== 'bonsai' && preset !== 'pbonsai') || modelName.includes('.');
+  $('#bonsai-hint').textContent = preset === 'pbonsai' ? 'Cada semilla (R) arma otro bonsái. Sus colores (tronco, hojas y flores) se ven con Color → Original.' : 'La semilla (R) lo deforma y cambia dónde florece. Sus colores se ven con Color → Original.';
   if (preset && !modelName.includes('.') && presetSeed !== presetSig()) loadPreset();
   if (!model) { $('#stats').textContent = 'Cargando el modelo…'; return; }
   updateBg(S.bgFlip);
