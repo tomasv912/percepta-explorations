@@ -10,6 +10,7 @@
     { name: 'Pixel Motion', path: 'pixel-motion/' },
     { name: 'Pixel Stipple', path: 'pixel-stipple/' },
     { name: 'Pixel Connect', path: 'pixel-connect/' },
+    { name: 'Murmuraciones', path: 'murmuration/' },
     {
       name: 'Descartes', path: 'descartes/', children: [
         { name: 'Pixel Rise', path: 'pixel-rise/' },

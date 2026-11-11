@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Murmuraciones</title>
+<link rel="stylesheet" href="../vendor/dialkit/styles.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --page: #f4f2ee; --surface: #fbfaf8; --fill: #efece7; --line: #dcd7cf;
+  --text: #1a1714; --text-2: #5e5850; --text-3: #8f887e; --accent: #1a1714; --accent-text: #fbfaf8;
+  --font: Inter, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --page: #161513; --surface: #1d1c1a; --fill: #282624; --line: #34312d; --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --page: #161513; --surface: #1d1c1a; --fill: #282624; --line: #34312d; --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513; color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; background: var(--page); color: var(--text); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
+
+.stage { flex: 1; min-height: 0; position: relative; overflow: hidden; }
+.frame { position: absolute; left: 0; top: 0; transform-origin: 0 0; overflow: hidden; box-shadow: 0 0 0 1px var(--line), 0 10px 40px rgb(0 0 0 / .08); }
+.frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.stage.drag::after { content: "Soltá la foto"; position: absolute; inset: 12px; display: grid; place-items: center; border: 2px dashed var(--text-3); border-radius: 14px; background: color-mix(in srgb, var(--page) 80%, transparent); font: 500 15px var(--font); color: var(--text); z-index: 8; pointer-events: none; }
+
+/* The source card, top right: generate or translate a photo, new seed, export. */
+.card { position: absolute; top: 14px; right: 14px; width: 236px; display: flex; flex-direction: column; gap: 10px; padding: 12px; z-index: 5;
+  background: var(--surface); border-radius: 12px; box-shadow: 0 0 0 1px var(--line), 0 6px 24px rgb(0 0 0 / .1); }
+.card h2 { margin: 0; font-size: 12px; font-weight: 600; }
+.seg { display: flex; background: var(--fill); border-radius: 8px; padding: 2px; gap: 2px; }
+.seg button { flex: 1; border: 0; background: transparent; color: var(--text-2); font: 500 12px var(--font); height: 26px; border-radius: 6px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(0 0 0 / .08), 0 0 0 1px var(--line); }
+.btns { display: flex; gap: 6px; }
+.btn { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; border: 0; background: var(--fill);
+  color: var(--text); font: 500 12px var(--font); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; }
+.btn:hover { background: var(--line); }
+.btn.primary { background: var(--accent); color: var(--accent-text); box-shadow: none; }
+.btn.primary:hover { opacity: .88; }
+.seg button:focus-visible, .btn:focus-visible, .drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.drop { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; border: 1px dashed var(--line); background: var(--fill); color: var(--text-2); font-size: 12px; cursor: pointer; text-align: left; font-family: var(--font); }
+.drop:hover { border-color: var(--text-3); }
+.drop img { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; flex: none; }
+.drop .ph { width: 40px; height: 40px; border-radius: 6px; flex: none; display: grid; place-items: center; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.drop b { display: block; color: var(--text); font-weight: 500; }
+.hint { margin: 0; color: var(--text-3); font-size: 11px; line-height: 1.45; }
+.stats { margin: 0; font: 11px var(--mono); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.toast { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); padding: 8px 12px; border-radius: 8px; background: var(--text); color: var(--page); font: 500 12px var(--font); opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 10; }
+.toast.on { opacity: 1; }
+@media (max-width: 700px) { .card { left: 12px; right: 12px; width: auto; top: auto; bottom: 12px; } }
+</style>
+</head>
+<body>
+<script src="../toolbar.js"></script>
+<main class="stage" id="stage">
+  <div class="frame" id="frame"><canvas id="cv" aria-label="Murmuración de puntos"></canvas></div>
+  <section class="card" aria-labelledby="src-h">
+    <h2 id="src-h">Fuente</h2>
+    <div class="seg" id="mode" role="group" aria-label="Fuente">
+      <button type="button" data-v="gen" aria-pressed="true">Generar</button>
+      <button type="button" data-v="photo" aria-pressed="false">Foto</button>
+    </div>
+    <button type="button" class="drop" id="drop" title="Elegí una foto o soltala sobre el lienzo">
+      <span class="ph" id="thumb-ph" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="15" height="12" rx="2"/><circle cx="7.5" cy="8.5" r="1.5"/><path d="m3 14.5 4.5-4 3 2.5 3-3 4 3.5"/></svg></span>
+      <img id="thumb" alt="" hidden>
+      <span><b id="drop-t">Subir una foto</b><span id="drop-s">o soltala sobre el lienzo</span></span>
+    </button>
+    <input type="file" id="file" accept="image/*" hidden>
+    <div class="btns">
+      <button type="button" class="btn" id="seed" title="Otra variación con los mismos parámetros (R)">Nueva semilla</button>
+    </div>
+    <div class="btns">
+      <button type="button" class="btn primary" id="png">PNG</button>
+      <button type="button" class="btn" id="svg">SVG</button>
+    </div>
+    <p class="stats" id="stats"></p>
+    <p class="hint">Pasá el mouse por los puntos para conectarlos. Todos los parámetros están en DialKit, abajo a la izquierda.</p>
+  </section>
+  <div class="toast" id="toast" role="status"></div>
+</main>
+<script src="../vendor/dialkit/browser.global.js" data-dialkit></script>
+<script>
+// Murmuraciones. Clouds of dots in the Pixel Connect style (the Percepta hero wave): dots on a square lattice,
+// most of them small, some mid, a few big and slightly off the grid, thinning out at the edges with a few strays.
+// The shape comes from a field: a generated murmuration (Ola, Bandada, Nube, Remolino) or a photo, where darker
+// means more and bigger dots. The hover from Pixel Connect connects the dots under the pointer.
+(() => {
+  const $ = s => document.querySelector(s);
+  const stage = $('#stage'), frame = $('#frame'), cv = $('#cv'), ctx = cv.getContext('2d');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+
+  // The five dot sizes of the Figma wave, as a share of the lattice step (15.18 px there: 4.08, 6.46, 11.24, 17.71, 23.89).
+  const SIZE_K = [.269, .426, .74, 1.167, 1.574];
+  const FORMATS = { '16:9': [1920, 1080], '1:1': [1080, 1080], '4:5': [1080, 1350], '9:16': [1080, 1920] };
+
+  const P = {
+    shape: 'flock', seed: 7, amp: .22, freq: 1.1, thick: .34, turb: .35, nscale: 2.2, soft: .35, texture: .45,
+    step: 15.2, density: .9, strays: .03, big: .06, mid: .1, small: .28, scale: 1, jitter: .35,
+    contrast: 1.3, bright: 0, invert: false, thresh: .1, grain: .25, fit: 'cover', shapeMix: 0,
+    bg: '#ffffff', dot: '#ced4e8', accent: '#7d91d9', floor: true, floorColor: '#dce0f2',
+    format: '16:9',
+    hover: true, radius: 165, count: 11, minDist: 40,
+    flow: false, speed: .15,
+  };
+  let mode = 'gen', photo = null, photoTone = null, AW = 1920, AH = 1080;
+
+  // ---- noise (seeded gradient noise + fbm) ----
+  let perm = new Uint8Array(512), gx = new Float32Array(256), gy = new Float32Array(256);
+  function seedNoise(seed) {
+    let a = seed * 9301 + 49297 >>> 0;
+    const rnd = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    const p = Array.from({ length: 256 }, (_, i) => i);
+    for (let i = 255; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [p[i], p[j]] = [p[j], p[i]]; }
+    for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+    for (let i = 0; i < 256; i++) { const t = rnd() * Math.PI * 2; gx[i] = Math.cos(t); gy[i] = Math.sin(t); }
+  }
+  const fade = t => t * t * t * (t * (t * 6 - 15) + 10);
+  function noise(x, y) {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi, X0 = xi & 255, Y0 = yi & 255;
+    const g = (ix, iy, dx, dy) => { const h = perm[perm[ix] + iy]; return gx[h] * dx + gy[h] * dy; };
+    const n00 = g(X0, Y0, xf, yf), n10 = g(X0 + 1, Y0, xf - 1, yf), n01 = g(X0, Y0 + 1, xf, yf - 1), n11 = g(X0 + 1, Y0 + 1, xf - 1, yf - 1);
+    const u = fade(xf), v = fade(yf);
+    return (n00 + (n10 - n00) * u) + ((n01 + (n11 - n01) * u) - (n00 + (n10 - n00) * u)) * v; // about −0.7 … 0.7
+  }
+  const fbm = (x, y, o = 4) => { let s = 0, a = .5, f = 1; for (let i = 0; i < o; i++) { s += a * noise(x * f, y * f); f *= 2.03; a *= .5; } return s; };
+  const hash = (i, k) => { let h = Math.imul(i + 1, 2654435761) ^ Math.imul(k + 7, 2246822519) ^ Math.imul(P.seed + 13, 3266489917); h ^= h >>> 15; h = Math.imul(h, 2246822519); h ^= h >>> 13; return (h >>> 0) / 4294967296; };
+  const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+  const smooth = (a, b, v) => { const t = clamp01((v - a) / (b - a)); return t * t * (3 - 2 * t); };
+
+  // ---- the field: 0 … 1 for every point of the artboard ----
+  // Coordinates are in artboard heights (X = x / H), so shapes keep their proportions on any format.
+  function shapeField(X, Y, t) {
+    const a = AW / AH, ns = P.nscale, tb = P.turb;
+    const wx = X + tb * fbm(X * ns + 5.2 + t * .5, Y * ns + 1.3 + t * .2), wy = Y + tb * fbm(X * ns - 3.1 + t * .35, Y * ns + 7.7 - t * .3);
+    const ph = (P.seed % 97) * .37;
+    let f;
+    if (P.shape === 'wave') {
+      const c = .5 + P.amp * Math.sin(2 * Math.PI * P.freq * wx / a + ph) + P.amp * .35 * Math.sin(2 * Math.PI * P.freq * 2.1 * wx / a + ph * 1.7);
+      const th = P.thick * (.65 + .7 * (fbm(wx * 1.3 + 3.3, ph) + .5));
+      f = 1 - Math.abs(wy - c) / (th / 2);
+    } else if (P.shape === 'flock') {
+      // a murmuration: soft blobs strung along a looping path, merged and torn by the warp
+      const n = 4 + Math.round(P.freq * 4); let s = 0;
+      for (let k = 0; k < n; k++) {
+        const u = k / (n - 1), q = ph + u * Math.PI * 2 * P.freq * .8;
+        const cx = a * (.12 + .76 * u) + P.amp * .6 * Math.sin(q * 1.3), cy = .5 + P.amp * 1.4 * Math.sin(q) * Math.cos(q * .5 + ph);
+        const sx = P.thick * (.5 + .5 * (fbm(k * 1.7, ph) + .5)) * 1.1, sy = sx * (.55 + .5 * Math.abs(Math.sin(q * 2.1)));
+        const dx = (wx - cx) / sx, dy = (wy - cy) / sy;
+        s += Math.exp(-(dx * dx + dy * dy) * 1.6);
+      }
+      f = s * 1.25 - .35;
+    } else if (P.shape === 'cloud') {
+      f = (fbm(wx * 1.4 * P.freq + ph, wy * 1.4 * P.freq) + .5) - (1 - P.thick * 1.35) + .15;
+      f *= 1.9;
+    } else { // swirl
+      const cx = a / 2, cy = .5, dx = wx - cx, dy = wy - cy, r = Math.hypot(dx, dy), th = Math.atan2(dy, dx);
+      const arms = Math.max(1, Math.round(P.freq * 2));
+      const phase = ((th / (2 * Math.PI)) * arms - r * 3.2 / Math.max(.05, P.amp * 2.5) + ph) % 1;
+      const w = Math.abs(((phase + 1) % 1) - .5) * 2;
+      f = (1 - w / Math.max(.05, P.thick * 1.6)) * smooth(.62, .05, r);
+    }
+    return f;
+  }
+  // a field value made into dot density: soft edges, and an inner texture so dense areas still have holes
+  function shapeValue(X, Y, t) {
+    let v = smooth(0, Math.max(.02, P.soft), shapeField(X, Y, t));
+    if (P.texture > 0 && v > 0) v *= 1 - P.texture + P.texture * clamp01(fbm(X * 6 + 11, Y * 6 - 4 + t * .4) * 1.4 + .55);
+    return v;
+  }
+
+  // ---- the photo: tone per lattice cell (darker = more) ----
+  function photoField() {
+    if (!photo) return null;
+    const cols = L.cols, rows = L.rows, c = document.createElement('canvas'), k = 4;
+    c.width = cols * k; c.height = rows * k;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.imageSmoothingQuality = 'high';
+    const iw = photo.naturalWidth, ih = photo.naturalHeight, sc = (P.fit === 'cover' ? Math.max : Math.min)(c.width / iw, c.height / ih);
+    g.drawImage(photo, (c.width - iw * sc) / 2, (c.height - ih * sc) / 2, iw * sc, ih * sc);
+    const small = document.createElement('canvas'); small.width = cols; small.height = rows;
+    const sg = small.getContext('2d', { willReadFrequently: true }); sg.imageSmoothingQuality = 'high'; sg.drawImage(c, 0, 0, cols, rows);
+    const d = sg.getImageData(0, 0, cols, rows).data, out = new Float32Array(cols * rows);
+    for (let i = 0; i < cols * rows; i++) {
+      const lum = (.2126 * d[i * 4] + .7152 * d[i * 4 + 1] + .0722 * d[i * 4 + 2]) / 255;
+      out[i] = (1 - lum) * d[i * 4 + 3] / 255; // transparent reads as background
+    }
+    return out;
+  }
+  const toneOf = raw => {
+    let v = P.invert ? 1 - raw : raw;
+    v = clamp01((v - .5) * P.contrast + .5 + P.bright);
+    return clamp01((v - P.thresh) / Math.max(.01, 1 - P.thresh));
+  };
+
+  // ---- the lattice and its dots ----
+  const L = { cols: 0, rows: 0, ox: 0, oy: 0, step: 15 };
+  let X = new Float32Array(0), Y = new Float32Array(0), D = new Float32Array(0), CL = new Uint8Array(0);
+  let act, on, hubCol;
+  function layout() {
+    [AW, AH] = FORMATS[P.format] || FORMATS['16:9'];
+    const s = P.step, cols = Math.floor(AW / s) + 1, rows = Math.floor(AH / s) + 1;
+    const changed = cols !== L.cols || rows !== L.rows;
+    Object.assign(L, { cols, rows, step: s, ox: (AW - (cols - 1) * s) / 2, oy: (AH - (rows - 1) * s) / 2 });
+    if (changed) {
+      const n = cols * rows;
+      X = new Float32Array(n); Y = new Float32Array(n); D = new Float32Array(n); CL = new Uint8Array(n);
+      act = new Float32Array(n); on = new Uint8Array(n); hubCol = new Float32Array(n); H.hub = -1; H.targets = []; H.vis = 0;
+      photoTone = photoField();
+    }
+    frame.style.width = AW + 'px'; frame.style.height = AH + 'px';
+    fit();
+  }
+  let count = 0;
+  function generate(t) {
+    const { cols, rows, step: s, ox, oy } = L, sk = s * P.scale;
+    const cum = [], useP = mode === 'photo' && photoTone;
+    count = 0;
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+      const id = j * cols + i, x = ox + i * s, y = oy + j * s;
+      let v;
+      if (useP) {
+        v = toneOf(photoTone[id]);
+        if (P.grain > 0) v *= 1 - P.grain + P.grain * clamp01(fbm(x / AH * 9 + 3, y / AH * 9 + t * .4) * 1.6 + .6);
+        if (P.shapeMix > 0) v *= 1 - P.shapeMix + P.shapeMix * shapeValue(x / AH, y / AH, t);
+      } else v = shapeValue(x / AH, y / AH, t);
+      // presence: dense where the field is high, a few strays where it is low; eased so a flowing field fades dots
+      const p = P.density * v + P.strays * (1 - v) * (v > 0 ? 1 : .6), h1 = hash(id, 1);
+      const pres = smooth(h1 - .035, h1 + .035, p);
+      if (pres <= 0) { D[id] = 0; CL[id] = 0; continue; }
+      // size: the class falls out of the weights, which grow with the field (big dots live in the dense core)
+      const wBig = P.big * Math.pow(v, 1.5), wMid = P.mid * v, wSm = P.small * (.4 + .6 * v);
+      cum[0] = wBig; cum[1] = wBig + wMid; cum[2] = wBig + wMid + wSm;
+      const h2 = hash(id, 2);
+      let k = h2 < cum[0] ? (hash(id, 3) < .2 ? 4 : 3) : h2 < cum[1] ? 2 : h2 < cum[2] ? 1 : 0;
+      // ease across class borders so a moving field grows dots instead of popping them
+      let d = SIZE_K[k] * sk;
+      if (k === 0 && cum[2] - h2 > -.03) d += (SIZE_K[1] - SIZE_K[0]) * sk * smooth(.03, 0, h2 - cum[2]);
+      D[id] = d * (.35 + .65 * pres); CL[id] = k;
+      // big dots sit a little off the grid, as in the hero
+      const jit = k >= 2 ? P.jitter * s * .6 : 0;
+      X[id] = x + (hash(id, 4) - .5) * 2 * jit; Y[id] = y + (hash(id, 5) - .5) * 2 * jit;
+      count++;
+    }
+  }
+
+  // ---- hover network (Pixel Connect): the dot under the pointer becomes a hub, lines reach the dots around it ----
+  const H = { hub: -1, hx: 0, hy: 0, vis: 0, age: 0, lost: 0, targets: [], px: 0, py: 0, inside: false };
+  const live = i => D[i] > .5;
+  function cellsNear(x, y, r, fn) {
+    const { cols, rows, step: s, ox, oy } = L, pad = s;
+    const i0 = Math.max(0, Math.floor((x - r - pad - ox) / s)), i1 = Math.min(cols - 1, Math.ceil((x + r + pad - ox) / s));
+    const j0 = Math.max(0, Math.floor((y - r - pad - oy) / s)), j1 = Math.min(rows - 1, Math.ceil((y + r + pad - oy) / s));
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const id = j * cols + i; if (!live(id)) continue;
+      const dx = X[id] - x, dy = Y[id] - y, d = Math.hypot(dx, dy); if (d <= r) fn(id, d, dx, dy);
+    }
+  }
+  function pickTargets(h) {
+    const hx = X[h], hy = Y[h], K = P.count, W = 2 * Math.PI / K, rot = hash(h, 9) * W;
+    const sec = (dx, dy) => Math.floor((((Math.atan2(dy, dx) - rot) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) / W) % K;
+    const chosen = [], taken = new Array(K).fill(false);
+    for (const i of H.targets) {
+      if (i === h || !live(i)) continue;
+      const d = Math.hypot(X[i] - hx, Y[i] - hy); if (d > P.radius * 1.15 || d < P.minDist * .6) continue;
+      const k = sec(X[i] - hx, Y[i] - hy); if (!taken[k]) { taken[k] = true; chosen.push(i); }
+    }
+    const best = new Array(K).fill(-1), bs = new Array(K).fill(-Infinity);
+    cellsNear(hx, hy, P.radius, (i, d, dx, dy) => {
+      if (i === h || d < P.minDist) return;
+      const k = sec(dx, dy); if (taken[k]) return;
+      const sc = .3 * CL[i] / 4 + .7 * hash(i, 6);
+      if (sc > bs[k]) { bs[k] = sc; best[k] = i; }
+    });
+    for (let k = 0; k < K; k++) if (!taken[k] && best[k] >= 0) chosen.push(best[k]);
+    return chosen;
+  }
+  function setHub(h) {
+    if (h === H.hub) return;
+    if (H.hub < 0 && h >= 0) { H.hx = X[h]; H.hy = Y[h]; H.age = 0; }
+    H.hub = h;
+    const next = h >= 0 ? pickTargets(h) : [];
+    for (const i of H.targets) on[i] = 0;
+    for (const i of next) on[i] = 1;
+    H.targets = next;
+  }
+  const IN = .5, OUT = .3, DELAY = .3, SNAP = 22;
+  function stepHover(dt) {
+    let best = -1, bd = Infinity;
+    if (P.hover && H.inside) cellsNear(H.px, H.py, SNAP, (i, d) => { if (d < bd) { bd = d; best = i; } });
+    if (best >= 0) { H.lost = 0; setHub(best); }
+    else if (H.hub >= 0) { H.lost += dt; if (H.lost > .15 || !live(H.hub)) setHub(-1); }
+    const instant = reduce.matches;
+    if (H.hub >= 0) { H.age += dt; const k = instant ? 1 : 1 - Math.exp(-dt * 16); H.hx += (X[H.hub] - H.hx) * k; H.hy += (Y[H.hub] - H.hy) * k; }
+    H.vis = instant ? +(H.hub >= 0) : H.hub >= 0 ? Math.min(1, H.vis + dt / (IN * .5)) : Math.max(0, H.vis - dt / OUT);
+    const grow = instant || H.age >= DELAY;
+    let busy = H.vis > 0;
+    for (let i = 0; i < D.length; i++) {
+      const tgt = i === H.hub ? 1 : 0, v = hubCol[i];
+      if (v !== tgt) { hubCol[i] = instant ? tgt : tgt ? Math.min(1, v + dt / (IN * .4)) : Math.max(0, v - dt / OUT); busy = true; }
+      const a = act[i];
+      if (on[i] && live(i)) { if (a < 1 && grow) { act[i] = instant ? 1 : Math.min(1, a + dt / (IN * (1 + .6 * Math.hypot(X[i] - H.hx, Y[i] - H.hy) / P.radius))); busy = true; } else if (a < 1) busy = true; }
+      else if (a > 0) { act[i] = instant ? 0 : Math.max(0, a - dt / OUT); busy = true; }
+    }
+    return busy;
+  }
+
+  // ---- drawing ----
+  const rgb = h => { const n = parseInt(h.slice(1, 7), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+  const mix = (a, b, t) => `rgb(${Math.round(a[0] + (b[0] - a[0]) * t)},${Math.round(a[1] + (b[1] - a[1]) * t)},${Math.round(a[2] + (b[2] - a[2]) * t)})`;
+  const easeOut = t => 1 - Math.pow(1 - t, 3);
+  function draw(c, s, withHover = true) {
+    c.setTransform(s, 0, 0, s, 0, 0);
+    c.fillStyle = P.bg; c.fillRect(0, 0, AW, AH);
+    if (P.floor) {
+      const y0 = AH * .76, g = c.createLinearGradient(0, y0, 0, AH), f = rgb(P.floorColor);
+      g.addColorStop(0, `rgba(${f},0)`); g.addColorStop(1, `rgb(${f})`);
+      c.fillStyle = g; c.fillRect(0, y0, AW, AH - y0);
+    }
+    const B = rgb(P.dot), A = rgb(P.accent), n = D.length;
+    if (withHover && (H.vis > 0 || H.targets.length)) {
+      c.lineWidth = 1; c.lineCap = 'round';
+      for (let i = 0; i < n; i++) {
+        const a = act[i]; if (a <= 0 || !live(i)) continue;
+        const p = easeOut(a);
+        c.strokeStyle = `rgba(${A},${.45 * Math.min(1, a * 2)})`;
+        c.beginPath(); c.moveTo(H.hx, H.hy); c.lineTo(H.hx + (X[i] - H.hx) * p, H.hy + (Y[i] - H.hy) * p); c.stroke();
+      }
+    }
+    c.fillStyle = P.dot;
+    const act9 = SIZE_K[2] * L.step * P.scale * 1.15;
+    for (let i = 0; i < n; i++) {
+      const d = D[i]; if (d <= 0) continue;
+      const lit = withHover ? Math.max(act[i] > 0 ? easeOut(Math.min(1, act[i] * 1.6)) : 0, hubCol[i]) : 0;
+      if (lit > 0) { c.fillStyle = mix(B, A, lit); c.beginPath(); c.arc(X[i], Y[i], (d + Math.max(0, act9 - d) * lit) / 2, 0, 6.2832); c.fill(); c.fillStyle = P.dot; }
+      else { c.beginPath(); c.arc(X[i], Y[i], d / 2, 0, 6.2832); c.fill(); }
+    }
+    if (withHover && H.vis > 0) { c.fillStyle = P.accent; c.beginPath(); c.arc(H.hx, H.hy, L.step * .72 * easeOut(H.vis) / 2 * P.scale + 2, 0, 6.2832); c.fill(); }
+  }
+
+  // ---- page ----
+  let scale = 1;
+  function fit() {
+    const r = stage.getBoundingClientRect(), narrow = innerWidth < 700, pad = narrow ? 12 : 28;
+    const right = narrow ? 0 : 236 + 14, bottom = narrow ? 260 : 0;
+    const w = r.width - pad * 2 - right, h = r.height - pad * 2 - bottom;
+    scale = Math.max(.05, Math.min(w / AW, h / AH));
+    frame.style.transform = `translate(${pad + (w - AW * scale) / 2}px, ${pad + (h - AH * scale) / 2}px) scale(${scale})`;
+    const dpr = Math.min(3, devicePixelRatio || 1), cw = Math.round(AW * scale * dpr), ch = Math.round(AH * scale * dpr);
+    if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; dirty = true; }
+  }
+  addEventListener('resize', fit); new ResizeObserver(fit).observe(stage);
+
+  const toArt = e => { const r = frame.getBoundingClientRect(); return [(e.clientX - r.left) / scale, (e.clientY - r.top) / scale]; };
+  frame.addEventListener('pointermove', e => { [H.px, H.py] = toArt(e); H.inside = true; });
+  frame.addEventListener('pointerleave', () => { H.inside = false; });
+
+  let dirty = true, flowT = 0, last = performance.now();
+  function tick(now) {
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    const flowing = P.flow && !reduce.matches;
+    if (flowing) { flowT += dt * P.speed; dirty = true; }
+    if (dirty) { generate(flowT); $('#stats').textContent = `${count.toLocaleString('es')} puntos · ${AW} × ${AH}`; }
+    const busy = stepHover(dt);
+    if (dirty || busy || H.inside) draw(ctx, cv.width / AW);
+    dirty = false;
+    requestAnimationFrame(tick);
+  }
+
+  // ---- source card ----
+  const toastEl = $('#toast'); let toastT = 0;
+  const toast = m => { toastEl.textContent = m; toastEl.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('on'), 2400); };
+  function setMode(m) {
+    if (m === 'photo' && !photo) { $('#file').click(); return; }
+    mode = m;
+    for (const b of document.querySelectorAll('#mode button')) b.setAttribute('aria-pressed', String(b.dataset.v === m));
+    dirty = true;
+  }
+  $('#mode').addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (b) setMode(b.dataset.v); });
+  $('#drop').addEventListener('click', () => $('#file').click());
+  function loadPhoto(file) {
+    if (!file || !file.type.startsWith('image/')) return toast('Ese archivo no es una imagen.');
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      photo = img; photoTone = photoField();
+      $('#thumb').src = url; $('#thumb').hidden = false; $('#thumb-ph').hidden = true;
+      $('#drop-t').textContent = file.name.length > 24 ? file.name.slice(0, 22) + '…' : file.name; $('#drop-s').textContent = 'Cambiar foto';
+      setMode('photo'); toast('Foto traducida a puntos');
+    };
+    img.onerror = () => toast('No se pudo abrir la imagen.');
+    img.src = url;
+  }
+  $('#file').addEventListener('change', e => { loadPhoto(e.target.files[0]); e.target.value = ''; });
+  let dragN = 0;
+  stage.addEventListener('dragenter', e => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); dragN++; stage.classList.add('drag'); } });
+  stage.addEventListener('dragover', e => { if ([...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+  stage.addEventListener('dragleave', () => { if (--dragN <= 0) { dragN = 0; stage.classList.remove('drag'); } });
+  stage.addEventListener('drop', e => { e.preventDefault(); dragN = 0; stage.classList.remove('drag'); loadPhoto(e.dataTransfer.files[0]); });
+  addEventListener('paste', e => { const f = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith('image/')); if (f) loadPhoto(f); });
+
+  let kit = null;
+  const newSeed = () => { const s = 1 + Math.floor(Math.random() * 999); if (kit) kit.setValues({ 'Forma': { 'Semilla': s } }); applySeed(s); };
+  function applySeed(s) { P.seed = s; seedNoise(s); H.targets = []; setHub(-1); dirty = true; }
+  $('#seed').addEventListener('click', newSeed);
+  addEventListener('keydown', e => { if (e.key.toLowerCase() === 'r' && !e.metaKey && !e.ctrlKey && !e.target.closest('input, textarea, [contenteditable], [class*="dialkit"]')) newSeed(); });
+
+  const save = (name, blob) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); };
+  const base = () => `murmuracion-${mode === 'photo' ? 'foto' : { wave: 'ola', flock: 'bandada', cloud: 'nube', swirl: 'remolino' }[P.shape]}-${P.seed}`;
+  // PNG at twice the artboard (3840 wide for 16:9), without the hover
+  $('#png').addEventListener('click', () => {
+    const c = document.createElement('canvas'); c.width = AW * 2; c.height = AH * 2;
+    draw(c.getContext('2d'), 2, false);
+    c.toBlob(b => { save(base() + '.png', b); toast('PNG exportado'); }, 'image/png');
+  });
+  $('#svg').addEventListener('click', () => {
+    const f = n => +n.toFixed(2), out = [`<svg xmlns="http://www.w3.org/2000/svg" width="${AW}" height="${AH}" viewBox="0 0 ${AW} ${AH}">`, `<rect width="${AW}" height="${AH}" fill="${P.bg}"/>`];
+    if (P.floor) out.push(`<defs><linearGradient id="floor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${P.floorColor}" stop-opacity="0"/><stop offset="1" stop-color="${P.floorColor}"/></linearGradient></defs><rect y="${f(AH * .76)}" width="${AW}" height="${f(AH * .24)}" fill="url(#floor)"/>`);
+    out.push(`<g fill="${P.dot}">`);
+    for (let i = 0; i < D.length; i++) if (D[i] > 0) out.push(`<circle cx="${f(X[i])}" cy="${f(Y[i])}" r="${f(D[i] / 2)}"/>`);
+    out.push('</g></svg>');
+    save(base() + '.svg', new Blob([out.join('\n')], { type: 'image/svg+xml' })); toast('SVG exportado');
+  });
+
+  // ---- DialKit: every parameter ----
+  const DK = window.DialKit;
+  const MAP = {
+    'Forma.Forma': 'shape', 'Forma.Semilla': 'seed', 'Forma.Amplitud': 'amp', 'Forma.Frecuencia': 'freq', 'Forma.Grosor': 'thick', 'Forma.Turbulencia': 'turb',
+    'Forma.Escala del ruido': 'nscale', 'Forma.Bordes suaves': 'soft', 'Forma.Textura': 'texture',
+    'Puntos.Separación': 'step', 'Puntos.Densidad': 'density', 'Puntos.Sueltos': 'strays', 'Puntos.Grandes': 'big', 'Puntos.Medianos': 'mid', 'Puntos.Chicos': 'small',
+    'Puntos.Escala': 'scale', 'Puntos.Desorden de grandes': 'jitter',
+    'Foto.Contraste': 'contrast', 'Foto.Brillo': 'bright', 'Foto.Umbral': 'thresh', 'Foto.Invertir': 'invert', 'Foto.Grano': 'grain', 'Foto.Encuadre': 'fit', 'Foto.Mezcla con forma': 'shapeMix',
+    'Color.Fondo': 'bg', 'Color.Puntos': 'dot', 'Color.Activo': 'accent', 'Color.Degradé inferior': 'floor', 'Color.Color del degradé': 'floorColor',
+    'Lienzo.Formato': 'format',
+    'Hover.Conectar': 'hover', 'Hover.Radio': 'radius', 'Hover.Cantidad': 'count', 'Hover.Distancia mínima': 'minDist',
+    'Animación.Fluir': 'flow', 'Animación.Velocidad': 'speed',
+  };
+  if (DK) {
+    DK.createDialRoot({ position: 'bottom-left', theme: 'system', defaultOpen: false });
+    kit = DK.createDialKit('Murmuraciones', {
+      'Forma': {
+        'Forma': { type: 'select', options: [{ value: 'flock', label: 'Bandada' }, { value: 'wave', label: 'Ola' }, { value: 'cloud', label: 'Nube' }, { value: 'swirl', label: 'Remolino' }], default: P.shape },
+        'Semilla': [P.seed, 1, 999, 1], 'Amplitud': [P.amp, 0, .5, .01], 'Frecuencia': [P.freq, .2, 3, .01], 'Grosor': [P.thick, .05, 1, .01],
+        'Turbulencia': [P.turb, 0, 1, .01], 'Escala del ruido': [P.nscale, .5, 8, .1], 'Bordes suaves': [P.soft, .02, 1, .01], 'Textura': [P.texture, 0, 1, .01],
+      },
+      'Puntos': {
+        'Separación': [P.step, 6, 40, .1], 'Densidad': [P.density, 0, 1, .01], 'Sueltos': [P.strays, 0, .3, .005],
+        'Grandes': [P.big, 0, .5, .005], 'Medianos': [P.mid, 0, .6, .005], 'Chicos': [P.small, 0, 1, .01],
+        'Escala': [P.scale, .3, 2, .01], 'Desorden de grandes': [P.jitter, 0, 1, .01],
+      },
+      'Foto': {
+        'Contraste': [P.contrast, .2, 4, .01], 'Brillo': [P.bright, -.5, .5, .01], 'Umbral': [P.thresh, 0, .8, .01], 'Invertir': P.invert,
+        'Grano': [P.grain, 0, 1, .01], 'Encuadre': { type: 'select', options: [{ value: 'cover', label: 'Llenar' }, { value: 'contain', label: 'Encajar' }], default: P.fit },
+        'Mezcla con forma': [P.shapeMix, 0, 1, .01],
+      },
+      'Color': { 'Fondo': P.bg, 'Puntos': P.dot, 'Activo': P.accent, 'Degradé inferior': P.floor, 'Color del degradé': P.floorColor },
+      'Lienzo': { 'Formato': { type: 'select', options: Object.keys(FORMATS).map(k => ({ value: k, label: `${k} · ${FORMATS[k][0]} × ${FORMATS[k][1]}` })), default: P.format } },
+      'Hover': { 'Conectar': P.hover, 'Radio': [P.radius, 60, 400, 1], 'Cantidad': [P.count, 3, 24, 1], 'Distancia mínima': [P.minDist, 0, 100, 1] },
+      'Animación': { 'Fluir': P.flow, 'Velocidad': [P.speed, .01, 1, .01] },
+    });
+    kit.subscribe(v => {
+      let relayout = false, rephoto = false;
+      for (const [path, key] of Object.entries(MAP)) {
+        const [g, k] = path.split('.'), val = v[g]?.[k];
+        if (val === undefined || val === P[key]) continue;
+        if (/^(bg|dot|accent|floorColor)$/.test(key) && !/^#[0-9a-f]{6}/i.test(val)) continue;
+        if (key === 'seed') { applySeed(val); continue; }
+        P[key] = val;
+        if (key === 'step' || key === 'format') relayout = true;
+        if (key === 'fit') rephoto = true;
+        if (['radius', 'count', 'minDist', 'hover'].includes(key)) { H.targets = []; setHub(-1); }
+      }
+      if (relayout) layout();
+      if (rephoto) photoTone = photoField();
+      dirty = true;
+    });
+  }
+
+  seedNoise(P.seed); layout(); requestAnimationFrame(tick);
+  window.Murmuraciones = { P, regenerate: () => { dirty = true; }, setMode, loadPhotoURL: url => fetch(url).then(r => r.blob()).then(b => loadPhoto(new File([b], url.split('/').pop(), { type: b.type || 'image/png' }))) };
+})();
+</script>
+</body>
+</html>
