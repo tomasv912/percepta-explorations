@@ -941,7 +941,15 @@ function linePick(raw, kA, r, at) {
 // Caos (1B): the line points moved off their lines by up to amt (a gaussian) before they are picked, so the circles
 // loosen but still never overlap.
 const gauss = r => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
-function jitterRaw(raw, amt, r) { if (amt > 0) for (let i = 0; i < raw.length; i += 4) { raw[i] += gauss(r) * amt * .5; raw[i + 1] += gauss(r) * amt * .5; } return raw; }
+// Caos: each point off its line by up to amt (view units). With Pasaje (1B too), by how far it is from the Orden handle:
+// all of Caos at the Caos handle, none at Orden (the line clean), easing between them.
+function jitterRaw(raw, amt, r, box, kA) {
+  if (amt > 0) for (let i = 0; i < raw.length; i += 4) {
+    const f = S.blend && box ? 1 - PerceptaOrder(((raw[i] - box.x0) * kA + S.panX) / AW, ((raw[i + 1] - box.y0) * kA + S.panY) / AH, S.blendA, S.blendB) : 1;
+    const gx = gauss(r), gy = gauss(r); raw[i] += gx * amt * .5 * f; raw[i + 1] += gy * amt * .5 * f;
+  }
+  return raw;
+}
 // ---------- Estable ----------
 // The picture as it is, made to turn: the pixels of the current view, drawn exactly as the other modes draw them
 // (its lines, its spacing, its sizes), are pinned to the surface under them and from then on only move with the model:
@@ -949,7 +957,7 @@ function jitterRaw(raw, amt, r) { if (amt > 0) for (let i = 0; i < raw.length; i
 // come round (each surface kept from the view that faces it most), so a whole turn is covered. Showing is smooth: a
 // pixel shrinks away as its surface turns edge-on or something nearer passes in front, instead of popping.
 let stb = null;
-const stbKey = () => JSON.stringify([modelName, presetSeed, model && model.length, AW, AH, S.lines, S.lineGap, S.lineAM, S.lineDot, S.lineFollow, S.chaos, S.square, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
+const stbKey = () => JSON.stringify([modelName, presetSeed, model && model.length, AW, AH, S.lines, S.lineGap, S.lineAM, S.lineDot, S.lineFollow, S.chaos, S.lines && S.blend && [S.blendA, S.blendB], S.square, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
 const STB_K = 8;
 const sstep = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
 // the side (of STB_K, around the vertical) a model-space normal faces most, counted from the capture's own view
@@ -1022,7 +1030,7 @@ function stableFrame(yaw = S.yaw, fast, main) {
 }
 function lineStipple(sc, r) {
   const { buf, box } = sc, kA = AW / (box.x1 - box.x0), p = S.pitch * Math.PI / 180;
-  const raw = jitterRaw(contour(buf, Math.cos(p), Math.sin(p), S.lineFollow, S.lineGap / kA, (S.size + S.lineDot) / kA), S.chaos * S.lineGap * 1.6 / kA, r);
+  const raw = jitterRaw(contour(buf, Math.cos(p), Math.sin(p), S.lineFollow, S.lineGap / kA, (S.size + S.lineDot) / kA), S.chaos * S.lineGap * 1.6 / kA, r, box, kA);
   return linePick(raw, kA, r, box).map(([i, s]) => ({ x: (raw[i] - box.x0) * kA + S.panX, y: (raw[i + 1] - box.y0) * kA + S.panY, tone: raw[i + 3], pick: r(), sc: s, rgb: colAt(buf, raw[i], raw[i + 1]) }));
 }
 function stipple(n, r, sc = scene) {
@@ -1219,7 +1227,7 @@ function sync(fast) {
   updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   if (S.aspect + S.orient !== artKey) { artKey = S.aspect + S.orient; setArtboard(); S.panX = S.panY = 0; if (typeof crop !== 'undefined') { crop = null; cropStack = []; cropUI(); } }
-  const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, zS(), S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow, S.lineAM, S.lineDot, S.chaos, S.square, S.anim === 'stable']);
+  const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, zS(), S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow, S.lineAM, S.lineDot, S.chaos, S.square, S.anim === 'stable', S.lines && S.blend && [S.blendA, S.blendB]]);
   if (k !== key || (!fast && fastNext)) { fastNext = !!fast; pts = build(fast); key = k; ptsPan = [S.panX, S.panY]; }
   // Moved in the frame (Shift + drag): the same pixels, shifted; nothing is re-sampled.
   if (ptsPan[0] !== S.panX || ptsPan[1] !== S.panY) { const dx = S.panX - ptsPan[0], dy = S.panY - ptsPan[1]; for (const p of pts) { p.x += dx; p.y += dy; } ptsPan = [S.panX, S.panY]; }
@@ -1383,7 +1391,7 @@ function hoverStep(list, ptr, dt) {
 // once, by the side its surface faces most; its place on the model is stored, so a turn only moves and hides
 // pixels. Hidden: behind something nearer, by a quick depth render of the frame.
 let ring = null;
-const ringKey = () => JSON.stringify([modelName, presetSeed, AW, AH, S.lines, S.lineGap, S.lineAM, S.lineDot, S.chaos, S.square, S.pitch, zS(), S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
+const ringKey = () => JSON.stringify([modelName, presetSeed, AW, AH, S.lines, S.lineGap, S.lineAM, S.lineDot, S.chaos, S.lines && S.blend && [S.blendA, S.blendB], S.square, S.pitch, zS(), S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
 function buildRing() {
   const K = 8, box = viewBoxNow(), k = AW / (box.x1 - box.x0), p = S.pitch * Math.PI / 180, cp = Math.cos(p), sp = Math.sin(p), list = [];
   const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180, L = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.abs(-Math.cos(el) * Math.sin(az)) + .35];
@@ -1395,7 +1403,7 @@ function buildRing() {
     const back = (X, Y, Z) => { const y1 = -Y, yy = y1 * cp + Z * sp, z1 = -y1 * sp + Z * cp; return [X * cy - z1 * sy, yy, X * sy + z1 * cy]; };
     if (S.lines) {
       // level lines of the model's height, traced in this view, kept on the side this view owns
-      const raw = jitterRaw(contour(buf, cp, sp, 1, S.lineGap / k, (S.size + S.lineDot) / k), S.chaos * S.lineGap * 1.6 / k, r);
+      const raw = jitterRaw(contour(buf, cp, sp, 1, S.lineGap / k, (S.size + S.lineDot) / k), S.chaos * S.lineGap * 1.6 / k, r, box, k);
       for (const [i, s2] of linePick(raw, k, r, box)) {
         const ix = Math.min(buf.W - 1, Math.floor((raw[i] - box.x0) * buf.k)), iy = Math.min(buf.H - 1, Math.floor((raw[i + 1] - box.y0) * buf.k)), o = iy * buf.W + ix;
         let n = [buf.nrm[o * 3], buf.nrm[o * 3 + 1], buf.nrm[o * 3 + 2]]; if (n[2] < 0) n = n.map(c => -c);
@@ -1883,7 +1891,7 @@ $('#video').addEventListener('click', async () => {
 });
 
 // Pasaje's handles (toolbar.js) over the picture, and its two buttons.
-PerceptaBlendHandles({ frame, visible: () => S.dir !== '1b' && S.blend, get: () => [S.blendA, S.blendB], set: (A, B) => { S.blendA = A; S.blendB = B; sync(); }, view: () => { const v = viewBox(); return { x: v.x / AW, y: v.y / AH, w: v.w / AW, h: v.h / AH }; } });
+PerceptaBlendHandles({ frame, visible: () => S.blend, get: () => [S.blendA, S.blendB], set: (A, B) => { S.blendA = A; S.blendB = B; sync(); }, view: () => { const v = viewBox(); return { x: v.x / AW, y: v.y / AH, w: v.w / AW, h: v.h / AH }; } });
 $('#blend-swap').addEventListener('click', () => { [S.blendA, S.blendB] = [S.blendB, S.blendA]; sync(); });
 $('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.slice(); S.blendB = DEFAULTS.blendB.slice(); sync(); });
 
@@ -1897,26 +1905,31 @@ modeBar.querySelector('#pm-1a').addEventListener('click', e => { const b = e.tar
 // to 1A (as its button would)
 $('#ord-seg').addEventListener('click', e => {
   const b = e.target.closest('[data-ord]'); if (!b) return;
-  if (S.dir === '1b' && b.dataset.ord !== 'chaos') { document.querySelector('.pdir [data-dir="1a"]').click(); toast('Pasaje y Engrillado son de 1A: pasé a 1A.'); }
-  S.snap = b.dataset.ord === 'grid'; S.blend = b.dataset.ord === 'blend'; sync();
+  S.snap = b.dataset.ord === 'grid' && S.dir !== '1b'; S.blend = b.dataset.ord === 'blend';
+  if (S.blend && S.dir === '1b' && S.chaos < .25) S.chaos = .7; // 1B's Pasaje runs from Caos to clean lines: some Caos to start from
+  sync();
 });
+// 1B's bar: Pasaje beside Caos
+modeBar.querySelector('#pm-1b').insertAdjacentHTML('afterend', '<label class="pm-sq" id="pm-pas1b" title="Pasaje: de Caos a líneas limpias a lo largo del lienzo, con los manejadores"><input type="checkbox" id="pm-blend1b"> Pasaje</label>');
+modeBar.querySelector('#pm-blend1b').addEventListener('change', e => { S.blend = e.target.checked; if (S.blend && S.chaos < .25) S.chaos = .7; sync(); });
 modeBar.querySelector('#pm-chaos').addEventListener('input', e => { S.chaos = +e.target.value; sync(); });
 modeBar.querySelector('#pm-square').addEventListener('change', e => { S.square = e.target.checked; sync(); });
 modeBar.querySelector('#pm-round').addEventListener('change', e => { S.round1a = e.target.checked; sync(); });
 function syncModeBar() {
   const b1 = S.dir === '1b';
   modeBar.querySelector('#pm-1a').hidden = modeBar.querySelector('#pm-rd').hidden = b1; modeBar.querySelector('#pm-round').checked = !!S.round1a; modeBar.querySelector('#pm-1b').hidden = modeBar.querySelector('#pm-sq').hidden = !b1; modeBar.querySelector('#pm-square').checked = S.square;
-  document.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', !(b1 && b.closest('#ord-seg') && b.dataset.ord !== 'chaos') && b.dataset.ord === ordOf()));
+  document.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ord === ordOf()));
+  $('#ord-seg [data-ord="grid"]').hidden = b1; modeBar.querySelector('#pm-pas1b').hidden = !b1; modeBar.querySelector('#pm-blend1b').checked = !!S.blend;
   const ch = modeBar.querySelector('#pm-chaos'); if (+ch.value !== S.chaos) ch.value = S.chaos; ch.style.setProperty('--p', S.chaos * 100 + '%');
   modeBar.querySelector('#pm-chaos-out').textContent = Math.round(S.chaos * 100) + '%';
-  $('#blend-controls').hidden = b1 || !S.blend;
+  $('#blend-controls').hidden = !S.blend;
 }
 
 // Dirección (toolbar.js): 1A square pixels, all one size, scattered by the light; 1B round pixels on horizontal lines
 // that follow the model, frequency modulated (closer together where dark), never overlapping.
 PerceptaDirection({
   get: () => S.dir,
-  set: v => { S.dir = v; if (v === '1a') S.lines = false; else { S.lines = true; S.snap = false; S.blend = false; } sync(); },
+  set: v => { S.dir = v; if (v === '1a') S.lines = false; else { S.lines = true; S.snap = false; } sync(); }, // Pasaje stays on across both
 });
 // ---------- Enviar a otra tool ----------
 // Pixel Waves: the view as it is now, rendered (the light, the cast shadows: grey on white) with its depth map (near
