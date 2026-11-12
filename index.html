@@ -225,9 +225,10 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <p class="hint" id="motion-hint"></p>
         <div id="sl-wThresh"></div>
         <div id="motion-controls">
+          <div class="seg" data-key="flowStyle" id="flowstyle-row" aria-label="Movimiento" title="Suave: un movimiento continuo a la velocidad de la pantalla (60 fps), las mismas partículas deslizándose sin saltos. A mano: dibujos por segundo, con saltito"><button data-v="smooth">Suave (60 fps)</button><button data-v="hand">A mano</button></div>
           <label class="check" id="hand-check"><input type="checkbox" data-check="handJit"> A mano: mientras avanzan, un saltito en cada dibujo</label>
           <div id="sl-jitter"></div>
-          <span class="hint">Dibujos por segundo</span>
+          <span class="hint" id="fps-hint">Dibujos por segundo</span>
           <div class="seg fps" data-key="vidFps" aria-label="Dibujos por segundo"><button data-v="8">8</button><button data-v="9">9</button><button data-v="12">12</button><button data-v="15">15</button><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button></div>
           <div id="sl-loopDur"></div>
           <button class="btn" id="motion-play" aria-pressed="true">Pausa</button>
@@ -348,7 +349,7 @@ const DEFAULTS = {
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#FAFAFA', bgExport: false,
   dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: 1, onlyPal: false, cseed: 1, square: false, dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0,
-  motion: 'still', flowDir: 'r', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
+  motion: 'still', flowStyle: 'smooth', flowDir: 'r', wThresh: 0, loopDur: 6, vidFps: '60', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
 // 1B spacing: circles keep apart by their distance; squares (Cuadrados) by the larger of their two offsets, so
@@ -935,6 +936,7 @@ let SNAP = null;
 // Pasaje: only the cubes the order reaches go on the grid (one per cell); the rest stay loose where they are. ord[i]
 // says which are on it (they are drawn at the cell's size).
 function snapFor(st) {
+  if (SF_ON) return null; // Movimiento Suave places its own cubes (lanes on the ordered side)
   if (st.dir === '1b' || !(st.snap || st.blend)) return null;
   const on = new Uint8Array(gen.n);
   for (let i = 0; i < gen.n; i++) on[i] = !st.blend || PerceptaChance(i) < PerceptaOrder((X[i] + panX) / gen.W, (Y[i] + panY) / gen.H, st.blendA, st.blendB) ? 1 : 0;
@@ -1026,7 +1028,8 @@ function fill(ctx, st, lev, grow) {
 }
 const canBlur = (() => { try { return 'filter' in document.createElement('canvas').getContext('2d'); } catch { return false; } })();
 let blurLayer = null;
-function draw(ctx, st) {
+function draw(ctx, st) { return withSmoothFlow(() => drawCore(ctx, st)); }
+function drawCore(ctx, st) {
   SNAP = snapFor(st);
   const D = dofLevels(st);
   if (!D) return fill(ctx, st);
@@ -1043,7 +1046,8 @@ function draw(ctx, st) {
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.filter = `blur(${(rad * scale * .6).toFixed(2)}px)`; ctx.drawImage(blurLayer, 0, 0); ctx.restore();
   }
 }
-function toSvg(st) {
+function toSvg(st) { return withSmoothFlow(() => toSvgCore(st)); }
+function toSvgCore(st) {
   SNAP = snapFor(st);
   const r = v => Math.round(v * 10) / 10, out = [], v = viewBox(), c = gen.W / v.w, D = dofLevels(st), soft = true;
   // Cubes outside the recorte are left out of the file.
@@ -1207,7 +1211,11 @@ function sync() {
   const waves = S.source === 'waves', image = S.source === 'image', mono = S.style === 'mono';
   $('#wave-controls').hidden = !waves && S.source !== 'bloom';
   $('#motion-sec').hidden = false; $('#flowdir-row').hidden = S.motion === 'still'; $('#sl-wThresh').hidden = !waves; $('#motion-controls').hidden = S.motion === 'still';
-  $('#sl-jitter').hidden = !(S.motion === 'horiz' && S.handJit);
+  // switching Suave / A mano brings its usual rate: 60 fps for Suave, 12 drawings a second for A mano
+  if (S.flowStyle !== sync.flowStyle) { if (sync.flowStyle !== undefined) S.vidFps = S.flowStyle === 'smooth' ? (+S.vidFps < 24 ? '60' : S.vidFps) : (S.vidFps === '60' ? '12' : S.vidFps); sync.flowStyle = S.flowStyle; }
+  const smoothOn = S.flowStyle === 'smooth' && !sheetFlow();
+  $('#sl-jitter').hidden = !(S.motion === 'horiz' && S.handJit) || smoothOn; $('#hand-check').hidden = smoothOn; $('#flowstyle-row').hidden = sheetFlow();
+  $('#fps-hint').textContent = smoothOn ? 'Cuadros por segundo del video' : 'Dibujos por segundo';
   $('#motion-hint').hidden = S.motion === 'still';
   $('#motion-hint').textContent = sheetFlow() ? (S.source === 'refract' ? 'Los cubos avanzan de izquierda a derecha: entran por el borde como nube, se encauzan en el foco y salen abiertos por el otro borde, en loop; A mano les suma un saltito en cada dibujo, como stop motion.' : 'Los cubos recorren la ola de izquierda a derecha, entran por un borde del cuadro y salen por el otro, en loop; A mano les suma un saltito en cada dibujo, como stop motion.')
     : 'Los cubos corren en la dirección elegida por dentro de la forma (lo que generaste, la imagen o lo que dibujaste con el pincel): salen por un extremo y vuelven a entrar por el otro, así la imagen se mantiene, en loop; A mano les suma un saltito en cada dibujo.';
@@ -1254,7 +1262,9 @@ function frameLoop(now) {
   const dt = last ? Math.min(.05, (now - last) / 1000) : 1 / 60; last = now;
   step(dt);
   // Animating: a new drawing Dibujos por segundo times a second, held in between (as stop motion).
-  if (animating()) { const fi = Math.floor((now - flowT0) / 1000 * +S.vidFps) % drawings(); if (fi !== shownFi) { shownFi = fi; poseAt(fi); } }
+  if (animating() && smoothFlow()) sfT = flowTime() / S.loopDur; // Suave: every screen frame, continuous
+  else if (animMode() && smoothFlow() && !filming) sfT = flowPausedT / S.loopDur;
+  else if (animating()) { const fi = Math.floor((now - flowT0) / 1000 * +S.vidFps) % drawings(); if (fi !== shownFi) { shownFi = fi; poseAt(fi); } }
   else if (animMode() && !flowPlaying && !filming && shownFi === -1) { shownFi = -2; poseAt(fiAt(flowPausedT)); } // paused: hold its drawing
   const { w, h } = fit();
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
@@ -1521,6 +1531,89 @@ function hash01(a, b) {
   h ^= h >>> 13; h = Math.imul(h, 0x27d4eb2d); h ^= h >>> 15; return (h >>> 0) / 4294967296;
 }
 // Every cube where drawing fi puts it.
+// ---------- Desplazamiento suave ----------
+// Movimiento Suave (60 fps): the picture stays where it is and an even weave of cubes slides through it at a constant
+// speed, one whole length a loop, so the loop closes. The weave has a few cubes per cell of the grid (Tamaño + Espacio):
+// on the chaotic side each sits anywhere in its cell (dispersed, homogeneous); on the ordered side (Pasaje, Engrillado)
+// it eases to the middle of its cell, so there they run in lanes a cell wide, a cell apart, still sliding smoothly
+// along. How much of each cube shows is the picture's density where it is now (from where the picture's own cubes
+// rest), against a threshold of its own: it grows in and shrinks away, never pops. Same cubes all the time.
+const smoothFlow = () => S.motion === 'horiz' && S.flowStyle === 'smooth' && !sheetFlow() && !!gen;
+let SF = null, sfT = 0, SF_ON = false;
+function sfBuild() {
+  const vert = S.flowDir === 'd' || S.flowDir === 'u', cell = S.size + S.cellGap, key = [gen.n, gen.W, gen.H, S.flowDir, cell].join();
+  if (SF && SF.gen === gen && SF.key === key) return SF;
+  const r = rng(S.seed * 4099 + 17), A = vert ? gen.hy : gen.hx, B = vert ? gen.hx : gen.hy;
+  let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+  for (let i = 0; i < gen.n; i++) if (!gen.del[i]) { a0 = Math.min(a0, A[i]); a1 = Math.max(a1, A[i]); b0 = Math.min(b0, B[i]); b1 = Math.max(b1, B[i]); }
+  if (!(a1 >= a0)) return SF = { gen, key, n: 0 };
+  a0 -= cell; a1 += cell; b0 -= cell; b1 += cell;
+  const na = Math.ceil((a1 - a0) / cell), nb = Math.ceil((b1 - b0) / cell), cnt = new Float32Array(na * nb), who = new Int32Array(na * nb).fill(-1);
+  for (let i = 0; i < gen.n; i++) if (!gen.del[i]) { const k = Math.min(nb - 1, Math.floor((B[i] - b0) / cell)) * na + Math.min(na - 1, Math.floor((A[i] - a0) / cell)); cnt[k]++; who[k] = i; }
+  // the density, softened over a few cells (so it varies smoothly as a cube travels)
+  let D = cnt;
+  for (let pass = 0; pass < 2; pass++) {
+    const o = new Float32Array(na * nb), R = 2;
+    for (let b = 0; b < nb; b++) for (let a = 0; a < na; a++) { let s = 0, w = 0; for (let q = -R; q <= R; q++) { const aa = pass ? a : a + q, bb = pass ? b + q : b; if (aa < 0 || bb < 0 || aa >= na || bb >= nb) continue; s += D[bb * na + aa]; w++; } o[b * na + a] = s / w; }
+    D = o;
+  }
+  // nearest picture cube of every cell (for the look and the photo's colour where a cube passes)
+  for (let pass = 0; pass < 6; pass++) for (let b = 0; b < nb; b++) for (let a = 0; a < na; a++) { const k = b * na + a; if (who[k] >= 0) continue; for (const [da, db] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const aa = a + da, bb = b + db; if (aa >= 0 && bb >= 0 && aa < na && bb < nb && who[bb * na + aa] >= 0 && who[k] < 0) who[k] = who[bb * na + aa]; } }
+  let Dmax = 0; for (let k = 0; k < D.length; k++) Dmax = Math.max(Dmax, D[k]);
+  const K = 1, n = na * nb * K; // one per cell: where the picture is densest, every cell has one
+  const ja = new Float32Array(n), jb = new Float32Array(n), u = new Float32Array(n), ch = new Float32Array(n), src = new Int32Array(n), cellA = new Int32Array(n), cellB = new Int32Array(n);
+  let q = 0;
+  for (let b = 0; b < nb; b++) for (let a = 0; a < na; a++) for (let k = 0; k < K; k++, q++) {
+    cellA[q] = a; cellB[q] = b; ja[q] = r(); jb[q] = r(); u[q] = r(); ch[q] = r();
+    const w = who[b * na + a]; src[q] = w >= 0 ? w : Math.floor(r() * gen.n);
+  }
+  return SF = { gen, key, vert, cell, a0, b0, na, nb, D, K, who, n, ja, jb, u, ch, src, cellA, cellB };
+}
+// the weave at loop time t (0–1): the cubes that show, as a stand-in for gen (same fields), and their places
+function sfFrame(t) {
+  const F = sfBuild(); if (!F.n) return null;
+  const { vert, cell, a0, b0, na, nb, D, who, n, ja, jb, u, ch, src, cellA, cellB } = F, L = na * cell, sign = S.flowDir === 'l' || S.flowDir === 'u' ? -1 : 1;
+  const shift = ((sign * t * L) % L + L) % L, st = S, g = gen, ordered = st.snap && !st.blend, sz0 = st.size;
+  if (!F.buf || F.buf.length < n * 3) F.buf = new Float32Array(n * 3), F.ids = new Int32Array(n);
+  const P = F.buf, ids = F.ids; let m = 0;
+  for (let i = 0; i < n; i++) {
+    // along: its place in its cell, slid on and wrapped; across: its place in its lane
+    let fa = cellA[i] + ja[i] + shift / cell; if (fa >= na) fa -= na;
+    let fb = cellB[i] + jb[i];
+    const ui = u[i], ka = fa | 0;
+    if (D[cellB[i] * na + ka] < ui - .1) continue; // nothing of the picture near: quick out
+    // the density here, blended over the four cells around
+    const xa = fa - .5, xb = fb - .5, a = Math.floor(xa), b = Math.floor(xb), x = xa - a, y = xb - b;
+    const a1 = a + 1 < na ? a + 1 : a, b1 = b + 1 < nb ? b + 1 : b, aa = a < 0 ? 0 : a, bb = b < 0 ? 0 : b;
+    const acc = (D[bb * na + aa] * (1 - x) + D[bb * na + a1] * x) * (1 - y) + (D[b1 * na + aa] * (1 - x) + D[b1 * na + a1] * x) * y;
+    if (acc < ui) continue; // shows where the density passes its threshold (so as many as the still picture), 
+    let o = ordered ? 1 : 0;
+    if (st.blend) { const px = vert ? b0 + fb * cell : a0 + fa * cell, py = vert ? a0 + fa * cell : b0 + fb * cell; o = smooth(ch[i] - .08, ch[i] + .08, PerceptaOrder((px + panX) / g.W, (py + panY) / g.H, st.blendA, st.blendB)); }
+    if (o > 0) { fa += (ka + .5 - fa) * o; fb += (cellB[i] + .5 - fb) * o; }
+    // grows in over a wide band of density, and fades at the two ends of the run (where it wraps round)
+    const edge = Math.min(fa, na - fa), s0 = g.size[src[i]], w = smooth(ui, ui + .25, acc) * smooth(.5, 3, edge), sz = (s0 + (sz0 - s0) * o) * w;
+    if (sz < sz0 * .06) continue;
+    const pa = a0 + fa * cell, pb = b0 + fb * cell;
+    ids[m] = i; P[m * 3] = vert ? pb : pa; P[m * 3 + 1] = vert ? pa : pb; P[m * 3 + 2] = sz; m++;
+  }
+  const G = { W: g.W, H: g.H, n: m, del: new Uint8Array(m), size: new Float32Array(m), shade: new Uint8Array(m), pal: new Uint8Array(m), rgb: new Uint32Array(m), tlen: new Float32Array(m), dp: g.dp ? new Float32Array(m) : null, dep: g.dep ? new Float32Array(m) : null };
+  const Xo = new Float32Array(m), Yo = new Float32Array(m);
+  for (let j = 0; j < m; j++) {
+    const i = ids[j], s2 = src[i], x = P[j * 3], y = P[j * 3 + 1];
+    const ca = Math.min(na - 1, Math.max(0, Math.floor(((vert ? y : x) - a0) / cell))), cb = Math.min(nb - 1, Math.max(0, Math.floor(((vert ? x : y) - b0) / cell)));
+    const here = who[cb * na + ca], h = here >= 0 ? here : s2; // the photo's colour (and depth) where it is now; its own look otherwise
+    Xo[j] = x; Yo[j] = y; G.size[j] = P[j * 3 + 2];
+    G.shade[j] = g.shade[s2]; G.pal[j] = g.pal[s2]; G.rgb[j] = g.rgb[h]; G.tlen[j] = g.tlen[s2]; if (G.dp) G.dp[j] = g.dp[s2]; if (G.dep) G.dep[j] = g.dep[h];
+  }
+  return { G, X: Xo, Y: Yo };
+}
+// draw / toSvg with the weave standing in for the picture's cubes
+function withSmoothFlow(fn) {
+  if (!smoothFlow()) return fn();
+  const f = sfFrame(sfT); if (!f) return fn();
+  const keep = [gen, X, Y, gone]; gen = f.G; X = f.X; Y = f.Y; gone = new Uint8Array(f.G.n); SF_ON = true;
+  try { return fn(); } finally { [gen, X, Y, gone] = keep; SF_ON = false; }
+}
 function poseAt(fi) {
   const sheet = sheetFlow(), gflow = S.motion === 'horiz' && !sheet, src = edit.src, J = handOn() ? S.jitter : 0, d = fi % drawings(), t = d / drawings();
   if (sheet) wavesAt(t);
@@ -1584,7 +1677,7 @@ $('#motion-export').addEventListener('click', async () => {
   try {
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d'), frameAt = i => {
-      poseAt(i);
+      if (smoothFlow()) sfT = i / N; else poseAt(i);
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
       if (!png || S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, W, H); }
       ctx.setTransform(k, 0, 0, k, (panX - v.x) * k, (panY - v.y) * k); draw(ctx, S);
