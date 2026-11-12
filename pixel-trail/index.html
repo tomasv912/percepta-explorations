@@ -306,7 +306,7 @@ const DEFAULTS = {
   life: 2.5, permanent: true,
   colorMode: 'image', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF'],
   depth: false, depthBlur: 14, vp: false, vpDepth: false, vpCount: 16, vpGap: 0, angle: 0, parallel: false, mode: 'vp', tunnelDir: 'in', waveAmp: 60, waveLen: 600, waveShift: .25, genSeed: 1, animDur: 6, animScale: 2.5, animBlur: 14, animFocus: .45, animFade: .8, animLoops: 1, animParallax: true, vidFps: '30', vidFmt: 'mp4', palCount: '5',
-  ink: '#272727', grain: .05, paper: '#F6F6F6', svgColor: 'palette', bgExport: false,
+  ink: '#272727', grain: .05, paper: '#FAFAFA', svgColor: 'palette', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -336,7 +336,7 @@ function shadesOf(hex, grain) {
 // The palette is used exactly as given: no tone variation.
 const BACKGROUNDS = window.PERCEPTA_BACKGROUNDS;
 // The background's colour is never used in the picture: those cubes turn white (white on white turns ink).
-const WHITE = '#F6F6F6', INK = '#272727';
+const WHITE = '#FAFAFA', INK = '#272727';
 const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 // Colores: the palette's first 5, 4 or 3 colours (the ones on the right drop out first).
 const activePal = st => st.palette.slice(0, Math.min(st.palette.length, +st.palCount || 5));

@@ -154,14 +154,14 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 // background of white or one of those colours; pixels of the background's colour turn white instead.
 let COLORS = window.PERCEPTA_PALETTES[0].colors.slice();
 const BACKGROUNDS = window.PERCEPTA_BACKGROUNDS;
-const WHITE = '#F6F6F6', INK = '#272727';
+const WHITE = '#FAFAFA', INK = '#272727';
 const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 const AW = 1600, AH = 1200, RES = 2, TRAIL_BANDS = 12;
 const DEFAULTS = {
   shape: 'cloud', arms: 12,
   count: 100, size: 16, spread: .28, core: .45, clump: .4, seed: 1,
   trail: 0, trailAngle: 180, trailJitter: .3,
-  on: [true, true, true, true, true], bg: '#F6F6F6', bgExport: false,
+  on: [true, true, true, true, true], bg: '#FAFAFA', bgExport: false,
 };
 const S = structuredClone(DEFAULTS);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));

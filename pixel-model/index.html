@@ -407,7 +407,7 @@ body.kf-open .dialkit-panel[data-position="bottom-left"] { bottom: calc(16px + 1
 // (stipple3d.js), then stippled — more pixels in the shade and on edges, where one part passes over another.
 // Drag the model to turn it.
 const BACKGROUNDS = window.PERCEPTA_BACKGROUNDS;
-const WHITE = '#F6F6F6', INK = '#272727';
+const WHITE = '#FAFAFA', INK = '#272727';
 const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 // The artboard: Formato's proportion, width to height, turned on its side in Vertical (as in Pixel Waves), its long
 // side 1600.
@@ -428,7 +428,7 @@ const DEFAULTS = {
   count: 40000, size: 3, contrast: 1, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
-  colorMode: 'ink', colorSrc: 'ink', colorHow: 'tone', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#F6F6F6', bgExport: false, stroke: false, strokeW: .5,
+  colorMode: 'ink', colorSrc: 'ink', colorHow: 'tone', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
   mzCount: '1', mzHeight: 1.5, bzFlowers: .5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
@@ -1851,7 +1851,7 @@ $('#video').addEventListener('click', async () => {
     if (!config) throw new Error('codec');
     const muxer = new Mp4Muxer.Muxer({ target: new Mp4Muxer.ArrayBufferTarget(), video: { codec: kind, width: W, height: H, frameRate: fps }, fastStart: 'in-memory' });
     let failed = null;
-    // Tagged as sRGB (BT.709 primaries, sRGB curve) so players show the background as the page does, #F6F6F6,
+    // Tagged as sRGB (BT.709 primaries, sRGB curve) so players show the background as the page does, #FAFAFA,
     // instead of guessing a video gamma and shifting it.
     const tag = meta => meta?.decoderConfig ? { ...meta, decoderConfig: { ...meta.decoderConfig, colorSpace: { matrix: 'bt709', fullRange: false, ...meta.decoderConfig.colorSpace, primaries: 'bt709', transfer: 'iec61966-2-1' } } } : meta;
     const enc = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, tag(meta)), error: e => failed = e });

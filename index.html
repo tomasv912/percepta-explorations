@@ -329,7 +329,7 @@ const SIZES = { '3:2': [3000, 2000], '4:3': [3000, 2250], '1:1': [3000, 3000], '
 // Background: white or one of the palette colours. Cubes of the background's colour would vanish into it,
 // so they turn white instead (white cubes on white turn ink).
 const BACKGROUNDS = window.PERCEPTA_BACKGROUNDS;
-const WHITE = '#F6F6F6', INK = '#272727';
+const WHITE = '#FAFAFA', INK = '#272727';
 const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 const DEFAULTS = {
   stroke: false, strokeW: .5,
@@ -342,7 +342,7 @@ const DEFAULTS = {
   colorMode: 'single', colorSrc: 'single', colorHow: 'tone', pastel: true, ink: '#272727', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF'],
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
-  bg: '#F6F6F6', bgExport: false,
+  bg: '#FAFAFA', bgExport: false,
   dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: 1, onlyPal: false, cseed: 1, square: false, dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0,
   motion: 'still', flowDir: 'r', wThresh: 0, loopDur: 6, vidFps: '12', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };

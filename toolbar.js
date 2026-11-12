@@ -63,14 +63,14 @@
   script.replaceWith(nav);
   window.PERCEPTA_EXPLORATIONS = EXPLORATIONS; window.PERCEPTA_GENERAL = GENERAL;
 
-  // The palette every tool with colour uses (more can be listed to offer a choice). White and black stay as they are (#F6F6F6, #272727): they are the two
+  // The palette every tool with colour uses (more can be listed to offer a choice). White and black stay as they are (#FAFAFA, #272727): they are the two
   // backgrounds, and the ink; a palette only swaps the colours. palettePicker(host, get, set) fills host with one
   // button per palette, pressed when get() matches, set(colors) on click; returns a function that re-marks it.
   const PALETTES = [
     { name: 'Percepta', colors: ['#E4DEFC', '#A8A5EC', '#A0C2FF'] },
   ];
   window.PERCEPTA_PALETTES = PALETTES;
-  window.PERCEPTA_BACKGROUNDS = [['#F6F6F6', 'Blanco'], ['#272727', 'Negro']];
+  window.PERCEPTA_BACKGROUNDS = [['#FAFAFA', 'Blanco'], ['#272727', 'Negro']];
   style.textContent += `
 .pal-sets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .pal-sets button { display: flex; height: 22px; padding: 0; border: 0; border-radius: 5px; overflow: hidden; cursor: pointer; box-shadow: 0 0 0 1px var(--line); background: none; }
@@ -81,7 +81,7 @@
   // Backgrounds: white, black or any colour of the palette in use. A colour that is the background's is never used
   // in the picture: on white it turns black, on black white, and on a palette colour whichever of the two stands
   // out more from it (contrast ratio), unless flipped with the button beside the Fondo menu.
-  const WHITE = '#F6F6F6', INK = '#272727';
+  const WHITE = '#FAFAFA', INK = '#272727';
   const lin = c => { const v = c / 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
   const lum = h => { const n = parseInt(h.slice(1), 16); return .2126 * lin(n >> 16 & 255) + .7152 * lin(n >> 8 & 255) + .0722 * lin(n & 255); };
   const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
@@ -544,7 +544,8 @@ window.PerceptaParams = o => {
   foot.appendChild(row);
   const say = m => (typeof toast === 'function' ? toast(m) : console.log(m));
   const apply = text => {
-    let d; try { d = JSON.parse(text.trim()); } catch { return say('Eso no son parámetros de Percepta.'); }
+    // the white used to be #F6F6F6: older copies come in with today's #FAFAFA
+    let d; try { d = JSON.parse(text.trim().replace(/#F6F6F6/gi, '#FAFAFA')); } catch { return say('Eso no son parámetros de Percepta.'); }
     if (!d || !d.percepta) return say('Eso no son parámetros de Percepta.');
     if (d.percepta !== o.tool) say(`Son parámetros de ${d.percepta}: se aplica lo que coincide.`);
     o.set(d);
