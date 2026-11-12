@@ -332,6 +332,14 @@ body.kf-open .dialkit-panel[data-position="bottom-left"] { bottom: calc(16px + 1
 
       <section>
         <h2>Píxeles</h2>
+        <div class="row ord-row" style="grid-template-columns:56px 1fr" title="Como en la barra de arriba y en Pixel Waves: Caótico (sueltos, se superponen), Engrillado (uno por celda) o Pasaje (de desorden a orden, con manejadores sobre el lienzo). Son de la dirección 1A.">
+          <span>Orden</span>
+          <div class="seg" id="ord-seg" aria-label="Orden de los píxeles"><button data-ord="chaos">Caótico</button><button data-ord="grid">Engrillado</button><button data-ord="blend">Pasaje</button></div>
+        </div>
+        <div id="blend-controls">
+<p class="hint">Arrastrá los manejadores sobre el lienzo: <b>Caos</b> marca dónde empieza el orden y <b>Orden</b> dónde se completa; el punto del medio mueve los dos. Con Shift, la línea va en ángulos de 15°.</p>
+          <div class="btns"><button class="btn" id="blend-swap" type="button">Invertir</button><button class="btn" id="blend-reset" type="button">Restablecer</button></div>
+        </div>
         <div id="sl-count"></div>
         <div id="sl-size"></div>
         <div id="sl-contrast"></div>
@@ -346,10 +354,6 @@ body.kf-open .dialkit-panel[data-position="bottom-left"] { bottom: calc(16px + 1
         <label class="check" id="snap-row" title="Los píxeles se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
         <div id="sl-cell"></div>
         <div id="sl-cellGap"></div>
-        <div id="blend-controls">
-<p class="hint">Arrastrá los manejadores sobre el lienzo: <b>Caos</b> marca dónde empieza el orden y <b>Orden</b> dónde se completa; el punto del medio mueve los dos. Con Shift, la línea va en ángulos de 15°.</p>
-          <div class="btns"><button class="btn" id="blend-swap" type="button">Invertir</button><button class="btn" id="blend-reset" type="button">Restablecer</button></div>
-        </div>
         <div class="row">
           <span>Semilla</span>
           <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
@@ -1172,7 +1176,7 @@ const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
 $('#colorHow').addEventListener('change', e => { S.colorHow = e.target.value; sync(); });
 const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => S.palette, () => S.bg, v => { S.bg = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
-document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = b.dataset.v; sync(); } }));
+document.querySelectorAll('.seg[data-key]').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = b.dataset.v; sync(); } }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; if (inp.dataset.check === 'onlyPal') renderInks(); sync(); }));
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
@@ -1192,7 +1196,7 @@ function sync(fast) {
     input.style.setProperty('--p', ((at - d.min) / (d.max - d.min) * 100) + '%');
     $('#out-' + k).textContent = d.fmt(S[k]);
   }
-  document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
+  document.querySelectorAll('.seg[data-key]').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorSrc !== 'ink'; $('#how-row').hidden = S.colorSrc === 'ink'; $('#colorHow').value = S.colorHow; $('#onlypal-row').hidden = S.colorSrc !== 'pal'; $('#palsets').hidden = S.colorSrc === 'orig'; $('#sl-strokeW').hidden = !S.stroke; markPalette();
@@ -1889,13 +1893,20 @@ const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label
   <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label><label class="pm-sq" id="pm-sq" title="Píxeles cuadrados en vez de redondos, igual de separados"><input type="checkbox" id="pm-square"> Cuadrados</label>`);
 const ordOf = () => S.blend ? 'blend' : S.snap ? 'grid' : 'chaos';
 modeBar.querySelector('#pm-1a').addEventListener('click', e => { const b = e.target.closest('[data-ord]'); if (!b) return; S.snap = b.dataset.ord === 'grid'; S.blend = b.dataset.ord === 'blend'; sync(); });
+// the same choice in the sidebar (Píxeles → Orden), always there: Engrillado and Pasaje are of 1A, so in 1B they take you
+// to 1A (as its button would)
+$('#ord-seg').addEventListener('click', e => {
+  const b = e.target.closest('[data-ord]'); if (!b) return;
+  if (S.dir === '1b' && b.dataset.ord !== 'chaos') { document.querySelector('.pdir [data-dir="1a"]').click(); toast('Pasaje y Engrillado son de 1A: pasé a 1A.'); }
+  S.snap = b.dataset.ord === 'grid'; S.blend = b.dataset.ord === 'blend'; sync();
+});
 modeBar.querySelector('#pm-chaos').addEventListener('input', e => { S.chaos = +e.target.value; sync(); });
 modeBar.querySelector('#pm-square').addEventListener('change', e => { S.square = e.target.checked; sync(); });
 modeBar.querySelector('#pm-round').addEventListener('change', e => { S.round1a = e.target.checked; sync(); });
 function syncModeBar() {
   const b1 = S.dir === '1b';
   modeBar.querySelector('#pm-1a').hidden = modeBar.querySelector('#pm-rd').hidden = b1; modeBar.querySelector('#pm-round').checked = !!S.round1a; modeBar.querySelector('#pm-1b').hidden = modeBar.querySelector('#pm-sq').hidden = !b1; modeBar.querySelector('#pm-square').checked = S.square;
-  modeBar.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ord === ordOf()));
+  document.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', !(b1 && b.closest('#ord-seg') && b.dataset.ord !== 'chaos') && b.dataset.ord === ordOf()));
   const ch = modeBar.querySelector('#pm-chaos'); if (+ch.value !== S.chaos) ch.value = S.chaos; ch.style.setProperty('--p', S.chaos * 100 + '%');
   modeBar.querySelector('#pm-chaos-out').textContent = Math.round(S.chaos * 100) + '%';
   $('#blend-controls').hidden = b1 || !S.blend;
