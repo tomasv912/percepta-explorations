@@ -144,7 +144,8 @@ main.kf-open .kf-tab { display: none; }
 main.kf-open { padding-bottom: calc(120px + var(--kfh)); }
 main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 body.kf-open .dialkit-panel[data-position="bottom-left"] { bottom: calc(16px + 168px); }
-.kf-head select#kf-fmt { width: 150px; }
+.kf-head select#kf-fmt { width: 112px; }
+.kf-head select#kf-res { width: 92px; }
 .kf-head { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px; border-bottom: 1px solid var(--line); flex: none; }
 .kf-head button { height: 28px; border: 0; border-radius: 7px; background: var(--fill); color: var(--text); font: 500 12px var(--font); cursor: pointer; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; }
 .kf-head button.ic { width: 28px; padding: 0; justify-content: center; }
@@ -204,7 +205,8 @@ body.kf-open .dialkit-panel[data-position="bottom-left"] { bottom: calc(16px + 1
         <label>Duración <input id="kf-dur" type="number" min="0.5" max="120" step="0.5" value="5" aria-label="Duración en segundos"> s</label>
         <span class="sp"></span>
         <label>Cuadros <select id="kf-fps" aria-label="Cuadros por segundo"><option>12</option><option>15</option><option>24</option><option>30</option><option>60</option></select></label>
-        <select id="kf-fmt" aria-label="Formato del video"><option value="mp4">MP4 4K</option><option value="png">Secuencia PNG (.zip)</option></select>
+        <select id="kf-res" aria-label="Resolución del video" title="Lado largo del video: 4K 3840 px, 2K 2560 px, Full HD 1920 px"><option value="4k">4K</option><option value="2k">2K</option><option value="hd">Full HD</option></select>
+        <select id="kf-fmt" aria-label="Formato del video" title="MP4, o cada cuadro como PNG sin pérdida en un .zip"><option value="mp4">MP4</option><option value="png">PNG (.zip)</option></select>
         <button class="primary" id="kf-video" title="Exporta la animación de los keyframes">Exportar video</button>
         <button class="ic" id="kf-clear" title="Borrar todos los keyframes" aria-label="Borrar todos los keyframes"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4h9M5.5 4V2.5h3V4M3.8 4l.6 8h5.2l.6-8"/></svg></button>
         <button class="ic" id="kf-fold" title="Plegar la línea de tiempo" aria-label="Plegar la línea de tiempo"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3"/></svg></button>
@@ -1726,7 +1728,7 @@ $('#video').addEventListener('click', async () => {
     const b = { x0: Math.max(b0.x0, x0 - pad), y0: Math.max(b0.y0, y0 - pad), x1: Math.min(b0.x1, x1 + pad), y1: Math.min(b0.y1, y1 + pad) };
     // 4K: the crop drawn as large as fits 3840 × 2160 (or 2160 × 3840 when it stands up), every pixel redrawn at
     // that size so it stays sharp; even dimensions (H.264).
-    const bw = b.x1 - b.x0, bh = b.y1 - b.y0, sc = Math.min(3840 / Math.max(bw, bh), 2160 / Math.min(bw, bh)), W = Math.round((b.x1 - b.x0) * sc / 2) * 2, H = Math.round((b.y1 - b.y0) * sc / 2) * 2;
+    const bw = b.x1 - b.x0, bh = b.y1 - b.y0, [RL, RS] = kfFilm ? { '4k': [3840, 2160], '2k': [2560, 1440], hd: [1920, 1080] }[$('#kf-res').value] : [3840, 2160], sc = Math.min(RL / Math.max(bw, bh), RS / Math.min(bw, bh)), W = Math.round((b.x1 - b.x0) * sc / 2) * 2, H = Math.round((b.y1 - b.y0) * sc / 2) * 2;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d');
     const paint = i => {
@@ -2060,11 +2062,11 @@ kfDraw();
 // Copiar / Pegar parámetros: the state, the model (a preset; an uploaded file can't travel), the keyframes, the recorte.
 const params = PerceptaParams({
   tool: 'pixel-model',
-  get: () => ({ S, preset, model: modelName, crop, keys: { dur: KF.dur, fps: $('#kf-fps').value, fmt: $('#kf-fmt').value, rot: KF.rot, pos: KF.pos, zoom: KF.zoom } }),
+  get: () => ({ S, preset, model: modelName, crop, keys: { dur: KF.dur, fps: $('#kf-fps').value, fmt: $('#kf-fmt').value, res: $('#kf-res').value, rot: KF.rot, pos: KF.pos, zoom: KF.zoom } }),
   set: d => {
     PerceptaParams.assign(S, DEFAULTS, d.S);
     if (d.preset && PRESETS.some(p => p[0] === d.preset)) { preset = d.preset; if (d.model && d.model.includes('.')) toast(`El modelo subido (${d.model}) no viaja: subilo de nuevo.`); loadPreset(); }
-    if (d.keys) { KF.dur = d.keys.dur || 5; $('#kf-dur').value = KF.dur; if (d.keys.fps) $('#kf-fps').value = d.keys.fps; if (d.keys.fmt) $('#kf-fmt').value = d.keys.fmt; for (const k of ['rot', 'pos', 'zoom']) KF[k] = (d.keys[k] || []).map(x => ({ t: +x.t, v: x.v.map(Number), ease: x.ease || 'inout' })); KF.sel = null; KF.t = 0; kfDraw(); if (kfCount()) kfOpen(true); }
+    if (d.keys) { KF.dur = d.keys.dur || 5; $('#kf-dur').value = KF.dur; if (d.keys.fps) $('#kf-fps').value = d.keys.fps; if (d.keys.fmt) $('#kf-fmt').value = d.keys.fmt; if (d.keys.res) $('#kf-res').value = d.keys.res; for (const k of ['rot', 'pos', 'zoom']) KF[k] = (d.keys[k] || []).map(x => ({ t: +x.t, v: x.v.map(Number), ease: x.ease || 'inout' })); KF.sel = null; KF.t = 0; kfDraw(); if (kfCount()) kfOpen(true); }
     // a new format resets the pan and recorte (sync), so they are put back after it
     const pan = [S.panX, S.panY]; key = ''; shown = null; sync();
     S.panX = pan[0]; S.panY = pan[1]; crop = d.crop || null; cropStack = []; cropUI(); key = ''; sync();
