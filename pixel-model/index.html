@@ -408,7 +408,11 @@ function setArtboard() {
   if (r >= 1) { AW = 1600; AH = Math.round(1600 / r); } else { AH = 1600; AW = Math.round(1600 * r); }
 }
 // The view box in model units: the model fits the artboard's short side, whatever its shape.
-function viewBoxNow() { const ar = AW / AH, h = 1.15 / S.zoom, hx = ar >= 1 ? h * ar : h, hy = ar >= 1 ? h : h / ar; return { x0: -hx, y0: -hy, x1: hx, y1: hy }; }
+// Zoom up to ×2.5 frames the model closer (drawn again, more detail, the pixels their size); past it, a lens: the
+// ×2.5 picture enlarged about the frame's middle, pixels and all, up to ×50 (a 3 px pixel becomes 60 px).
+const ZS = 2.5, ZMAX = 50, zS = () => Math.min(S.zoom, ZS), lens = () => Math.max(1, S.zoom / ZS);
+const lensX = (x, f) => AW / 2 + (x - AW / 2) * f, lensY = (y, f) => AH / 2 + (y - AH / 2) * f;
+function viewBoxNow() { const ar = AW / AH, h = 1.15 / zS(), hx = ar >= 1 ? h * ar : h, hy = ar >= 1 ? h : h / ar; return { x0: -hx, y0: -hy, x1: hx, y1: hy }; }
 const DEFAULTS = {
   yaw: -20, pitch: 12, zoom: 1, panX: 0, panY: 0, lightAz: 220, lightEl: 40, ambient: .25, shadow: .65,
   count: 40000, size: 3, contrast: 1, threshold: 0, edge: .8, jitter: 1, seed: 1,
@@ -850,7 +854,7 @@ function build(fast, yaw) {
   const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180;
   const light = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.cos(el) * Math.sin(az) * -1 + .0001];
   const buf = Stipple3D.render(tris, box, fast ? 420 : 900, [light[0], light[1], Math.abs(light[2]) + .35], { ambient: S.ambient, shadowDim: 1 - S.shadow });
-  const e = Stipple3D.edges(buf, .02 / S.zoom), r = rng(S.seed);
+  const e = Stipple3D.edges(buf, .02 / zS()), r = rng(S.seed);
   // Cantidad is a density: the count for a model that would fill a third of the frame, scaled by the area it
   // actually covers, so a slender model is not crammed darker than a broad one.
   let area = 0; for (let i = 0; i < buf.mask.length; i++) area += buf.mask[i];
@@ -975,7 +979,7 @@ function snapList(list) {
   }
   return out;
 }
-const sizeOf = p => p.ord ? S.size : S.size;
+const sizeOf = p => S.size * lens();
 function draw(ctx, list, ox = 0, oy = 0, q = RES) {
   if (gridded()) list = snapList(list);
   const groups = new Map();
@@ -983,13 +987,13 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
   for (const [c, l] of groups) {
     ctx.fillStyle = c; ctx.beginPath();
     // Contorno: each pixel's outline, inside the pixel; one too small for its line stays filled
-    const line = S.stroke, solid = line ? new Path2D() : null;
+    const line = S.stroke, solid = line ? new Path2D() : null, f = lens();
     if (line) { ctx.strokeStyle = c; ctx.lineWidth = S.strokeW; ctx.lineJoin = 'miter'; }
     for (const p of l) {
       // Reveal: a pixel growing in is drawn at its share of the size (p.sc), from its middle
       const s = sizeOf(p), z0 = p.sc === undefined ? s : s * p.sc; if (z0 <= .05) continue;
       const hh = line ? PerceptaStroke.half(z0 / 2, S.strokeW) : 0, g = line && hh ? ctx : line ? solid : ctx, z = line && hh ? hh * 2 : z0;
-      const cx = p.x + (p.dx || 0) - ox, cy = p.y + (p.dy || 0) - oy;
+      const cx = lensX(p.x + (p.dx || 0), f) - ox, cy = lensY(p.y + (p.dy || 0), f) - oy;
       // Líneas horizontales: circles
       if (roundNow()) { g.moveTo(cx + z / 2, cy); g.arc(cx, cy, z / 2, 0, Math.PI * 2); continue; }
       if (line && hh) g.rect(cx - z / 2, cy - z / 2, z, z);
@@ -1000,8 +1004,9 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
 }
 function bounds(list) {
   if (gridded()) list = snapList(list);
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, s = Math.max(gridded() ? (S.size + S.cellGap) : 0, S.size) / 2;
-  for (const p of list) { const x = p.x + (p.dx || 0), y = p.y + (p.dy || 0); x0 = Math.min(x0, x - s); y0 = Math.min(y0, y - s); x1 = Math.max(x1, x + s); y1 = Math.max(y1, y + s); }
+  const f = lens();
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, s = Math.max(gridded() ? (S.size + S.cellGap) : 0, S.size) / 2 * f;
+  for (const p of list) { const x = lensX(p.x + (p.dx || 0), f), y = lensY(p.y + (p.dy || 0), f); x0 = Math.min(x0, x - s); y0 = Math.min(y0, y - s); x1 = Math.max(x1, x + s); y1 = Math.max(y1, y + s); }
   return x0 > x1 ? null : { x0: Math.floor(Math.max(0, x0)), y0: Math.floor(Math.max(0, y0)), x1: Math.ceil(Math.min(AW, x1)), y1: Math.ceil(Math.min(AH, y1)) };
 }
 
@@ -1119,7 +1124,7 @@ function sync(fast) {
   updateBg(S.bgFlip);
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   if (S.aspect + S.orient !== artKey) { artKey = S.aspect + S.orient; setArtboard(); S.panX = S.panY = 0; if (typeof crop !== 'undefined') { crop = null; cropStack = []; cropUI(); } }
-  const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow, S.lineAM, S.lineDot, S.chaos, S.square]);
+  const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, zS(), S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow, S.lineAM, S.lineDot, S.chaos, S.square]);
   if (k !== key || (!fast && fastNext)) { fastNext = !!fast; pts = build(fast); key = k; ptsPan = [S.panX, S.panY]; }
   // Moved in the frame (Shift + drag): the same pixels, shifted; nothing is re-sampled.
   if (ptsPan[0] !== S.panX || ptsPan[1] !== S.panY) { const dx = S.panX - ptsPan[0], dy = S.panY - ptsPan[1]; for (const p of pts) { p.x += dx; p.y += dy; } ptsPan = [S.panX, S.panY]; }
@@ -1205,7 +1210,8 @@ frame.addEventListener('pointermove', e => {
   if (!turn) return;
   if (turn.move) {
     const r = frame.getBoundingClientRect();
-    S.panX = Math.round(turn.px + (e.clientX - turn.x) * viewBox().w / r.width); S.panY = Math.round(turn.py + (e.clientY - turn.y) * viewBox().h / r.height);
+    const f = lens(), q = v => Math.round(v * f) / f; // through the lens the picture moves with the pointer: pan in finer steps
+    S.panX = q(turn.px + (e.clientX - turn.x) * viewBox().w / r.width / f); S.panY = q(turn.py + (e.clientY - turn.y) * viewBox().h / r.height / f);
     return sync();
   }
   S.yaw = ((turn.yaw + (e.clientX - turn.x) * .5 + 540) % 360) - 180; S.pitch = clamp(turn.pitch + (e.clientY - turn.y) * .4, -89, 89);
@@ -1217,7 +1223,7 @@ frame.addEventListener('dblclick', () => { if (S.panX || S.panY) { S.panX = S.pa
 addEventListener('keydown', e => { if (e.key === 'Shift' && !turn) frame.classList.add('moving'); });
 addEventListener('keyup', e => { if (e.key === 'Shift' && !turn) frame.classList.remove('moving'); });
 frame.addEventListener('pointerup', endTurn); frame.addEventListener('pointercancel', endTurn);
-frame.addEventListener('wheel', e => { e.preventDefault(); S.zoom = clamp(S.zoom * Math.exp(-e.deltaY * .0015), .4, 2.5); sync(true); clearTimeout(frame.t); frame.t = setTimeout(() => sync(), 200); }, { passive: false });
+frame.addEventListener('wheel', e => { e.preventDefault(); S.zoom = clamp(S.zoom * Math.exp(-e.deltaY * .0015), .4, ZMAX); sync(true); clearTimeout(frame.t); frame.t = setTimeout(() => sync(), 200); }, { passive: false });
 
 // ---------- Animation ----------
 // Every animation is a loop of Duración del loop seconds, played on screen and exported as is. A mano: the
@@ -1282,13 +1288,13 @@ function hoverStep(list, ptr, dt) {
 // once, by the side its surface faces most; its place on the model is stored, so a turn only moves and hides
 // pixels. Hidden: behind something nearer, by a quick depth render of the frame.
 let ring = null;
-const ringKey = () => JSON.stringify([modelName, presetSeed, AW, AH, S.lines, S.lineGap, S.lineAM, S.lineDot, S.chaos, S.square, S.pitch, S.zoom, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
+const ringKey = () => JSON.stringify([modelName, presetSeed, AW, AH, S.lines, S.lineGap, S.lineAM, S.lineDot, S.chaos, S.square, S.pitch, zS(), S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
 function buildRing() {
   const K = 8, box = viewBoxNow(), k = AW / (box.x1 - box.x0), p = S.pitch * Math.PI / 180, cp = Math.cos(p), sp = Math.sin(p), list = [];
   const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180, L = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.abs(-Math.cos(el) * Math.sin(az)) + .35];
   for (let v = 0; v < K; v++) {
     const yaw = v * 360 / K, y = yaw * Math.PI / 180, cy = Math.cos(y), sy = Math.sin(y), r = rng(S.seed * 977 + v);
-    const buf = Stipple3D.render(viewTris(yaw), box, 700, L, { ambient: S.ambient, shadowDim: 1 - S.shadow }), e = Stipple3D.edges(buf, .02 / S.zoom);
+    const buf = Stipple3D.render(viewTris(yaw), box, 700, L, { ambient: S.ambient, shadowDim: 1 - S.shadow }), e = Stipple3D.edges(buf, .02 / zS());
     let area = 0; for (let i = 0; i < buf.mask.length; i++) area += buf.mask[i];
     // view → model: undo the pitch, then the yaw (x right, y down in view; y up in the model)
     const back = (X, Y, Z) => { const y1 = -Y, yy = y1 * cp + Z * sp, z1 = -y1 * sp + Z * cp; return [X * cy - z1 * sy, yy, X * sy + z1 * cy]; };
@@ -1319,7 +1325,7 @@ function buildRing() {
 function ringFrame(yaw) {
   if (!ring || ring.key !== ringKey()) ring = buildRing();
   const { list, box, k } = ring, y = yaw * Math.PI / 180, p = S.pitch * Math.PI / 180, cy = Math.cos(y), sy = Math.sin(y), cp = Math.cos(p), sp = Math.sin(p);
-  const zb = Stipple3D.render(viewTris(yaw), box, 420, [0, 0, 1], { shadows: false }), eps = .03 / S.zoom, out = [];
+  const zb = Stipple3D.render(viewTris(yaw), box, 420, [0, 0, 1], { shadows: false }), eps = .03 / zS(), out = [];
   for (const q of list) {
     const [x, yy, z] = q.m, x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y1 = yy * cp - z1 * sp, z2 = yy * sp + z1 * cp, X = x1, Y = -y1;
     const ix = Math.floor((X - box.x0) * zb.k), iy = Math.floor((Y - box.y0) * zb.k);
@@ -1640,7 +1646,7 @@ $('#svg').addEventListener('click', () => {
   // Contorno: outlines grouped apart (key 'line|colour') from the pixels too small for their line
   for (const p of gridded() ? snapList(exportList()) : exportList()) {
     const z = sizeOf(p), z0 = p.sc === undefined ? z : z * p.sc; if (z0 <= .05) continue;
-    const hh = S.stroke ? PerceptaStroke.half(z0 / 2, S.strokeW) : 0, zz = hh ? hh * 2 : z0, ss = n(zz), c = (hh ? 'line|' : '') + colorOf(p), X0 = p.x + (p.dx || 0) - b.x0, Y0 = p.y + (p.dy || 0) - b.y0;
+    const hh = S.stroke ? PerceptaStroke.half(z0 / 2, S.strokeW) : 0, zz = hh ? hh * 2 : z0, ss = n(zz), c = (hh ? 'line|' : '') + colorOf(p), X0 = lensX(p.x + (p.dx || 0), lens()) - b.x0, Y0 = lensY(p.y + (p.dy || 0), lens()) - b.y0;
     groups.set(c, (groups.get(c) || '') + (round ? `M${n(X0 - zz / 2)} ${n(Y0)}a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${ss} 0a${n(zz / 2)} ${n(zz / 2)} 0 1 0 ${-ss} 0Z` : `M${n(X0 - zz / 2)} ${n(Y0 - zz / 2)}h${ss}v${ss}h${-ss}z`));
   }
   for (const [c, d] of groups) out.push(c.startsWith('line|') ? `<path ${PerceptaStroke.attrs(c.slice(5), S.strokeW * k)} d="${d}"/>` : `<path fill="${c}" d="${d}"/>`);
@@ -1870,6 +1876,8 @@ function kfValue(track, t) {
   const L = K[K.length - 1]; if (t >= L.t) return L.v.slice();
   let i = 0; while (K[i + 1].t < t) i++;
   const a = K[i], b = K[i + 1], e = easeFn(a.ease)((t - a.t) / ((b.t - a.t) || 1));
+  // zoom moves evenly in scale (×1 → ×10 passes ×3.2 halfway), the rest in a straight line
+  if (track === 'zoom') return a.v.map((v, j) => Math.exp(Math.log(v) + (Math.log(b.v[j]) - Math.log(v)) * e));
   return a.v.map((v, j) => v + (b.v[j] - v) * e);
 }
 // the view at time t: what the tracks say, the rest as it is
@@ -1877,7 +1885,7 @@ function kfView(t) {
   const r = kfValue('rot', t), p = kfValue('pos', t), z = kfValue('zoom', t);
   return { yaw: r ? r[0] : S.yaw, pitch: r ? r[1] : S.pitch, panX: p ? p[0] : S.panX, panY: p ? p[1] : S.panY, zoom: z ? z[0] : S.zoom };
 }
-const kfApply = v => { S.yaw = wrapDeg(v.yaw); S.pitch = v.pitch; S.panX = Math.round(v.panX); S.panY = Math.round(v.panY); S.zoom = v.zoom; };
+const kfApply = v => { S.yaw = wrapDeg(v.yaw); S.pitch = v.pitch; S.panX = v.panX; S.panY = v.panY; S.zoom = v.zoom; };
 // Píxeles fijos for a moving view: the model stippled once (from eight sides, at the keys' middle tilt and zoom) and
 // its pixels projected into every frame, hidden where something nearer covers them.
 function kfRingFrame(v) {
@@ -1886,7 +1894,7 @@ function kfRingFrame(v) {
   if (!ring || ring.key !== ringKey()) ring = buildRing();
   S.pitch = v.pitch; S.zoom = v.zoom;
   const { list } = ring, box = viewBoxNow(), k = AW / (box.x1 - box.x0), y = v.yaw * Math.PI / 180, p = v.pitch * Math.PI / 180, cy = Math.cos(y), sy = Math.sin(y), cp = Math.cos(p), sp = Math.sin(p);
-  const zb = Stipple3D.render(viewTris(v.yaw), box, 420, [0, 0, 1], { shadows: false }), eps = .03 / S.zoom, out = [];
+  const zb = Stipple3D.render(viewTris(v.yaw), box, 420, [0, 0, 1], { shadows: false }), eps = .03 / zS(), out = [];
   for (const q of list) {
     const [x, yy, z] = q.m, x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y1 = yy * cp - z1 * sp, z2 = yy * sp + z1 * cp, X = x1, Y = -y1;
     const ix = Math.floor((X - box.x0) * zb.k), iy = Math.floor((Y - box.y0) * zb.k);
