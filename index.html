@@ -799,7 +799,7 @@ function generate(st) {
   for (let i = 0; i < got; i++) { px[i] = X0 + (px[i] - x0) / (x1 - x0 || 1) * (X1 - X0); py[i] = Y0 + (py[i] - y0) / (y1 - y0 || 1) * (Y1 - Y0); }
   if (wr) wr.fit = { x0, x1, y0, y1, X0, X1, Y0, Y1, vert: st.orient === 'v' };
   const G = { wv: wr, W, H, n: got, hx: cut(px), hy: cut(py), size: cut(size), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen), dep: cut(dep) };
-  return st.dir === '1b' ? apart(G, st.dPx, st.chaos * (lines ? st.dGap * 1.6 : st.size * 10), rng(st.seed * 13 + 1)) : G;
+  return st.dir === '1b' ? apart(G, st.dPx, st.blend ? 0 : st.chaos * (lines ? st.dGap * 1.6 : st.size * 10), rng(st.seed * 13 + 1)) : G;
 }
 
 // An image is a flat card: fitted inside the frame unrotated (so turning it never rescales), then turned
@@ -1216,8 +1216,8 @@ function sync() {
   $('#motion-sec').hidden = false; $('#flowdir-row').hidden = S.motion === 'still'; $('#sl-wThresh').hidden = !waves; $('#motion-controls').hidden = S.motion === 'still';
   // switching Suave / A mano brings its usual rate: 60 fps for Suave, 12 drawings a second for A mano
   if (S.flowStyle !== sync.flowStyle) { if (sync.flowStyle !== undefined) S.vidFps = S.flowStyle === 'smooth' ? (+S.vidFps < 24 ? '60' : S.vidFps) : (S.vidFps === '60' ? '12' : S.vidFps); sync.flowStyle = S.flowStyle; }
-  const smoothOn = S.flowStyle === 'smooth' && !sheetFlow();
-  $('#sl-jitter').hidden = !(S.motion === 'horiz' && S.handJit) || smoothOn; $('#hand-check').hidden = smoothOn; $('#flowstyle-row').hidden = sheetFlow();
+  const smoothOn = S.flowStyle === 'smooth' && (S.dir === '1b' || !sheetFlow());
+  $('#sl-jitter').hidden = !(S.motion === 'horiz' && S.handJit) || smoothOn; $('#hand-check').hidden = smoothOn; $('#flowstyle-row').hidden = sheetFlow() && S.dir !== '1b';
   $('#fps-hint').textContent = smoothOn ? 'Cuadros por segundo del video' : 'Dibujos por segundo';
   $('#motion-hint').hidden = S.motion === 'still';
   $('#motion-hint').textContent = sheetFlow() ? (S.source === 'refract' ? 'Los cubos avanzan de izquierda a derecha: entran por el borde como nube, se encauzan en el foco y salen abiertos por el otro borde, en loop; A mano les suma un saltito en cada dibujo, como stop motion.' : 'Los cubos recorren la ola de izquierda a derecha, entran por un borde del cuadro y salen por el otro, en loop; A mano les suma un saltito en cada dibujo, como stop motion.')
@@ -1240,12 +1240,13 @@ function sync() {
   markPalette();
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
   const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.flowDir === 'r' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz' && S.flowDir === 'r', S.wThresh, S.contrast, S.threshold, S.invert, S.dir, S.imgLines && depthId, S.dGap, S.dPx, S.dRelief, S.dAM,
-    S.style, S.count, S.size, S.snap && !S.blend && (S.size + S.cellGap), S.chaos, S.square, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
+    S.style, S.count, S.size, S.snap && !S.blend && (S.size + S.cellGap), S.chaos, S.dir === '1b' && S.blend, S.square, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {
     gen0 = generate(S); genKey = key; placeKey = pkey; rebuild(true);
     if (gen0.W + 'x' + gen0.H !== cropKey) { cropKey = gen0.W + 'x' + gen0.H; crop = null; cropStack = []; cropUI(); }
   }
+  else if (S.dir === '1b' && JSON.stringify([S.blend, S.blendA, S.blendB, S.chaos, S.dGap, S.dPx]) !== sync.p1b) { sync.p1b = JSON.stringify([S.blend, S.blendA, S.blendB, S.chaos, S.dGap, S.dPx]); rebuild(false); } // 1B Pasaje: its scatter moved
   else if (pkey !== placeKey && gen0.lx) {
     // Rotating moves the cubes still at home; dispersed ones stay where they drifted.
     placeKey = pkey; place(gen0, S); rebuild(false);
@@ -1265,7 +1266,8 @@ function frameLoop(now) {
   const dt = last ? Math.min(.05, (now - last) / 1000) : 1 / 60; last = now;
   step(dt);
   // Animating: a new drawing Dibujos por segundo times a second, held in between (as stop motion).
-  if (animating() && smoothFlow()) sfT = flowTime() / S.loopDur; // Suave: every screen frame, continuous
+  if (animating() && smooth1b()) poseAt(0, flowTime() / S.loopDur); // 1B Suave: its circles, moved every screen frame
+  else if (animating() && smoothFlow()) sfT = flowTime() / S.loopDur; // Suave: every screen frame, continuous
   else if (animMode() && smoothFlow() && !filming) sfT = flowPausedT / S.loopDur;
   else if (animating()) { const fi = Math.floor((now - flowT0) / 1000 * +S.vidFps) % drawings(); if (fi !== shownFi) { shownFi = fi; poseAt(fi); } }
   else if (animMode() && !flowPlaying && !filming && shownFi === -1) { shownFi = -2; poseAt(fiAt(flowPausedT)); } // paused: hold its drawing
@@ -1299,7 +1301,31 @@ function derive() {
   for (const k of ['size', 'shade', 'pal', 'rgb', 'tlen', 'dp', 'dep']) if (gen0[k]) { const a = new gen0[k].constructor(m); for (let i = 0; i < m; i++) a[i] = gen0[k][src[i]]; g[k] = a; }
   g.hx = new Float32Array(m); g.hy = new Float32Array(m);
   for (let i = 0; i < m; i++) { const x = v[i * 2]; if (x !== x) { g.del[i] = 1; g.hx[i] = gen0.hx[src[i]]; g.hy[i] = gen0.hy[src[i]]; } else { g.hx[i] = x; g.hy[i] = v[i * 2 + 1]; } }
+  if (S.dir === '1b' && S.blend) pasaje1b(g);
   return g;
+}
+// Pasaje in 1B: each circle keeps its place on its line (following the photo's depth) on the Orden side and comes off
+// it on the Caos side, by how far it is from Orden (all of Caos at the Caos handle, nothing at Orden): it scatters
+// there and falls into its place as the order comes. Circles still never touch: the ordered ones are kept first (their
+// lines stay whole), and a scattered one that would touch another is left out. Worked out on the layout (home), so it
+// holds still, turns and travels with the picture.
+function pasaje1b(g) {
+  const m = g.n, J = S.chaos * (linesOn(S) ? S.dGap * 1.6 : S.size * 10), r = rng(S.seed * 31 + 5), ord = new Float32Array(m);
+  for (let i = 0; i < m; i++) {
+    const gx = gauss(r), gy = gauss(r); if (g.del[i]) continue;
+    const o = PerceptaOrder((g.hx[i] + panX) / g.W, (g.hy[i] + panY) / g.H, S.blendA, S.blendB), f = 1 - o; ord[i] = o;
+    g.hx[i] += gx * J * .5 * f; g.hy[i] += gy * J * .5 * f;
+  }
+  const idx = []; for (let i = 0; i < m; i++) if (!g.del[i]) idx.push(i);
+  idx.sort((a, b) => ord[b] - ord[a]);
+  const gap = S.dPx, maxS = g.size.reduce((a, b) => Math.max(a, b), 0), cell = maxS + gap + 1e-6, grid = new Map(), key = (a, b) => a * 100003 + b;
+  for (const i of idx) {
+    const x = g.hx[i], y = g.hy[i], rad = g.size[i] / 2, cx = Math.floor(x / cell), cy = Math.floor(y / cell);
+    let ok = true;
+    for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = grid.get(key(cx + a, cy + b)); if (l) for (const [ox, oy, orad] of l) if (apartD(ox - x, oy - y) < rad + orad + gap - 1e-6) { ok = false; break; } }
+    if (!ok) { g.del[i] = 1; continue; }
+    const kk = key(cx, cy); (grid.get(kk) || grid.set(kk, []).get(kk)).push([x, y, rad]);
+  }
 }
 // Cubes still at home follow the new layout; dispersed ones stay where they drifted.
 function adoptMotion() {
@@ -1541,7 +1567,9 @@ function hash01(a, b) {
 // it eases to the middle of its cell, so there they run in lanes a cell wide, a cell apart, still sliding smoothly
 // along. How much of each cube shows is the picture's density where it is now (from where the picture's own cubes
 // rest), against a threshold of its own: it grows in and shrinks away, never pops. Same cubes all the time.
-const smoothFlow = () => S.motion === 'horiz' && S.flowStyle === 'smooth' && !sheetFlow() && !!gen;
+const smoothFlow = () => S.motion === 'horiz' && S.flowStyle === 'smooth' && S.dir !== '1b' && !sheetFlow() && !!gen;
+// 1B keeps its own circles (its lines, its spacing): Suave moves them continuously, each frame, without the saltito
+const smooth1b = () => S.motion === 'horiz' && S.flowStyle === 'smooth' && S.dir === '1b';
 let SF = null, sfT = 0, SF_ON = false;
 function sfBuild() {
   const vert = S.flowDir === 'd' || S.flowDir === 'u', cell = S.size + S.cellGap, key = [gen.n, gen.W, gen.H, S.flowDir, cell].join();
@@ -1590,8 +1618,8 @@ function sfFrame(t) {
     const a1 = a + 1 < na ? a + 1 : a, b1 = b + 1 < nb ? b + 1 : b, aa = a < 0 ? 0 : a, bb = b < 0 ? 0 : b;
     const acc = (D[bb * na + aa] * (1 - x) + D[bb * na + a1] * x) * (1 - y) + (D[b1 * na + aa] * (1 - x) + D[b1 * na + a1] * x) * y;
     if (acc < ui) continue; // shows where the density passes its threshold (so as many as the still picture), 
-    let o = ordered ? 1 : 0;
-    if (st.blend) { const px = vert ? b0 + fb * cell : a0 + fa * cell, py = vert ? a0 + fa * cell : b0 + fb * cell; o = smooth(ch[i] - .08, ch[i] + .08, PerceptaOrder((px + panX) / g.W, (py + panY) / g.H, st.blendA, st.blendB)); }
+    let o = ordered && st.dir !== '1b' ? 1 : 0;
+    if (st.blend && st.dir !== '1b') { const px = vert ? b0 + fb * cell : a0 + fa * cell, py = vert ? a0 + fa * cell : b0 + fb * cell; o = smooth(ch[i] - .08, ch[i] + .08, PerceptaOrder((px + panX) / g.W, (py + panY) / g.H, st.blendA, st.blendB)); }
     if (o > 0) { fa += (ka + .5 - fa) * o; fb += (cellB[i] + .5 - fb) * o; }
     // grows in over a wide band of density, and fades at the two ends of the run (where it wraps round)
     const edge = Math.min(fa, na - fa), s0 = g.size[src[i]], w = smooth(ui, ui + .25, acc) * smooth(.5, 3, edge), sz = (s0 + (sz0 - s0) * o) * w;
@@ -1616,8 +1644,8 @@ function withSmoothFlow(fn) {
   const keep = [gen, X, Y, gone]; gen = f.G; X = f.X; Y = f.Y; gone = new Uint8Array(f.G.n); SF_ON = true;
   try { return fn(); } finally { [gen, X, Y, gone] = keep; SF_ON = false; }
 }
-function poseAt(fi) {
-  const sheet = sheetFlow(), gflow = S.motion === 'horiz' && !sheet, src = edit.src, J = handOn() ? S.jitter : 0, d = fi % drawings(), t = d / drawings();
+function poseAt(fi, tc) {
+  const cont = tc !== undefined, sheet = sheetFlow(), gflow = S.motion === 'horiz' && !sheet, src = edit.src, J = handOn() && !cont ? S.jitter : 0, d = cont ? 0 : fi % drawings(), t = cont ? ((tc % 1) + 1) % 1 : d / drawings();
   if (sheet) wavesAt(t);
   const vert = S.flowDir === 'd' || S.flowDir === 'u';
   for (let i = 0; i < gen.n; i++) {
@@ -1679,7 +1707,7 @@ $('#motion-export').addEventListener('click', async () => {
   try {
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d'), frameAt = i => {
-      if (smoothFlow()) sfT = i / N; else poseAt(i);
+      if (smoothFlow()) sfT = i / N; else if (smooth1b()) poseAt(0, i / N); else poseAt(i);
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
       if (!png || S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, W, H); }
       ctx.setTransform(k, 0, 0, k, (panX - v.x) * k, (panY - v.y) * k); draw(ctx, S);
@@ -1748,7 +1776,7 @@ $('#svg').addEventListener('click', () => download(`pixel-waves-${S.seed}.svg`, 
 // Dirección (toolbar.js): 1A squares, all one size, overlapping, gathered by the light; 1B circles that never overlap,
 // and a photo laid out by its depth (Líneas que siguen la profundidad).
 // Pasaje's handles (toolbar.js) over the picture, and its two buttons.
-PerceptaBlendHandles({ frame, visible: () => S.dir !== '1b' && S.blend, get: () => [S.blendA, S.blendB], set: (A, B) => { S.blendA = A; S.blendB = B; sync(); }, view: () => { const v = viewBox(); return { x: v.x / gen.W, y: v.y / gen.H, w: v.w / gen.W, h: v.h / gen.H }; } });
+PerceptaBlendHandles({ frame, visible: () => S.blend, get: () => [S.blendA, S.blendB], set: (A, B) => { S.blendA = A; S.blendB = B; sync(); }, view: () => { const v = viewBox(); return { x: v.x / gen.W, y: v.y / gen.H, w: v.w / gen.W, h: v.h / gen.H }; } });
 $('#blend-swap').addEventListener('click', () => { [S.blendA, S.blendB] = [S.blendB, S.blendA]; sync(); });
 $('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.slice(); S.blendB = DEFAULTS.blendB.slice(); sync(); });
 
@@ -1759,6 +1787,9 @@ const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label
 const ordOf = () => S.blend ? 'blend' : S.snap ? 'grid' : 'chaos';
 modeBar.querySelector('#pm-1a').addEventListener('click', e => { const b = e.target.closest('[data-ord]'); if (!b) return; S.snap = b.dataset.ord === 'grid'; S.blend = b.dataset.ord === 'blend'; sync(); });
 modeBar.querySelector('#pm-chaos').addEventListener('input', e => { S.chaos = +e.target.value; sync(); });
+// 1B's bar: Pasaje beside Caos (the circles scatter on the Caos side and fall into their places on the Orden side)
+modeBar.querySelector('#pm-1b').insertAdjacentHTML('afterend', '<label class="pm-sq" id="pm-pas1b" title="Pasaje: los círculos se dispersan del lado de Caos y caen en su lugar del lado de Orden, siguiendo la profundidad"><input type="checkbox" id="pm-blend1b"> Pasaje</label>');
+modeBar.querySelector('#pm-blend1b').addEventListener('change', e => { S.blend = e.target.checked; S.snap = false; if (S.blend && S.chaos < .25) S.chaos = .7; sync(); });
 modeBar.querySelector('#pm-square').addEventListener('change', e => { S.square = e.target.checked; sync(); });
 modeBar.querySelector('#pm-round').addEventListener('change', e => { S.circle = e.target.checked; sync(); });
 function syncModeBar() {
@@ -1767,7 +1798,8 @@ function syncModeBar() {
   modeBar.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ord === ordOf()));
   const ch = modeBar.querySelector('#pm-chaos'); if (+ch.value !== S.chaos) ch.value = S.chaos; ch.style.setProperty('--p', S.chaos * 100 + '%');
   modeBar.querySelector('#pm-chaos-out').textContent = Math.round(S.chaos * 100) + '%';
-  $('#blend-controls').hidden = b1 || !S.blend;
+  $('#blend-controls').hidden = !S.blend;
+  modeBar.querySelector('#pm-pas1b').hidden = !b1; modeBar.querySelector('#pm-blend1b').checked = !!S.blend;
 }
 
 const direction = PerceptaDirection({
@@ -1775,7 +1807,7 @@ const direction = PerceptaDirection({
   set: v => {
     S.dir = v;
     if (v === '1a') { S.circle = false; S.imgLines = false; S.style = 'mono'; }
-    else { S.circle = true; S.imgLines = true; S.snap = false; S.blend = false; }
+    else { S.circle = true; S.imgLines = true; S.snap = false; } // Pasaje stays on across both
     sync();
   },
 });
