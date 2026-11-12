@@ -861,6 +861,7 @@ let pts = null, ptsPan = [0, 0];
 // The render at yaw (Giro unless given); only a render at Giro becomes the scene that A mano re-samples.
 function build(fast, yaw) {
   if (S.anim === 'stable') return stableFrame(yaw ?? S.yaw, fast, yaw === undefined); // Estable: the pixels stay on the model
+  stb = null; // leaving Estable: the next time it starts from the picture of that moment
   const tris = viewTris(yaw), box = viewBoxNow();
   const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180;
   const light = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.cos(el) * Math.sin(az) * -1 + .0001];
@@ -938,150 +939,82 @@ function linePick(raw, kA, r, at) {
 const gauss = r => Math.sqrt(-2 * Math.log(1 - r())) * Math.cos(2 * Math.PI * r());
 function jitterRaw(raw, amt, r) { if (amt > 0) for (let i = 0; i < raw.length; i += 4) { raw[i] += gauss(r) * amt * .5; raw[i + 1] += gauss(r) * amt * .5; } return raw; }
 // ---------- Estable ----------
-// The pixels live on the model: sampled once over its surface (or, with líneas, along its own level lines), each with
-// its place, its normal and a fixed threshold. Every frame only moves them with the model and asks how much of each
-// shows: the light there (like the other modes: more pixels in the dark), how square-on the surface faces (so a
-// turning surface thins out smoothly at the silhouette) and whether something nearer covers it. Each answer is a
-// smooth function of the view and sets the pixel's size, so a pixel grows in and shrinks away instead of popping:
-// turning, dragging and keyframes run continuous, with no new sampling between frames.
+// The picture as it is, made to turn: the pixels of the current view, drawn exactly as the other modes draw them
+// (its lines, its spacing, its sizes), are pinned to the surface under them and from then on only move with the model:
+// nothing is sampled again. The sides the view doesn't show are taken the same way, once, from views 45° apart as they
+// come round (each surface kept from the view that faces it most), so a whole turn is covered. Showing is smooth: a
+// pixel shrinks away as its surface turns edge-on or something nearer passes in front, instead of popping.
 let stb = null;
-const stbKey = () => JSON.stringify([modelName, presetSeed, model && model.length, S.seed, count(), S.size, S.jitter, S.lines, S.lines && S.lineGap, S.lines && S.lineDot, AW, AH]);
-function stbBuild() {
-  const T = model, nt = T.length / 18, r = rng(S.seed * 7717 + 3), box = viewBoxNow(), kA = AW / (box.x1 - box.x0);
-  const P = [], N = [], TI = [], U = [], J = [];
-  const put = (t, a, b) => { // a point of triangle t at barycentric (1 - a - b, a, b)
-    const o = t * 18, c = 1 - a - b;
-    for (let j = 0; j < 3; j++) P.push(T[o + j] * c + T[o + 3 + j] * a + T[o + 6 + j] * b);
-    const nx = T[o + 9] * c + T[o + 12] * a + T[o + 15] * b, ny = T[o + 10] * c + T[o + 13] * a + T[o + 16] * b, nz = T[o + 11] * c + T[o + 14] * a + T[o + 17] * b, l = Math.hypot(nx, ny, nz) || 1;
-    N.push(nx / l, ny / l, nz / l); TI.push(t); U.push(r()); J.push((r() - .5) * S.size * S.jitter, (r() - .5) * S.size * S.jitter);
-  };
-  if (!S.lines) {
-    // spread by area: plenty of them (their share kept per frame is set on the first frame, stb.s)
-    const cum = new Float64Array(nt); let A = 0;
-    for (let t = 0; t < nt; t++) {
-      const o = t * 18, ux = T[o + 3] - T[o], uy = T[o + 4] - T[o + 1], uz = T[o + 5] - T[o + 2], vx = T[o + 6] - T[o], vy = T[o + 7] - T[o + 1], vz = T[o + 8] - T[o + 2];
-      A += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2; cum[t] = A;
-    }
-    const C = Math.min(320000, count() * 7);
-    for (let i = 0; i < C; i++) {
-      const q = r() * A; let lo = 0, hi = nt - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (cum[m] < q) lo = m + 1; else hi = m; }
-      let a = r(), b = r(); if (a + b > 1) { a = 1 - a; b = 1 - b; } put(lo, a, b);
-    }
-  } else {
-    // líneas: the model cut by level planes Separación apart (in the frame's pixels, at this zoom); along each cut,
-    // pixels about Tamaño + Espacio apart (random places, then thinned so none crowd the one before)
-    const gap = S.lineGap / kA, pitch = (S.size + S.lineDot) / kA, levels = new Map();
-    for (let t = 0; t < nt; t++) {
-      const o = t * 18, ys = [T[o + 1], T[o + 4], T[o + 7]], y0 = Math.min(...ys), y1 = Math.max(...ys);
-      for (let L = Math.ceil(y0 / gap); L * gap <= y1; L++) {
-        const yL = L * gap, cut = [];
-        for (const [i, j] of [[0, 1], [1, 2], [2, 0]]) { const a = ys[i], b = ys[j]; if ((a - yL) * (b - yL) < 0 || (a === yL && b !== yL)) { const u = (yL - a) / (b - a); cut.push([i, j, u]); } }
-        if (cut.length < 2) continue;
-        const bc = ([i, j, u]) => { const w = [0, 0, 0]; w[i] = 1 - u; w[j] = u; return w; };
-        const w0 = bc(cut[0]), w1 = bc(cut[1]), at = (w, c) => T[o + c] * w[0] + T[o + 3 + c] * w[1] + T[o + 6 + c] * w[2];
-        const len = Math.hypot(at(w0, 0) - at(w1, 0), at(w0, 2) - at(w1, 2));
-        for (let n = len / pitch * 2.5 + r(); n >= 1; n--) {
-          const s = r(), w = w0.map((v, c) => v + (w1[c] - v) * s);
-          (levels.get(L) || levels.set(L, []).get(L)).push([t, w[1], w[2], Math.atan2(at(w, 2), at(w, 0))]);
-        }
-      }
-    }
-    for (const list of levels.values()) {
-      list.sort((a, b) => a[3] - b[3]);
-      let last = null;
-      for (const c of list) {
-        const o = c[0] * 18, w0 = 1 - c[1] - c[2], x = T[o] * w0 + T[o + 3] * c[1] + T[o + 6] * c[2], z = T[o + 2] * w0 + T[o + 5] * c[1] + T[o + 8] * c[2];
-        if (last && Math.hypot(x - last[0], z - last[1]) < pitch) continue;
-        last = [x, z]; put(c[0], c[1], c[2]);
-      }
-    }
-  }
-  return { key: stbKey(), P: Float32Array.from(P), N: Float32Array.from(N), TI: Int32Array.from(TI), U: Float32Array.from(U), J: Float32Array.from(J), n: TI.length, s: undefined };
-}
+const stbKey = () => JSON.stringify([modelName, presetSeed, model && model.length, AW, AH, S.lines, S.lineGap, S.lineAM, S.lineDot, S.lineFollow, S.chaos, S.square, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
+const STB_K = 8;
 const sstep = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
+// the side (of STB_K, around the vertical) a model-space normal faces most, counted from the capture's own view
+const stbSide = n => (((Math.round((-Math.atan2(n[0], n[2]) * 180 / Math.PI - stb.yaw0) / (360 / STB_K)) % STB_K) + STB_K) % STB_K);
+function stbView(v) {
+  // the view v·45° round from the capture, at its tilt and zoom, stippled as the static picture is
+  const keep = [S.pitch, S.zoom, S.panX, S.panY]; [S.pitch, S.zoom] = [stb.pitch, stb.zoom]; S.panX = S.panY = 0;
+  const yaw = stb.yaw0 + v * 360 / STB_K, tris = viewTris(yaw), box = viewBoxNow(), k = AW / (box.x1 - box.x0);
+  const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180, light = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.cos(el) * Math.sin(az) * -1 + .0001];
+  const buf = Stipple3D.render(tris, box, 900, [light[0], light[1], Math.abs(light[2]) + .35], { ambient: S.ambient, shadowDim: 1 - S.shadow });
+  const e = Stipple3D.edges(buf, .02 / zS()); let area = 0; for (let i = 0; i < buf.mask.length; i++) area += buf.mask[i];
+  const list = stipple(Math.round(count() * Math.min(2, area / buf.mask.length * 3)), rng(S.seed + v * 977), { buf, e, box });
+  const y = yaw * Math.PI / 180, p = S.pitch * Math.PI / 180, cy = Math.cos(y), sy = Math.sin(y), cp = Math.cos(p), sp = Math.sin(p);
+  const back = (X, Y, Z) => { const y1 = -Y, yy = y1 * cp + Z * sp, z1 = -y1 * sp + Z * cp; return [X * cy - z1 * sy, yy, X * sy + z1 * cy]; };
+  const out = [];
+  for (const q of list) {
+    const X = q.x / k + box.x0, Y = q.y / k + box.y0, ix = Math.min(buf.W - 1, Math.max(0, Math.floor((X - box.x0) * buf.k))), iy = Math.min(buf.H - 1, Math.max(0, Math.floor((Y - box.y0) * buf.k))), o = iy * buf.W + ix;
+    if (!buf.mask[o]) continue;
+    let n = [buf.nrm[o * 3], buf.nrm[o * 3 + 1], buf.nrm[o * 3 + 2]]; if (n[2] < 0) n = n.map(c => -c);
+    const nm = back(...n);
+    // the first view keeps all it shows (so the picture starts exactly as drawn); the others, of what it doesn't
+    // show, the surfaces that face them most
+    const M = back(X, Y, buf.depth[o]);
+    if (v) { if (stbSide(nm) !== v || stbSeen0(M, nm)) continue; }
+    out.push({ m: M, n: nm, tone: q.tone, pick: q.pick, sc: q.sc, rgb: q.rgb });
+  }
+  if (!v) stb.z0 = { zb: Stipple3D.render(tris, box, 900, [0, 0, 1], { shadows: false }), box, cy, sy, cp, sp };
+  [S.pitch, S.zoom, S.panX, S.panY] = keep;
+  return out;
+}
+// is this model-space point (with its normal) on a surface the capture's own view shows?
+function stbSeen0(m, n) {
+  const { zb, box, cy, sy, cp, sp } = stb.z0, [x, yy, z] = m, x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y1 = yy * cp - z1 * sp, Z = yy * sp + z1 * cp;
+  const nz1 = -n[0] * sy + n[2] * cy; if (n[1] * sp + nz1 * cp < .05) return false;
+  const ix = Math.floor((x1 - box.x0) * zb.k), iy = Math.floor((-y1 - box.y0) * zb.k);
+  if (ix < 0 || iy < 0 || ix >= zb.W || iy >= zb.H) return false;
+  return Z >= zb.depth[iy * zb.W + ix] - .03 / zS();
+}
 function stableFrame(yaw = S.yaw, fast, main) {
   if (!model) return [];
-  if (!stb || stb.key !== stbKey()) stb = stbBuild();
+  if (!stb || stb.key !== stbKey()) stb = { key: stbKey(), yaw0: yaw, pitch: S.pitch, zoom: S.zoom, views: [] };
+  // the views whose surfaces can face this one (within 90° + half a side), taken as they come round
+  const rel = ((yaw - stb.yaw0) % 360 + 360) % 360;
+  if (!stb.views[0]) stb.views[0] = stbView(0);
+  for (let v = 1; v < STB_K; v++) { let d = Math.abs(v * 360 / STB_K - rel) % 360; d = Math.min(d, 360 - d); if (d <= 90 + 360 / STB_K / 2 + 1 && !stb.views[v]) stb.views[v] = stbView(v); }
   const tris = viewTris(yaw), box = viewBoxNow(), k = AW / (box.x1 - box.x0);
-  const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180, light = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.cos(el) * Math.sin(az) * -1 + .0001];
-  const buf = Stipple3D.render(tris, box, fast ? 600 : 900, [light[0], light[1], Math.abs(light[2]) + .35], { ambient: S.ambient, shadowDim: 1 - S.shadow });
-  if (main) scene = { buf, e: Stipple3D.edges(buf, .02 / zS()), box };
+  const zb = Stipple3D.render(tris, box, fast ? 600 : 900, [0, 0, 1], { shadows: false });
+  if (main) scene = { buf: zb, e: Stipple3D.edges(zb, .02 / zS()), box };
   const y = yaw * Math.PI / 180, pp = S.pitch * Math.PI / 180, cy = Math.cos(y), sy = Math.sin(y), cp = Math.cos(pp), sp = Math.sin(pp);
-  const { P, N, TI, U, J, n } = stb, { W, H, depth, lit, mask } = buf, bk = buf.k, eps = .03 / zS(), thr = S.threshold;
-  const dens = clamp(count() / 40000, .03, 1), occR = 3 * bk / 390;
-  // Light from each pixel's own normal (smooth as the model turns); the cast shadows read from the render, as a
-  // factor (1 lit, Sombras proyectadas' dim in shadow) blurred over a few pixels, so their edges glide too.
-  const Lr = [light[0], light[1], Math.abs(light[2]) + .35], Ll = Math.hypot(...Lr), L = Lr.map(v => v / Ll), amb = S.ambient, nrm = buf.nrm;
-  let sf = new Float32Array(W * H).fill(1);
-  for (let i = 0; i < W * H; i++) if (mask[i]) {
-    let a = nrm[i * 3], b = nrm[i * 3 + 1], c = nrm[i * 3 + 2]; if (c < 0) { a = -a; b = -b; c = -c; }
-    const d0 = a * L[0] + b * L[1] + c * L[2]; if (d0 > .03) sf[i] = clamp((lit[i] - amb) / ((1 - amb) * d0));
-  }
-  for (let pass2 = 0, R = fast ? 2 : 3; pass2 < 2; pass2++) { // box blur, rows then columns
-    const o = new Float32Array(W * H), horiz = pass2 === 0, len = horiz ? W : H, lines = horiz ? H : W;
-    for (let l = 0; l < lines; l++) { let acc = 0, cnt = 0; const at = q => horiz ? l * W + q : q * W + l;
-      for (let q = -R; q < len + R; q++) { if (q + R < len) { acc += sf[at(q + R)]; cnt++; } if (q - R - 1 >= 0) { acc -= sf[at(q - R - 1)]; cnt--; } if (q >= 0 && q < len) o[at(q)] = acc / cnt; } }
-    sf = o;
-  }
-  const pass = s => {
-    const out = []; let sum = 0;
-    for (let i = 0; i < n; i++) {
-      const x = P[i * 3], yy = P[i * 3 + 1], z = P[i * 3 + 2], x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y1 = yy * cp - z1 * sp, Z = yy * sp + z1 * cp, X = x1, Y = -y1;
-      const fx = (X - box.x0) * bk - .5, fy = (Y - box.y0) * bk - .5, ix = Math.round(fx), iy = Math.round(fy);
-      if (ix < 0 || iy < 0 || ix >= W || iy >= H) continue;
-      const nx = N[i * 3], ny = N[i * 3 + 1], nz = N[i * 3 + 2], nx1 = nx * cy + nz * sy, nz1 = -nx * sy + nz * cy, ny1 = ny * cp - nz1 * sp, nz2 = ny * sp + nz1 * cp, f = Math.abs(nz2);
-      const g = nz2 < 0 ? -1 : 1, dif = Math.max(0, g * (nx1 * L[0] - ny1 * L[1] + nz2 * L[2]));
-      // the shadow factor there, blended over the four pixels around
-      const x0 = Math.max(0, Math.min(W - 2, Math.floor(fx))), y0 = Math.max(0, Math.min(H - 2, Math.floor(fy))), ax = clamp(fx - x0), ay = clamp(fy - y0);
-      const sh = sf[y0 * W + x0] * (1 - ax) * (1 - ay) + sf[y0 * W + x0 + 1] * ax * (1 - ay) + sf[(y0 + 1) * W + x0] * (1 - ax) * ay + sf[(y0 + 1) * W + x0 + 1] * ax * ay;
-      const dark = 1 - (amb + (1 - amb) * dif * sh), dk = thr ? (dark < thr ? 0 : (dark - thr) / (1 - thr)) : dark;
-      let sc, occ;
-      if (!S.lines) {
-        // as the other modes (more in the dark, the outline drawn by Bordes), times how square-on it faces, which also
-        // undoes the crowding of a surface seen edge-on
-        const pr = Math.min(1, Math.pow(dk, S.contrast) * 1.2 + .01 + S.edge * .5 * sstep(.4, .08, f)) * f;
-        if (s && pr * s <= U[i]) continue; // cheap tests first: the patch test below only for pixels that may show
-      // hidden: the share of a small patch around it (OCC_R pixels, 5 × 5 samples) where something nearer covers it,
-      // each softly over a band behind the surface; so an edge passing in front shades it away over a few frames
-      occ = 0;
-      for (let a = -2; a <= 2; a++) for (let b2 = -2; b2 <= 2; b2++) {
-        const u = Math.round(fx + a * occR / 2), v = Math.round(fy + b2 * occR / 2);
-        occ += u < 0 || v < 0 || u >= W || v >= H ? 1 : clamp((Z - depth[v * W + u] + 2 * eps) / eps);
-      }
-      occ = sstep(.3, .9, occ / 25);
-        if (!s) { sum += pr * occ; continue; }
-        const m = pr * s - U[i]; if (m <= 0 || occ <= 0) continue;
-        sc = sstep(0, .035, m);
-      } else {
-        // a fixed share of them (set on the first frame), so the picture is as full as the other modes, which drop
-        // overlapping pixels (that can't be done frame by frame without jumps)
-        if (s && (U[i] * 13.7) % 1 >= s) continue;
-      // hidden: the share of a small patch around it (OCC_R pixels, 5 × 5 samples) where something nearer covers it,
-      // each softly over a band behind the surface; so an edge passing in front shades it away over a few frames
-      occ = 0;
-      for (let a = -2; a <= 2; a++) for (let b2 = -2; b2 <= 2; b2++) {
-        const u = Math.round(fx + a * occR / 2), v = Math.round(fy + b2 * occR / 2);
-        occ += u < 0 || v < 0 || u >= W || v >= H ? 1 : clamp((Z - depth[v * W + u] + 2 * eps) / eps);
-      }
-      occ = sstep(.3, .9, occ / 25);
-        if (!s) { sum += occ * sstep(.05, .3, f); continue; }
-        if (occ <= 0) continue;
-        sc = S.lineAM ? Math.pow(dk, .75 * S.contrast / 1.6) : sstep(0, .035, Math.min(1, (Math.pow(dk, S.contrast * .55) * 1.7 + .03) * dens) - U[i]);
-        sc *= sstep(.04, .14, sc) * sstep(.05, .3, f);
-      }
-      sc *= occ;
-      if (sc < .06) continue;
-      out.push({ id: i, x: (X - box.x0) * k + J[i * 2] + S.panX, y: (Y - box.y0) * k + J[i * 2 + 1] + S.panY, tone: dark, pick: (U[i] * 7.31) % 1, sc: sc > .995 ? undefined : sc, rgb: modelCol ? modelCol[TI[i]] : undefined });
+  const { W, H, depth } = zb, bk = zb.k, eps = .03 / zS(), occR = 3 * bk / 390, out = [];
+  for (let v = 0; v < STB_K; v++) (stb.views[v] || []).forEach((q, qi) => {
+    const [x, yy, z] = q.m, x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y1 = yy * cp - z1 * sp, Z = yy * sp + z1 * cp, X = x1, Y = -y1;
+    const fx = (X - box.x0) * bk - .5, fy = (Y - box.y0) * bk - .5;
+    if (fx < -1 || fy < -1 || fx > W || fy > H) return;
+    // turning away: its surface's normal toward the viewer, shrinking it to nothing edge-on (before it goes behind)
+    const [nx, ny, nz] = q.n, nz1 = -nx * sy + nz * cy, f = ny * sp + nz1 * cp, face = sstep(-.04, .08, f);
+    if (face <= 0) return;
+    // something nearer in front: the share of a small patch around it (5 × 5 samples) that covers it
+    let occ = 0;
+    for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) {
+      const u = Math.round(fx + a * occR / 2), w = Math.round(fy + b * occR / 2);
+      occ += u < 0 || w < 0 || u >= W || w >= H ? 1 : clamp((Z - depth[w * W + u] + 2 * eps) / eps);
     }
-    return s ? out : sum;
-  };
-  if (stb.s === undefined) {
-    // the share kept, set once from this first view: as many pixels as the other modes would place here
-    let area = 0; for (let i = 0; i < mask.length; i++) area += mask[i];
-    const want = S.lines ? lineStipple({ buf, box }, rng(S.seed)).length * 1.15 : Math.round(count() * Math.min(2, area / mask.length * 3));
-    stb.s = want / Math.max(1, pass(0));
-  }
-  return pass(stb.s);
+    occ = sstep(.15, .6, occ / 25);
+    const sc = (q.sc ?? 1) * face * occ;
+    if (sc < .06) return;
+    out.push({ id: v * 1e6 + qi, x: (X - box.x0) * k + S.panX, y: (Y - box.y0) * k + S.panY, tone: q.tone, pick: q.pick, sc: sc > .995 ? undefined : sc, rgb: q.rgb });
+  });
+  return out;
 }
 function lineStipple(sc, r) {
   const { buf, box } = sc, kA = AW / (box.x1 - box.x0), p = S.pitch * Math.PI / 180;
