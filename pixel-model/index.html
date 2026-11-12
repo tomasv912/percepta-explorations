@@ -79,6 +79,13 @@ h2 { margin: 0; font-size: 13px; font-weight: 600; }
 .slider output { font: 12px var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
 .slider input { grid-column: 1 / -1; }
 .slider.emph label { color: var(--text); font-weight: 500; }
+/* keyframe diamonds beside the view's controls (as in Blender): hollow, no keys; outlined, animated; filled, a key here */
+.slider.kf-has { grid-template-columns: 1fr auto auto; }
+.kf-dia { width: 18px; height: 18px; display: grid; place-items: center; padding: 0; border: 0; background: none; cursor: pointer; border-radius: 4px; }
+.kf-dia:hover { background: var(--fill); }
+.kf-dia i { width: 8px; height: 8px; transform: rotate(45deg); border: 1.3px solid var(--text-3); border-radius: 1.5px; background: transparent; }
+.kf-dia.anim i { border-color: #8D8BC4; }
+.kf-dia.on i { background: #A8A5EC; border-color: var(--text); }
 input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 18px; background: transparent; margin: 0; cursor: pointer; }
 input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(var(--text), var(--text)) 0 / var(--p, 50%) 100% no-repeat, var(--line); }
 input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line); }
@@ -312,6 +319,7 @@ body.kf-open .dialkit-panel[data-position="bottom-left"] { bottom: calc(16px + 1
         <div id="sl-yaw"></div>
         <div id="sl-pitch"></div>
         <div id="sl-zoom"></div>
+        <div class="slider kf-posrow" title="Dónde está el modelo en el cuadro (Shift + arrastrar lo mueve; doble clic lo centra)"><label>Posición</label><output id="out-pos"></output></div>
       </section>
 
       <section>
@@ -1097,6 +1105,7 @@ let key = '', prevAnim = 'none';
 let artKey = '';
 function sync(fast) {
   S.colorMode = S.colorSrc === 'pal' ? S.colorHow : S.colorSrc; // Color: its source, and for the palette its behaviour
+  window.kfHook?.(); // keyframes: a change made with the playhead on a key rewrites that key; the diamonds follow
   for (const k of Object.keys(SLIDERS)) {
     const input = $('#in-' + k), d = SLIDERS[k], at = d.values ? d.values.reduce((b, v, i) => Math.abs(v - S[k]) < Math.abs(d.values[b] - S[k]) ? i : b, 0) : S[k];
     if (+input.value !== at) input.value = at;
@@ -1926,7 +1935,7 @@ function kfOpen(on) {
 const kfX = t => t / KF.dur * 100 + '%';
 const kfAt = e => { const r = kfArea.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width) * KF.dur; };
 const kfSnap = (t, free) => free ? t : Math.round(t * +$('#kf-fps').value) / +$('#kf-fps').value;
-function kfTime() { $('#kf-tm').textContent = `${KF.t.toFixed(2)} / ${KF.dur.toFixed(2)} s`; kfPlay.style.left = kfX(KF.t); }
+function kfTime() { $('#kf-tm').textContent = `${KF.t.toFixed(2)} / ${KF.dur.toFixed(2)} s`; kfPlay.style.left = kfX(KF.t); if (window.kfHook && !KF.playing) kfDiamonds(); }
 function kfDraw() {
   const n = kfCount(); $('#kf-count').hidden = !n; $('#kf-count').textContent = n;
   if (!KF.open) return;
@@ -2058,6 +2067,38 @@ $('#kf-video').addEventListener('click', () => {
   kfFilm = true; $('#video').click();
 });
 kfDraw();
+// With the playhead on a key, changing the view rewrites that key (rotation, position, zoom: whichever changed).
+const kfNow = tr => KF[tr].find(k => Math.abs(k.t - KF.t) < 1e-3);
+function kfAutoKey() {
+  if (KF.playing || filming || kfDrag) return false;
+  let changed = false;
+  const r = kfNow('rot'), p = kfNow('pos'), z = kfNow('zoom');
+  if (r && (Math.abs(wrapDeg(r.v[0] - S.yaw)) > 1e-6 || Math.abs(r.v[1] - S.pitch) > 1e-6)) { r.v = [r.v[0] + wrapDeg(S.yaw - r.v[0]), S.pitch]; changed = true; }
+  if (p && (Math.abs(p.v[0] - S.panX) > 1e-6 || Math.abs(p.v[1] - S.panY) > 1e-6)) { p.v = [S.panX, S.panY]; changed = true; }
+  if (z && Math.abs(z.v[0] - S.zoom) > 1e-9) { z.v = [S.zoom]; changed = true; }
+  return changed;
+}
+// the diamonds in the panel: Giro and Inclinación (Rotación), Escala (Zoom), Posición
+const KF_DIAS = [['yaw', 'rot'], ['pitch', 'rot'], ['zoom', 'zoom']].map(([sl, tr]) => {
+  const host = $('#sl-' + sl), b = document.createElement('button'); b.className = 'kf-dia'; b.dataset.track = tr; b.innerHTML = '<i></i>';
+  host.classList.add('kf-has'); host.insertBefore(b, host.querySelector('input')); return b;
+});
+{ const host = $('.kf-posrow'), b = document.createElement('button'); b.className = 'kf-dia'; b.dataset.track = 'pos'; b.innerHTML = '<i></i>'; host.classList.add('kf-has'); host.appendChild(b); KF_DIAS.push(b); }
+for (const b of KF_DIAS) b.addEventListener('click', () => {
+  const tr = b.dataset.track, k = kfNow(tr);
+  if (k) { KF[tr].splice(KF[tr].indexOf(k), 1); if (KF.sel?.k === k) KF.sel = null; kfDraw(); kfDiamonds(); toast(`Keyframe de ${KF_TRACKS[tr]} borrado`); }
+  else { kfInsert(tr); kfDiamonds(); }
+});
+function kfDiamonds() {
+  for (const b of KF_DIAS) {
+    const tr = b.dataset.track, on = !!kfNow(tr), anim = KF[tr].length > 0;
+    b.classList.toggle('on', on); b.classList.toggle('anim', anim && !on);
+    b.title = on ? `Keyframe de ${KF_TRACKS[tr]} en ${KF.t.toFixed(2)} s: clic lo borra (cambiar el valor lo sobrescribe)` : `Insertar keyframe de ${KF_TRACKS[tr]} en ${KF.t.toFixed(2)} s`;
+    b.setAttribute('aria-label', b.title); b.setAttribute('aria-pressed', on);
+  }
+  $('#out-pos').textContent = `${Math.round(S.panX)}, ${Math.round(S.panY)}`;
+}
+window.kfHook = () => { if (kfAutoKey() && KF.open) kfDraw(); kfDiamonds(); };
 
 // Copiar / Pegar parámetros: the state, the model (a preset; an uploaded file can't travel), the keyframes, the recorte.
 const params = PerceptaParams({
