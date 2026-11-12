@@ -1068,16 +1068,24 @@ function colorOf(p) {
 // Engrillar: every pixel moved to the middle of its cell on a grid of the pixel size, one per cell (the last one drawn
 // there), so they sit side by side and never on top of each other.
 // The density sampled: the slider's, or with Engrillar enough to fill cells of Tamaño de la celda.
-const gridded = () => (S.snap || S.blend) && !S.lines;
+const gridded = () => S.lines ? S.blend : S.snap || S.blend; // 1B: only Pasaje's ordered side
 const count = () => S.snap && !S.blend && !S.lines ? PerceptaCells(S.count, S.size, (S.size + S.cellGap), 400000) : S.count;
 // Pasaje: only the pixels the order reaches (by where they are and a chance of their own) go on the grid; the rest
 // stay loose. Gridded ones carry ord and are drawn at the cell's size.
+// Engrillado, and Pasaje's ordered side (1A and 1B): every pixel the order reaches sits in a cell of the grid, one per
+// cell; from the Orden handle on, all of them. Whether a pixel is on the grid goes by its home (where it rests), so a
+// pixel that moves (Entrada, Reveal, Flotar…) stays on the grid while it travels: it goes cell by cell. Moving ones
+// aren't thinned to one per cell (they would blink), only the resting ones are.
+const cellOf = () => S.lines ? S.size + Math.max(S.lineDot, .5) : S.size + S.cellGap;
 function snapList(list) {
-  const on = list.map((p, i) => !S.blend || PerceptaChance(i) < PerceptaOrder((p.x + (p.dx || 0)) / AW, (p.y + (p.dy || 0)) / AH, S.blendA, S.blendB));
-  const sn = PerceptaSnap(list.length, i => on[i] ? list[i].x + (list[i].dx || 0) : NaN, i => list[i].y + (list[i].dy || 0), (S.size + S.cellGap)), out = [];
+  const cell = cellOf(), on = list.map((p, i) => !S.blend || PerceptaChance(i) < PerceptaOrder(p.x / AW, p.y / AH, S.blendA, S.blendB));
+  const moving = i => (list[i].dx || 0) !== 0 || (list[i].dy || 0) !== 0;
+  const sn = PerceptaSnap(list.length, i => on[i] && !moving(i) ? list[i].x : NaN, i => list[i].y, cell), out = [];
   for (let i = 0; i < list.length; i++) {
-    if (!on[i]) out.push(list[i]);
-    else if (sn.keep[i]) out.push({ x: sn.x[i], y: sn.y[i], tone: list[i].tone, pick: list[i].pick, sc: list[i].sc, rgb: list[i].rgb, ord: 1 });
+    const p = list[i];
+    if (!on[i]) out.push(p);
+    else if (moving(i)) out.push({ x: (Math.floor((p.x + p.dx) / cell) + .5) * cell, y: (Math.floor((p.y + (p.dy || 0)) / cell) + .5) * cell, tone: p.tone, pick: p.pick, sc: p.sc, rgb: p.rgb, ord: 1 });
+    else if (sn.keep[i]) out.push({ x: sn.x[i], y: sn.y[i], tone: p.tone, pick: p.pick, sc: p.sc, rgb: p.rgb, ord: 1 });
   }
   return out;
 }
@@ -1209,7 +1217,7 @@ function sync(fast) {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorSrc !== 'ink'; $('#how-row').hidden = S.colorSrc === 'ink'; $('#colorHow').value = S.colorHow; $('#onlypal-row').hidden = S.colorSrc !== 'pal'; $('#palsets').hidden = S.colorSrc === 'orig'; $('#sl-strokeW').hidden = !S.stroke; markPalette();
   const gridOnly = S.snap && !S.blend && !S.lines;
-  $('#sl-count').hidden = gridOnly; $('#sl-size').hidden = false; $('#sl-cell').hidden = true; $('#sl-cellGap').hidden = !gridded(); if (typeof syncModeBar === 'function') syncModeBar();
+  $('#sl-count').hidden = gridOnly; $('#sl-size').hidden = false; $('#sl-cell').hidden = true; $('#sl-cellGap').hidden = !gridded() || S.lines; if (typeof syncModeBar === 'function') syncModeBar();
   $('#lines-row').hidden = true; $('#snap-row').hidden = true;
   $('#sl-lineGap').hidden = $('#sl-lineFollow').hidden = $('#sl-lineDot').hidden = $('#lineAM-row').hidden = !S.lines;
   document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn'))); });
@@ -1541,7 +1549,8 @@ function enterFrame(ph, list = pts) {
       if (f < travel) { const [sx, sy] = off(p, i, sgn), e = E(f / travel); x = sx + (p.x - sx) * e; y = sy + (p.y - sy) * e; }
       else if (f >= 1 - travel) { const [ex, ey] = off(p, i + 7919, -sgn), e = E((f - (1 - travel)) / travel); x = p.x + (ex - p.x) * e; y = p.y + (ey - p.y) * e; }
     }
-    out.push({ x, y, tone: p.tone, pick: p.pick, sc: p.sc, rgb: p.rgb, dx: 0, dy: 0 });
+    // kept as home + offset, so Engrillado / Pasaje know where it rests and move it cell by cell
+    out.push({ x: p.x, y: p.y, tone: p.tone, pick: p.pick, sc: p.sc, rgb: p.rgb, dx: x - p.x, dy: y - p.y });
   });
   return out;
 }
