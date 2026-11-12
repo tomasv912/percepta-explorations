@@ -858,10 +858,13 @@ function toneList(st) {
   return toneMemo.v;
 }
 function colorOf(i, st) {
+  // a cube's colour goes by its own id: in Movimiento Suave the cubes on screen change places in the list every frame,
+  // the id (gen.id) stays, so a cube keeps its colour all along
+  const id = gen.id ? gen.id[i] : i, all = gen.base || gen;
   // Original: the photo's colour under the cube (Por tono), or one of the photo's colours dealt at random (Al azar),
   // with Llevar a la paleta brought to the palette's light and saturation
   if (st.colorMode === 'image' && img && st.source === 'image') {
-    let c = st.colorHow === 'random' ? gen.rgb[((Math.imul(i ^ 0x5bd1e995, 0x9e3779b1) ^ Math.imul(st.cseed + 7, 0x85ebca6b)) >>> 0) % gen.n] : gen.rgb[i];
+    let c = st.colorHow === 'random' ? all.rgb[((Math.imul(id ^ 0x5bd1e995, 0x9e3779b1) ^ Math.imul(st.cseed + 7, 0x85ebca6b)) >>> 0) % all.n] : gen.rgb[i];
     if (st.pastel) c = PerceptaPastel(c & 0xFCFCFC);
     c &= 0xF8F8F8;
     return rgbHex(c >> 16 & 255, c >> 8 & 255, c & 255);
@@ -871,8 +874,8 @@ function colorOf(i, st) {
   let c = st.ink;
   if (st.colorMode === 'tone') { const T = toneList(st); c = T[clamp(Math.floor((1 - toneOf(i, st)) * T.length), 0, T.length - 1)]; }
   else if (st.colorMode === 'random') {
-    if (st.onlyPal) { const U = usablePal(st); c = U[balanced(i, U.length, st.cseed)]; }
-    else { const P = st.palette, k = balanced(i, P.length + 1, st.cseed); c = k < P.length ? P[k] : accentOf(st); }
+    if (st.onlyPal) { const U = usablePal(st); c = U[balanced(id, U.length, st.cseed)]; }
+    else { const P = st.palette, k = balanced(id, P.length + 1, st.cseed); c = k < P.length ? P[k] : accentOf(st); }
   } else if (st.onlyPal) c = palOnly(c, st);
   const base = st.onlyPal ? c : onBg(c, st.bg);
   return st.style === 'mono' ? base : tint(base, gen.shade[i], st.grain);
@@ -1596,14 +1599,13 @@ function sfFrame(t) {
     const pa = a0 + fa * cell, pb = b0 + fb * cell;
     ids[m] = i; P[m * 3] = vert ? pb : pa; P[m * 3 + 1] = vert ? pa : pb; P[m * 3 + 2] = sz; m++;
   }
-  const G = { W: g.W, H: g.H, n: m, del: new Uint8Array(m), size: new Float32Array(m), shade: new Uint8Array(m), pal: new Uint8Array(m), rgb: new Uint32Array(m), tlen: new Float32Array(m), dp: g.dp ? new Float32Array(m) : null, dep: g.dep ? new Float32Array(m) : null };
+  const G = { W: g.W, H: g.H, n: m, del: new Uint8Array(m), size: new Float32Array(m), shade: new Uint8Array(m), pal: new Uint8Array(m), rgb: new Uint32Array(m), tlen: new Float32Array(m), dp: g.dp ? new Float32Array(m) : null, dep: g.dep ? new Float32Array(m) : null, id: new Int32Array(m), base: g };
   const Xo = new Float32Array(m), Yo = new Float32Array(m);
   for (let j = 0; j < m; j++) {
     const i = ids[j], s2 = src[i], x = P[j * 3], y = P[j * 3 + 1];
-    const ca = Math.min(na - 1, Math.max(0, Math.floor(((vert ? y : x) - a0) / cell))), cb = Math.min(nb - 1, Math.max(0, Math.floor(((vert ? x : y) - b0) / cell)));
-    const here = who[cb * na + ca], h = here >= 0 ? here : s2; // the photo's colour (and depth) where it is now; its own look otherwise
-    Xo[j] = x; Yo[j] = y; G.size[j] = P[j * 3 + 2];
-    G.shade[j] = g.shade[s2]; G.pal[j] = g.pal[s2]; G.rgb[j] = g.rgb[h]; G.tlen[j] = g.tlen[s2]; if (G.dp) G.dp[j] = g.dp[s2]; if (G.dep) G.dep[j] = g.dep[h];
+    // its look (colour, tone, shade) is its own source cube's, fixed: a cube never changes colour as it travels
+    Xo[j] = x; Yo[j] = y; G.size[j] = P[j * 3 + 2]; G.id[j] = i;
+    G.shade[j] = g.shade[s2]; G.pal[j] = g.pal[s2]; G.rgb[j] = g.rgb[s2]; G.tlen[j] = g.tlen[s2]; if (G.dp) G.dp[j] = g.dp[s2]; if (G.dep) G.dep[j] = g.dep[s2];
   }
   return { G, X: Xo, Y: Yo };
 }
