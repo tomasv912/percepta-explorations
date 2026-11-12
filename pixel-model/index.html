@@ -2049,6 +2049,19 @@ $('#kf-video').addEventListener('click', () => {
 });
 kfDraw();
 
+// Copiar / Pegar parámetros: the state, the model (a preset; an uploaded file can't travel), the keyframes, the recorte.
+const params = PerceptaParams({
+  tool: 'pixel-model',
+  get: () => ({ S, preset, model: modelName, crop, keys: { dur: KF.dur, fps: $('#kf-fps').value, fmt: $('#kf-fmt').value, rot: KF.rot, pos: KF.pos, zoom: KF.zoom } }),
+  set: d => {
+    PerceptaParams.assign(S, DEFAULTS, d.S);
+    if (d.preset && PRESETS.some(p => p[0] === d.preset)) { preset = d.preset; if (d.model && d.model.includes('.')) toast(`El modelo subido (${d.model}) no viaja: subilo de nuevo.`); loadPreset(); }
+    if (d.keys) { KF.dur = d.keys.dur || 5; $('#kf-dur').value = KF.dur; if (d.keys.fps) $('#kf-fps').value = d.keys.fps; if (d.keys.fmt) $('#kf-fmt').value = d.keys.fmt; for (const k of ['rot', 'pos', 'zoom']) KF[k] = (d.keys[k] || []).map(x => ({ t: +x.t, v: x.v.map(Number), ease: x.ease || 'inout' })); KF.sel = null; KF.t = 0; kfDraw(); if (kfCount()) kfOpen(true); }
+    // a new format resets the pan and recorte (sync), so they are put back after it
+    const pan = [S.panX, S.panY]; key = ''; shown = null; sync();
+    S.panX = pan[0]; S.panY = pan[1]; crop = d.crop || null; cropStack = []; cropUI(); key = ''; sync();
+  },
+});
 loadPreset();
 sync();
 </script>

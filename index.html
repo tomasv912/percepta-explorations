@@ -1683,6 +1683,19 @@ if (PerceptaHandoff.pending() === 'model-image') PerceptaHandoff.take('model-ima
   };
   el.src = url;
 });
+// Copiar / Pegar parámetros: the state, the retouch strokes, where the picture sits and the recorte (a photo can't
+// travel: with Imagen, upload it again).
+PerceptaParams({
+  tool: 'pixel-waves',
+  get: () => ({ S, ops, pan: [panX, panY], crop }),
+  set: d => {
+    PerceptaParams.assign(S, DEFAULTS, d.S);
+    if (S.source === 'image' && !img) toast('La imagen no viaja con los parámetros: subila de nuevo.');
+    ops = Array.isArray(d.ops) ? structuredClone(d.ops) : []; sync(); rebuild(false);
+    if (d.pan) { panX = +d.pan[0] || 0; panY = +d.pan[1] || 0; }
+    crop = d.crop || null; cropStack = []; cropUI(); sync();
+  },
+});
 sync();
 </script>
 </body>

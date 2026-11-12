@@ -530,3 +530,40 @@ window.PerceptaPastel = (() => {
     if (memo.size > 40000) memo.clear(); memo.set(c, v); return v;
   };
 })();
+
+// Copiar / Pegar parámetros: every setting of a tool as one line of JSON (its state, plus what the tool adds: model,
+// keyframes, recorte…), to keep, share or paste back. { tool, get() → object, set(object) }. Pasted state only fills
+// keys the tool knows (its DEFAULTS), so an older or newer copy still loads.
+window.PerceptaParams = o => {
+  const foot = document.querySelector('aside footer'); if (!foot) return;
+  const st = document.createElement('style');
+  st.textContent = '.pparams { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; } .pparams .btn { width: 100%; font-size: 12px; }';
+  document.head.appendChild(st);
+  const row = document.createElement('div'); row.className = 'pparams';
+  row.innerHTML = '<button class="btn" data-pp="copy" title="Copia todos los parámetros (también modelo, keyframes y recorte) como texto">Copiar parámetros</button><button class="btn" data-pp="paste" title="Pega parámetros copiados antes y los aplica">Pegar parámetros</button>';
+  foot.appendChild(row);
+  const say = m => (typeof toast === 'function' ? toast(m) : console.log(m));
+  const apply = text => {
+    let d; try { d = JSON.parse(text.trim()); } catch { return say('Eso no son parámetros de Percepta.'); }
+    if (!d || !d.percepta) return say('Eso no son parámetros de Percepta.');
+    if (d.percepta !== o.tool) say(`Son parámetros de ${d.percepta}: se aplica lo que coincide.`);
+    o.set(d);
+    if (d.S && d.S.dir) { try { localStorage.setItem('percepta-dir:' + location.pathname, d.S.dir); } catch {} document.querySelectorAll('.pdir button').forEach(b => b.setAttribute('aria-pressed', b.dataset.dir === d.S.dir)); }
+    if (d.percepta === o.tool) say('Parámetros aplicados.');
+  };
+  row.addEventListener('click', async e => {
+    const b = e.target.closest('[data-pp]'); if (!b) return;
+    if (b.dataset.pp === 'copy') {
+      const text = JSON.stringify({ percepta: o.tool, v: 1, ...o.get() });
+      try { await navigator.clipboard.writeText(text); say('Parámetros copiados.'); }
+      catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); say(ok ? 'Parámetros copiados.' : 'No se pudo copiar.'); }
+    } else {
+      let text = null; try { text = await navigator.clipboard.readText(); } catch {}
+      if (!text || !text.includes('percepta')) text = prompt('Pegá los parámetros:');
+      if (text) apply(text);
+    }
+  });
+  return { apply };
+};
+// Fills S from a pasted state: only keys the tool has, arrays and objects copied.
+window.PerceptaParams.assign = (S, D, src) => { for (const k of Object.keys(D)) if (src && k in src && typeof src[k] === typeof D[k]) S[k] = structuredClone(src[k]); };

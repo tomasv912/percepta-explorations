@@ -1049,6 +1049,16 @@ PerceptaDirection({
   get: () => S.dir,
   set: v => { S.dir = v; S.lines = v === '1b'; if (S.lines) { S.snap = false; S.blend = false; } sync(); },
 });
+// Copiar / Pegar parámetros: the state and the models on the plane (uploaded ones can't travel).
+PerceptaParams({
+  tool: 'pixel-depth',
+  get: () => ({ S, objs: objs.filter(o => !o.kind.startsWith('up')) }),
+  set: d => {
+    PerceptaParams.assign(S, DEFAULTS, d.S);
+    if (Array.isArray(d.objs)) { objs = d.objs.filter(o => o && KINDS[o.kind]).map(o => ({ ...o })); sel = -1; }
+    sync();
+  },
+});
 sync();
 </script>
 </body>
