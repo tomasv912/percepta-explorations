@@ -938,7 +938,12 @@ function snapFor(st) {
   if (st.dir === '1b' || !(st.snap || st.blend)) return null;
   const on = new Uint8Array(gen.n);
   for (let i = 0; i < gen.n; i++) on[i] = !st.blend || PerceptaChance(i) < PerceptaOrder((X[i] + panX) / gen.W, (Y[i] + panY) / gen.H, st.blendA, st.blendB) ? 1 : 0;
-  const sn = PerceptaSnap(gen.n, i => gone[i] || gen.del[i] || !on[i] ? NaN : X[i], i => Y[i], (st.size + st.cellGap));
+  const cell = st.size + st.cellGap;
+  // Desplazamiento: the same cubes all along, none dropped. On the grid they run on cell by cell; one-per-cell would
+  // choose a different cube for a cell every frame (they all move), and cubes would blink in and out.
+  const sn = st.motion === 'horiz' ? (() => { const keep = new Uint8Array(gen.n), x = new Float32Array(gen.n), y = new Float32Array(gen.n);
+    for (let i = 0; i < gen.n; i++) if (!(gone[i] || gen.del[i] || !on[i])) { keep[i] = 1; x[i] = (Math.floor(X[i] / cell) + .5) * cell; y[i] = (Math.floor(Y[i] / cell) + .5) * cell; }
+    return { keep, x, y }; })() : PerceptaSnap(gen.n, i => gone[i] || gen.del[i] || !on[i] ? NaN : X[i], i => Y[i], cell);
   if (st.blend) for (let i = 0; i < gen.n; i++) if (!on[i]) { sn.keep[i] = 1; sn.x[i] = X[i]; sn.y[i] = Y[i]; }
   sn.ord = on;
   return sn;
