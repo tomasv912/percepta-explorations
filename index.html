@@ -419,7 +419,12 @@ function loadImage(el) {
   }
   const c = document.createElement('canvas'); c.width = gw; c.height = gh;
   const ctx = c.getContext('2d', { willReadFrequently: true });
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, gw, gh);
+  // what of the picture is there at all (a PNG's transparency): empty stays empty, also with Invertir luces y sombras
+  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(cur, 0, 0, gw, gh);
+  const a0 = ctx.getImageData(0, 0, gw, gh).data; let alpha = new Float32Array(gw * gh), clear = false;
+  for (let k = 0; k < gw * gh; k++) { alpha[k] = a0[k * 4 + 3] / 255; if (alpha[k] < .98) clear = true; }
+  if (!clear) alpha = null;
+  ctx.clearRect(0, 0, gw, gh); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, gw, gh);
   ctx.imageSmoothingQuality = 'high'; ctx.drawImage(cur, 0, 0, gw, gh);
   const d = ctx.getImageData(0, 0, gw, gh).data, n = gw * gh, lum = new Float32Array(n), rgb = new Uint32Array(n);
   for (let k = 0; k < n; k++) {
@@ -429,7 +434,7 @@ function loadImage(el) {
   // and a picture of it, at most 640 on its long side, for the depth model (worked out when Líneas asks for it)
   const pk = Math.min(1, 640 / Math.max(iw, ih)), pc = document.createElement('canvas'); pc.width = Math.round(iw * pk); pc.height = Math.round(ih * pk);
   const px2 = pc.getContext('2d'); px2.fillStyle = '#fff'; px2.fillRect(0, 0, pc.width, pc.height); px2.imageSmoothingQuality = 'high'; px2.drawImage(cur, 0, 0, pc.width, pc.height);
-  img = { gw, gh, lum, rgb, ar: iw / ih, pic: pc.toDataURL('image/jpeg', .92), depth: null }; imgId++;
+  img = { gw, gh, lum, rgb, alpha, ar: iw / ih, pic: pc.toDataURL('image/jpeg', .92), depth: null }; imgId++;
 }
 
 // ---------- Generation ----------
@@ -523,7 +528,7 @@ function generate(st) {
     let sum = 0;
     for (let k = 0; k < cells; k++) {
       const v = clamp(((st.invert ? lum[k] : 1 - lum[k]) - .5) * st.contrast + .5);
-      M[k] = t >= 1 ? 0 : Math.max(0, (v - t) / (1 - t));
+      M[k] = (t >= 1 ? 0 : Math.max(0, (v - t) / (1 - t))) * (img.alpha ? img.alpha[k] : 1); // nothing where the picture isn't
       cdf[k] = sum += M[k] ** 1.2;
     }
     // Líneas que siguen la profundidad: level lines of the picture's height less its relief (the depth map, near = high),
@@ -1678,6 +1683,8 @@ if (PerceptaHandoff.pending() === 'model-image') PerceptaHandoff.take('model-ima
     URL.revokeObjectURL(url); loadImage(el);
     const { gw, gh } = img, D = new Float32Array(gw * gh);
     for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) D[j * gw + i] = h.depth.data[Math.min(h.depth.h - 1, Math.floor((j + .5) / gh * h.depth.h)) * h.depth.w + Math.min(h.depth.w - 1, Math.floor((i + .5) / gw * h.depth.w))];
+    // the model's render: its white around the model is no picture (so Invertir doesn't fill it)
+    img.alpha = Float32Array.from(D, v => v > 0 ? 1 : 0); imgId++;
     img.depth = D; depthId++; S.source = 'image'; if (h.colored) S.colorSrc = 'image'; sync(); toast(`${h.name || 'Modelo'} desde Pixel Model`);
     history.replaceState(null, '', location.pathname);
   };
