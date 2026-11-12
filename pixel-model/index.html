@@ -132,6 +132,56 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .crop-hud button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
 .crop-box { position: absolute; z-index: 5; pointer-events: none; border: 1px solid #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / .55), 0 0 0 9999px rgb(0 0 0 / .18); }
 .frame.cropping, .frame.cropping:active { cursor: crosshair; }
+/* Keyframes: a timeline docked under the picture, folded away until it is opened or gets keys */
+.kf-tab { position: absolute; right: 14px; bottom: 14px; z-index: 2; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 0; border-radius: 9px; background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--line), 0 4px 14px rgb(0 0 0 / .06); font: 500 12px var(--font); cursor: pointer; }
+.kf-tab:hover { background: var(--fill); }
+.kf-tab b { font: 600 10px var(--mono); padding: 1px 5px; border-radius: 4px; background: var(--fill); color: var(--text-2); }
+.kf { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: var(--kfh); display: flex; flex-direction: column; background: var(--surface); border-top: 1px solid var(--line); font: 12px var(--font); color: var(--text); user-select: none; }
+main.kf-open { --kfh: 168px; }
+main.kf-open .tt { bottom: calc(58px + var(--kfh)); }
+main.kf-open .send { bottom: calc(14px + var(--kfh)); }
+main.kf-open .kf-tab { display: none; }
+main.kf-open { padding-bottom: calc(120px + var(--kfh)); }
+main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
+body.kf-open .dialkit-panel[data-position="bottom-left"] { bottom: calc(16px + 168px); }
+.kf-head select#kf-fmt { width: 150px; }
+.kf-head { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px; border-bottom: 1px solid var(--line); flex: none; }
+.kf-head button { height: 28px; border: 0; border-radius: 7px; background: var(--fill); color: var(--text); font: 500 12px var(--font); cursor: pointer; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; }
+.kf-head button.ic { width: 28px; padding: 0; justify-content: center; }
+.kf-head button:hover { background: var(--line); }
+.kf-head button.primary { background: var(--accent); color: var(--accent-text); }
+.kf-head .tm { font: 12px var(--mono); font-variant-numeric: tabular-nums; min-width: 92px; }
+.kf-head label { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
+.kf-head input, .kf-head select { height: 28px; border: 0; border-radius: 7px; background: var(--fill); color: var(--text); font: 12px var(--mono); padding: 0 6px; }
+.kf-head input { width: 56px; }
+.kf-head .sp { flex: 1; }
+.kf-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 92px 1fr; }
+.kf-names { display: grid; grid-template-rows: 22px repeat(3, 1fr); border-right: 1px solid var(--line); color: var(--text-2); }
+.kf-names span { display: flex; align-items: center; padding: 0 12px; }
+.kf-area { position: relative; margin: 0 18px; touch-action: none; }
+.kf-ruler { position: absolute; left: 0; right: 0; top: 0; height: 22px; cursor: ew-resize; border-bottom: 1px solid var(--line); }
+.kf-ruler i { position: absolute; top: 12px; width: 1px; height: 9px; background: var(--line); }
+.kf-ruler i.s { top: 6px; height: 15px; background: var(--text-3); }
+.kf-ruler em { position: absolute; top: 2px; transform: translateX(4px); font: normal 9px var(--mono); color: var(--text-3); }
+.kf-rows { position: absolute; left: 0; right: 0; top: 22px; bottom: 0; display: grid; grid-template-rows: repeat(3, 1fr); }
+.kf-row { position: relative; cursor: ew-resize; }
+.kf-row::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--line); }
+.kf-row .seg { position: absolute; top: 50%; height: 1px; background: var(--text-3); }
+.kf-key { position: absolute; top: 50%; width: 11px; height: 11px; margin: -6px 0 0 -6px; transform: rotate(45deg); border: 1.5px solid var(--text-2); background: var(--surface); border-radius: 2px; cursor: grab; padding: 0; z-index: 1; }
+.kf-key:hover { border-color: var(--text); }
+.kf-key.sel { background: #A8A5EC; border-color: var(--text); }
+.kf-ease { position: absolute; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; display: grid; place-items: center; padding: 0; border: 1.5px solid #A8A5EC; border-radius: 5px; background: var(--surface); color: var(--text); cursor: pointer; z-index: 1; }
+.kf-ease:hover { background: #E4DEFC; }
+.kf-ease svg, .kf-menu svg { display: block; }
+.kf-play { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1.5px solid #8D8BC4; pointer-events: none; z-index: 2; }
+.kf-play::before { content: ''; position: absolute; top: 0; left: -6px; width: 11px; height: 9px; background: #8D8BC4; clip-path: polygon(0 0, 100% 0, 50% 100%); }
+.kf-menu { position: fixed; z-index: 50; min-width: 190px; padding: 6px; border-radius: 10px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 10px 30px rgb(0 0 0 / .14); font: 13px var(--font); color: var(--text); }
+.kf-menu h4 { margin: 0; padding: 6px 10px 6px; font: 600 11px var(--font); color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
+.kf-menu button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 7px 10px; border: 0; border-radius: 7px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.kf-menu button:hover, .kf-menu button:focus-visible { background: var(--fill); outline: none; }
+.kf-menu button kbd { margin-left: auto; font: 11px var(--mono); color: var(--text-3); }
+.kf-menu button[aria-checked="true"] { background: #E4DEFC; color: #272727; }
+.kf-menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 4px; }
 </style>
 </head>
 <body>
@@ -145,6 +195,29 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
     <div class="hud" id="stats">—</div>
     <div class="crop-hud" id="crop-hud"><button id="crop-tool" aria-pressed="false" title="Recortar (C): arrastrá un recuadro sobre el modelo, o clic para acercar ×2. Las flechas lo desplazan">Recortar</button><b id="crop-label" hidden>Recorte</b><button id="crop-back" hidden title="Vuelve al recorte anterior">Vista anterior</button><button id="crop-clear" hidden title="Muestra el cuadro entero">Quitar recorte</button></div>
     <div class="send" role="group" aria-label="Enviar a otra tool"><button class="btn primary" id="to-waves" title="Renderiza la vista actual (luz, sombras y profundidad) y la abre en Pixel Waves como imagen">Enviar a Pixel Waves</button><button class="btn primary" id="to-depth" title="Lleva el modelo tal cual está a Pixel Depth, sobre su plano">Enviar a Pixel Depth</button></div>
+    <button class="kf-tab" id="kf-tab" title="Línea de tiempo con keyframes de rotación, posición y zoom (I inserta un keyframe)"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 7h12" stroke="currentColor" stroke-width="1.2"/><rect x="3.2" y="4.7" width="4.6" height="4.6" transform="rotate(45 5.5 7)" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/></svg>Timeline <b id="kf-count" hidden></b></button>
+    <div class="kf" id="kf" hidden role="region" aria-label="Línea de tiempo de keyframes">
+      <div class="kf-head">
+        <button class="ic" id="kf-pp" title="Reproducir (barra espaciadora con la línea de tiempo abierta)" aria-label="Reproducir"></button>
+        <span class="tm" id="kf-tm">0.00 / 5.00 s</span>
+        <button id="kf-ins" title="Insertar keyframe (I)">◆ Insertar keyframe</button>
+        <label>Duración <input id="kf-dur" type="number" min="0.5" max="120" step="0.5" value="5" aria-label="Duración en segundos"> s</label>
+        <span class="sp"></span>
+        <label>Cuadros <select id="kf-fps" aria-label="Cuadros por segundo"><option>12</option><option>15</option><option>24</option><option>30</option><option>60</option></select></label>
+        <select id="kf-fmt" aria-label="Formato del video"><option value="mp4">MP4 4K</option><option value="png">Secuencia PNG (.zip)</option></select>
+        <button class="primary" id="kf-video" title="Exporta la animación de los keyframes">Exportar video</button>
+        <button class="ic" id="kf-clear" title="Borrar todos los keyframes" aria-label="Borrar todos los keyframes"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4h9M5.5 4V2.5h3V4M3.8 4l.6 8h5.2l.6-8"/></svg></button>
+        <button class="ic" id="kf-fold" title="Plegar la línea de tiempo" aria-label="Plegar la línea de tiempo"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3"/></svg></button>
+      </div>
+      <div class="kf-body">
+        <div class="kf-names"><span></span><span>Rotación</span><span>Posición</span><span>Zoom</span></div>
+        <div class="kf-area" id="kf-area">
+          <div class="kf-ruler" id="kf-ruler"></div>
+          <div class="kf-rows" id="kf-rows"><div class="kf-row" data-track="rot"></div><div class="kf-row" data-track="pos"></div><div class="kf-row" data-track="zoom"></div></div>
+          <div class="kf-play" id="kf-play"></div>
+        </div>
+      </div>
+    </div>
     <div class="tt" role="toolbar" aria-label="Animación">
       <div class="seg" data-key="anim" aria-label="Animación">
         <button data-v="none">Quieta</button><button data-v="boil">A mano</button><button data-v="float">Flotar</button><button data-v="hover">Hover</button><button data-v="reveal">Reveal</button><button data-v="enter">Entrada</button><button data-v="paint" title="Mantené apretado sobre el lienzo: los píxeles salen del cursor y van a su lugar">Interactivo</button>
@@ -1056,7 +1129,7 @@ function sync(fast) {
 }
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
 function render() {
-  const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 48) / AW, (r.height - 176) / AH));
+  const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 48) / AW, (r.height - 176 - (stage.classList.contains('kf-open') ? 168 : 0)) / AH));
   const w = Math.round(AW * k), h = Math.round(AH * k), dpr = devicePixelRatio || 1;
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
   const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
@@ -1217,6 +1290,8 @@ function buildRing() {
     const yaw = v * 360 / K, y = yaw * Math.PI / 180, cy = Math.cos(y), sy = Math.sin(y), r = rng(S.seed * 977 + v);
     const buf = Stipple3D.render(viewTris(yaw), box, 700, L, { ambient: S.ambient, shadowDim: 1 - S.shadow }), e = Stipple3D.edges(buf, .02 / S.zoom);
     let area = 0; for (let i = 0; i < buf.mask.length; i++) area += buf.mask[i];
+    // view → model: undo the pitch, then the yaw (x right, y down in view; y up in the model)
+    const back = (X, Y, Z) => { const y1 = -Y, yy = y1 * cp + Z * sp, z1 = -y1 * sp + Z * cp; return [X * cy - z1 * sy, yy, X * sy + z1 * cy]; };
     if (S.lines) {
       // level lines of the model's height, traced in this view, kept on the side this view owns
       const raw = jitterRaw(contour(buf, cp, sp, 1, S.lineGap / k, (S.size + S.lineDot) / k), S.chaos * S.lineGap * 1.6 / k, r);
@@ -1230,8 +1305,6 @@ function buildRing() {
       continue;
     }
     const raw = Stipple3D.sample(buf, e, Math.round(count() * Math.min(2, area / buf.mask.length * 3)), r, { gamma: S.contrast, edge: S.edge, floor: .01, gain: 1.2, threshold: S.threshold });
-    // view → model: undo the pitch, then the yaw (x right, y down in view; y up in the model)
-    const back = (X, Y, Z) => { const y1 = -Y, yy = y1 * cp + Z * sp, z1 = -y1 * sp + Z * cp; return [X * cy - z1 * sy, yy, X * sy + z1 * cy]; };
     for (let i = 0; i < raw.length; i += 3) {
       const ix = Math.min(buf.W - 1, Math.floor((raw[i] - box.x0) * buf.k)), iy = Math.min(buf.H - 1, Math.floor((raw[i + 1] - box.y0) * buf.k)), o = iy * buf.W + ix;
       if (!buf.mask[o]) continue;
@@ -1598,13 +1671,15 @@ function zipStored(files) {
 // ---------- Video ----------
 // The loop of the chosen animation, every frame drawn in full, encoded as an MP4 (WebCodecs), cropped to what
 // the pixels cover over the loop. The last frame is one step short of the first, so it loops without a seam.
+let kfFilm = false; // Exportar video of the keyframe timeline: its length, frame rate and format, every frame its view
 $('#video').addEventListener('click', async () => {
-  if (filming || (S.anim === 'none' && !S.turn)) return;
-  const png = S.vidFmt === 'png';
+  if (filming || (S.anim === 'none' && !S.turn && !kfFilm)) return;
+  const png = kfFilm ? $('#kf-fmt').value === 'png' : S.vidFmt === 'png', view0 = [S.yaw, S.pitch, S.panX, S.panY, S.zoom];
   if (!png && (!('VideoEncoder' in window) || !window.Mp4Muxer)) return toast('Este navegador no puede exportar video: probá con Chrome, Edge o Safari.');
-  const btn = $('#video'), label = btn.textContent, fps = +S.ttFps;
-  const run = S.anim === 'paint' ? paintRun(fps) : null;
-  const T = run ? run.T : S.anim === 'boil' && !S.turn ? boilCount() / S.fps : S.ttDur, N = Math.max(2, Math.round(T * fps));
+  const btn = kfFilm ? $('#kf-video') : $('#video'), label = btn.textContent, fps = kfFilm ? +$('#kf-fps').value : +S.ttFps;
+  const run = !kfFilm && S.anim === 'paint' ? paintRun(fps) : null;
+  // keyframes play once (first frame to last, both kept); the animations loop (the last frame one step short of the first)
+  const T = kfFilm ? KF.dur : run ? run.T : S.anim === 'boil' && !S.turn ? boilCount() / S.fps : S.ttDur, N = Math.max(2, Math.round(T * fps) + (kfFilm ? 1 : 0));
   // Hover: a pointer sweeps a figure of eight over the model; one loop to settle, then the loop that is kept.
   let sim = null;
   const hoverSim = () => {
@@ -1615,6 +1690,7 @@ $('#video').addEventListener('click', async () => {
   };
   const sweep = (() => { const b = bounds(pts), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, rx = (b.x1 - b.x0) * .4, ry = (b.y1 - b.y0) * .3; return i => { const a = 2 * Math.PI * i / N; return [cx + rx * Math.sin(a), cy + ry * Math.sin(2 * a)]; }; })();
   const frameAt = i => {
+    if (kfFilm) return kfFrame(Math.min(T, i / fps), false);
     if (run) return run.at(i);
     if (S.turn) return comboFrame(i / N, false, S.anim === 'hover' ? sweep(i) : null);
     if (S.anim === 'boil') return boilFrame(Math.floor(i / fps * S.fps) % boilCount());
@@ -1628,7 +1704,7 @@ $('#video').addEventListener('click', async () => {
     // The crop: for a turn, everything the model sweeps; otherwise every frame's pixels.
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     const pad = S.size * (1 + S.jitter) + 4 + (S.anim === 'float' ? S.floatAmp * 2 : S.anim === 'hover' ? S.hoverRadius * .5 * S.hoverForce : 0);
-    if (run) { x0 = y0 = -1e9; x1 = y1 = 1e9; } // the whole frame (or the recorte): pixels fly in from the pointer
+    if (run || kfFilm) { x0 = y0 = -1e9; x1 = y1 = 1e9; } // the whole frame (or the recorte): pixels fly in from the pointer
     else if (S.turn) {
       const box = viewBoxNow(), k = AW / (box.x1 - box.x0);
       for (let i = 0; i < N; i++) {
@@ -1652,7 +1728,7 @@ $('#video').addEventListener('click', async () => {
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = S.bg; ctx.fillRect(0, 0, W, H);
       ctx.setTransform(sc, 0, 0, sc, 0, 0); draw(ctx, list, b.x0, b.y0);
     };
-    const name = [{ boil: 'a-mano', float: 'flotar', hover: 'hover', paint: 'interactivo', reveal: 'reveal-' + S.revDir, enter: 'entrada-' + S.entDir + (S.entInf ? '-infinito' : '') }[S.anim], S.turn && 'turntable'].filter(Boolean).join('-');
+    const name = kfFilm ? 'keyframes' : [{ boil: 'a-mano', float: 'flotar', hover: 'hover', paint: 'interactivo', reveal: 'reveal-' + S.revDir, enter: 'entrada-' + S.entDir + (S.entInf ? '-infinito' : '') }[S.anim], S.turn && 'turntable'].filter(Boolean).join('-');
     if (png) {
       // Lossless: every frame a PNG, numbered, in a .zip (stored: PNGs don't shrink further).
       const files = [];
@@ -1700,7 +1776,8 @@ $('#video').addEventListener('click', async () => {
     console.error(err); toast('No se pudo exportar el video.');
   } finally {
     for (const p of pts) p.dx = p.dy = p.vx = p.vy = 0;
-    filming = false; btn.disabled = false; btn.textContent = label; key = ''; sync();
+    if (kfFilm) [S.yaw, S.pitch, S.panX, S.panY, S.zoom] = view0;
+    filming = false; kfFilm = false; btn.disabled = false; btn.textContent = label; key = ''; shown = null; sync();
   }
 });
 
@@ -1766,6 +1843,211 @@ $('#to-depth').addEventListener('click', () => {
   for (let t = 0, q = 0; t < model.length; t += 18) for (let j = 0; j < 9; j++) pos[q++] = model[t + j];
   PerceptaHandoff.send('pixel-depth/', 'model-mesh', { name: modelName, pos, col: modelCol });
 });
+
+
+// ---------- Keyframes ----------
+// A timeline of the view: Rotación (giro and inclinación), Posición (the model moved in the frame) and Zoom, each
+// a track of keys. Between two keys the value eases along the curve chosen for that stretch (its button in the
+// middle). I opens the menu to insert a key of any of the three at the playhead, with the view as it is now.
+// Playing (or scrubbing) sets the view at that moment; Píxeles fijos keeps the pixels on the model while it moves.
+const KF = { dur: 5, t: 0, rot: [], pos: [], zoom: [], sel: null, playing: false, open: false };
+const KF_TRACKS = { rot: 'rotación', pos: 'posición', zoom: 'zoom' };
+// Curves: Lineal, Suave (in and out), Entrada (slow start), Salida (slow end), Constante (holds, then jumps).
+const EASES = [['inout', 'Suave', u => u * u * (3 - 2 * u)], ['linear', 'Lineal', u => u], ['in', 'Entrada suave', u => u * u * u], ['out', 'Salida suave', u => 1 - (1 - u) ** 3], ['hold', 'Constante', u => u < 1 ? 0 : 1]];
+const easeFn = k => (EASES.find(e => e[0] === k) || EASES[0])[2];
+const easeIcon = (k, s = 14) => {
+  const f = easeFn(k), pts = [];
+  for (let i = 0; i <= 16; i++) { const u = i / 16; pts.push(`${(2 + u * (s - 4)).toFixed(1)},${(s - 2 - (k === 'hold' ? (u < 1 ? 0 : 1) : f(u)) * (s - 4)).toFixed(1)}`); }
+  const d = k === 'hold' ? `M2,${s - 2}H${s - 2}V2` : 'M' + pts.join('L');
+  return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+};
+const kfCount = () => KF.rot.length + KF.pos.length + KF.zoom.length;
+const kfAnimated = () => ['rot', 'pos', 'zoom'].some(k => KF[k].length > 1);
+// the value of a track at time t (null with no keys)
+function kfValue(track, t) {
+  const K = KF[track]; if (!K.length) return null;
+  if (t <= K[0].t) return K[0].v.slice();
+  const L = K[K.length - 1]; if (t >= L.t) return L.v.slice();
+  let i = 0; while (K[i + 1].t < t) i++;
+  const a = K[i], b = K[i + 1], e = easeFn(a.ease)((t - a.t) / ((b.t - a.t) || 1));
+  return a.v.map((v, j) => v + (b.v[j] - v) * e);
+}
+// the view at time t: what the tracks say, the rest as it is
+function kfView(t) {
+  const r = kfValue('rot', t), p = kfValue('pos', t), z = kfValue('zoom', t);
+  return { yaw: r ? r[0] : S.yaw, pitch: r ? r[1] : S.pitch, panX: p ? p[0] : S.panX, panY: p ? p[1] : S.panY, zoom: z ? z[0] : S.zoom };
+}
+const kfApply = v => { S.yaw = wrapDeg(v.yaw); S.pitch = v.pitch; S.panX = Math.round(v.panX); S.panY = Math.round(v.panY); S.zoom = v.zoom; };
+// Píxeles fijos for a moving view: the model stippled once (from eight sides, at the keys' middle tilt and zoom) and
+// its pixels projected into every frame, hidden where something nearer covers them.
+function kfRingFrame(v) {
+  const keep = [S.pitch, S.zoom], P = KF.rot.map(k => k.v[1]), Z = KF.zoom.map(k => k.v[0]);
+  S.pitch = P.length ? P.slice().sort((a, b) => a - b)[P.length >> 1] : S.pitch; S.zoom = Z.length ? Math.exp(Z.reduce((s, z) => s + Math.log(z), 0) / Z.length) : S.zoom;
+  if (!ring || ring.key !== ringKey()) ring = buildRing();
+  S.pitch = v.pitch; S.zoom = v.zoom;
+  const { list } = ring, box = viewBoxNow(), k = AW / (box.x1 - box.x0), y = v.yaw * Math.PI / 180, p = v.pitch * Math.PI / 180, cy = Math.cos(y), sy = Math.sin(y), cp = Math.cos(p), sp = Math.sin(p);
+  const zb = Stipple3D.render(viewTris(v.yaw), box, 420, [0, 0, 1], { shadows: false }), eps = .03 / S.zoom, out = [];
+  for (const q of list) {
+    const [x, yy, z] = q.m, x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y1 = yy * cp - z1 * sp, z2 = yy * sp + z1 * cp, X = x1, Y = -y1;
+    const ix = Math.floor((X - box.x0) * zb.k), iy = Math.floor((Y - box.y0) * zb.k);
+    if (ix < 0 || iy < 0 || ix >= zb.W || iy >= zb.H) continue;
+    let near = -Infinity;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const u = ix + a, w = iy + b; if (u >= 0 && w >= 0 && u < zb.W && w < zb.H) near = Math.max(near, zb.depth[w * zb.W + u]); }
+    if (z2 < near - eps) continue;
+    out.push({ x: (X - box.x0) * k + q.jx + v.panX, y: (Y - box.y0) * k + q.jy + v.panY, tone: q.tone, pick: q.pick, sc: q.sc, rgb: q.rgb });
+  }
+  [S.pitch, S.zoom] = keep;
+  return out;
+}
+// The pixels of the frame at time t (the view is left set to that moment).
+function kfFrame(t, fast) {
+  const v = kfView(t); kfApply(v);
+  return S.ttFixed ? kfRingFrame(v) : build(fast);
+}
+// ---- the panel
+const kfEl = $('#kf'), kfArea = $('#kf-area'), kfRuler = $('#kf-ruler'), kfPlay = $('#kf-play');
+const KF_PLAY = '<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.5v9l7.5-4.5z" fill="currentColor"/></svg>';
+const KF_PAUSE = '<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="1.5" width="2.6" height="9" rx=".6" fill="currentColor"/><rect x="6.9" y="1.5" width="2.6" height="9" rx=".6" fill="currentColor"/></svg>';
+for (const t of ['pointerdown', 'pointermove', 'pointerup', 'click', 'dblclick', 'wheel']) kfEl.addEventListener(t, e => e.stopPropagation());
+function kfOpen(on) {
+  KF.open = on; stage.classList.toggle('kf-open', on); document.body.classList.toggle('kf-open', on); kfEl.hidden = !on;
+  if (on) kfDraw(); schedule();
+}
+const kfX = t => t / KF.dur * 100 + '%';
+const kfAt = e => { const r = kfArea.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width) * KF.dur; };
+const kfSnap = (t, free) => free ? t : Math.round(t * +$('#kf-fps').value) / +$('#kf-fps').value;
+function kfTime() { $('#kf-tm').textContent = `${KF.t.toFixed(2)} / ${KF.dur.toFixed(2)} s`; kfPlay.style.left = kfX(KF.t); }
+function kfDraw() {
+  const n = kfCount(); $('#kf-count').hidden = !n; $('#kf-count').textContent = n;
+  if (!KF.open) return;
+  // ruler: a tick every tenth (a longer one each second, numbered)
+  const step = KF.dur > 20 ? 1 : KF.dur > 8 ? .5 : .25; let h = '';
+  for (let t = 0; t <= KF.dur + 1e-6; t += step) { const s = Math.abs(t - Math.round(t)) < 1e-6; h += `<i class="${s ? 's' : ''}" style="left:${kfX(t)}"></i>${s ? `<em style="left:${kfX(t)}">${Math.round(t)}s</em>` : ''}`; }
+  kfRuler.innerHTML = h;
+  for (const row of document.querySelectorAll('.kf-row')) {
+    const tr = row.dataset.track, K = KF[tr]; let html = '';
+    for (let i = 0; i + 1 < K.length; i++) {
+      html += `<div class="seg" style="left:${kfX(K[i].t)};width:${(K[i + 1].t - K[i].t) / KF.dur * 100}%"></div>`;
+      html += `<button class="kf-ease" data-i="${i}" style="left:${kfX((K[i].t + K[i + 1].t) / 2)}" title="Curva: ${(EASES.find(e => e[0] === K[i].ease) || EASES[0])[1]}" aria-label="Curva entre keyframes">${easeIcon(K[i].ease)}</button>`;
+    }
+    K.forEach((k, i) => { html += `<button class="kf-key${KF.sel && KF.sel.tr === tr && KF.sel.k === k ? ' sel' : ''}" data-i="${i}" style="left:${kfX(k.t)}" title="Keyframe de ${KF_TRACKS[tr]} · ${k.t.toFixed(2)} s (arrastrá para moverlo, Supr lo borra)" aria-label="Keyframe de ${KF_TRACKS[tr]} en ${k.t.toFixed(2)} s"></button>`; });
+    row.innerHTML = html;
+  }
+  kfTime();
+  $('#kf-pp').innerHTML = KF.playing ? KF_PAUSE : KF_PLAY;
+}
+// go to time t: the view of that moment (a quick render while dragging, the full one after)
+function kfSeek(t, fast) {
+  KF.t = clamp(t, 0, KF.dur); kfTime();
+  if (!kfCount()) return;
+  kfApply(kfView(KF.t)); shown = null; sync(fast);
+}
+function kfInsert(track) {
+  const t = KF.t, K = KF[track];
+  let v = track === 'rot' ? [S.yaw, S.pitch] : track === 'pos' ? [S.panX, S.panY] : [S.zoom];
+  if (track === 'rot' && K.length) {
+    // the turn goes the short way from the key before it (yaw is kept unwrapped, so turns past 180° add up)
+    const prev = K.filter(k => k.t <= t).pop() || K[0]; v[0] = prev.v[0] + wrapDeg(v[0] - prev.v[0]);
+  }
+  const same = K.find(k => Math.abs(k.t - t) < 1e-3);
+  if (same) same.v = v; else { K.push({ t, v, ease: 'inout' }); K.sort((a, b) => a.t - b.t); }
+  KF.sel = { tr: track, k: same || K.find(k => Math.abs(k.t - t) < 1e-3) };
+  if (!KF.open) kfOpen(true); else kfDraw();
+  toast(`Keyframe de ${KF_TRACKS[track]} en ${t.toFixed(2)} s`);
+}
+// ---- menus (Insertar keyframe; the curve of a stretch)
+let kfMenuEl = null;
+function kfMenu(html, x, y, onPick) {
+  kfMenuClose();
+  const m = document.createElement('div'); m.className = 'kf-menu'; m.setAttribute('role', 'menu'); m.innerHTML = html; document.body.appendChild(m);
+  const r = m.getBoundingClientRect(); m.style.left = Math.min(innerWidth - r.width - 8, Math.max(8, x)) + 'px'; m.style.top = Math.min(innerHeight - r.height - 8, Math.max(8, y)) + 'px';
+  m.addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (b) { kfMenuClose(); onPick(b.dataset.v); } });
+  kfMenuEl = m; m.querySelector('button')?.focus();
+}
+function kfMenuClose() { kfMenuEl?.remove(); kfMenuEl = null; }
+addEventListener('pointerdown', e => { if (kfMenuEl && !kfMenuEl.contains(e.target)) kfMenuClose(); }, true);
+let kfMouse = null;
+addEventListener('pointermove', e => { kfMouse = [e.clientX, e.clientY]; });
+function kfInsertMenu(x, y) {
+  const it = (v, label, key) => `<button role="menuitem" data-v="${v}" data-key="${key}">${label}<kbd>${key.toUpperCase()}</kbd></button>`;
+  kfMenu(`<h4>Insertar keyframe</h4>${it('pos', 'Posición', 'p')}${it('rot', 'Rotación', 'r')}${it('zoom', 'Zoom', 'z')}<hr>${it('all', 'Los tres', 't')}`, x, y,
+    v => v === 'all' ? ['rot', 'pos', 'zoom'].forEach(kfInsert) : kfInsert(v));
+}
+addEventListener('keydown', e => {
+  // an open menu takes every key (so its letters don't reach the page's own shortcuts: R, C…)
+  if (kfMenuEl) {
+    const m = kfMenuEl, bs = [...m.querySelectorAll('button')], i = bs.indexOf(document.activeElement), hot = bs.find(b => b.dataset.key === e.key.toLowerCase());
+    if (e.key === 'Escape') kfMenuClose();
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') bs[(i + (e.key === 'ArrowDown' ? 1 : bs.length - 1)) % bs.length].focus();
+    else if (e.key === 'Enter' || e.key === ' ') { if (i >= 0) bs[i].click(); }
+    else if (hot) hot.click();
+    else if (e.key === 'Tab') return;
+    e.preventDefault(); e.stopImmediatePropagation(); return;
+  }
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea, select')) return;
+  if (e.key === 'i' || e.key === 'I') {
+    e.preventDefault(); e.stopImmediatePropagation();
+    const f = frame.getBoundingClientRect(), [x, y] = kfMouse && kfMouse[0] >= f.left && kfMouse[0] <= f.right && kfMouse[1] >= f.top && kfMouse[1] <= f.bottom ? kfMouse : [f.left + f.width / 2 - 95, f.top + f.height / 2 - 80];
+    kfInsertMenu(x, y);
+  } else if ((e.key === 'Delete' || e.key === 'Backspace') && KF.sel && KF.open) {
+    e.preventDefault(); const K = KF[KF.sel.tr]; K.splice(K.indexOf(KF.sel.k), 1); KF.sel = null; kfDraw();
+  } else if (e.key === ' ' && KF.open && kfCount()) { e.preventDefault(); kfToggle(); }
+}, true);
+// ---- playing
+let kfRaf = 0, kfT0 = 0;
+function kfToggle() {
+  if (KF.playing) { KF.playing = false; cancelAnimationFrame(kfRaf); shown = null; kfSeek(KF.t); kfDraw(); return; }
+  if (!kfAnimated()) return toast('Agregá al menos dos keyframes en una pista (I) para animar.');
+  if (KF.t >= KF.dur - 1e-3) KF.t = 0;
+  KF.playing = true; cancelAnimationFrame(player); player = 0; kfT0 = performance.now() - KF.t * 1000; kfDraw();
+  const step = now => {
+    if (!KF.playing || filming) return;
+    KF.t = ((now - kfT0) / 1000) % KF.dur; kfTime();
+    shown = kfFrame(KF.t, true); render();
+    kfRaf = requestAnimationFrame(step);
+  };
+  kfRaf = requestAnimationFrame(step);
+}
+$('#kf-pp').addEventListener('click', kfToggle);
+$('#kf-tab').addEventListener('click', () => kfOpen(true));
+$('#kf-fold').addEventListener('click', () => kfOpen(false));
+$('#kf-ins').addEventListener('click', e => { const r = e.currentTarget.getBoundingClientRect(); kfInsertMenu(r.left, r.top - 190); });
+$('#kf-clear').addEventListener('click', () => { if (!kfCount()) return; if (KF.playing) kfToggle(); KF.rot = []; KF.pos = []; KF.zoom = []; KF.sel = null; kfDraw(); toast('Keyframes borrados.'); });
+$('#kf-dur').addEventListener('change', e => { KF.dur = clamp(+e.target.value || 5, .5, 120); e.target.value = KF.dur; KF.t = Math.min(KF.t, KF.dur); kfDraw(); });
+$('#kf-fps').value = '30';
+// scrub on the ruler or an empty stretch of a track
+let kfDrag = null;
+kfArea.addEventListener('pointerdown', e => {
+  const key = e.target.closest('.kf-key'), ease = e.target.closest('.kf-ease');
+  if (ease) {
+    const tr = ease.closest('.kf-row').dataset.track, k = KF[tr][+ease.dataset.i], r = ease.getBoundingClientRect();
+    kfMenu(`<h4>Curva</h4>${EASES.map(([v, l]) => `<button role="menuitemradio" aria-checked="${k.ease === v}" data-v="${v}">${easeIcon(v, 16)}${l}</button>`).join('')}`, r.left - 80, r.top - 220, v => { k.ease = v; kfDraw(); if (!KF.playing) kfSeek(KF.t); });
+    return;
+  }
+  if (KF.playing) kfToggle();
+  kfArea.setPointerCapture(e.pointerId);
+  if (key) { const tr = key.closest('.kf-row').dataset.track, k = KF[tr][+key.dataset.i]; KF.sel = { tr, k }; kfDrag = { k, tr, x: e.clientX, t: k.t, moved: false }; kfDraw(); return; }
+  KF.sel = null; kfDrag = { scrub: true }; kfSeek(kfSnap(kfAt(e), e.shiftKey), true); kfDraw();
+});
+kfArea.addEventListener('pointermove', e => {
+  if (!kfDrag) return;
+  if (kfDrag.scrub) return kfSeek(kfSnap(kfAt(e), e.shiftKey), true);
+  const r = kfArea.getBoundingClientRect(), t = kfSnap(clamp(kfDrag.t + (e.clientX - kfDrag.x) / r.width * KF.dur, 0, KF.dur), e.shiftKey);
+  if (Math.abs(e.clientX - kfDrag.x) > 2) kfDrag.moved = true;
+  if (kfDrag.moved) { const K = KF[kfDrag.tr]; if (!K.some(k => k !== kfDrag.k && Math.abs(k.t - t) < 1e-3)) { kfDrag.k.t = t; K.sort((a, b) => a.t - b.t); kfDraw(); } }
+});
+kfArea.addEventListener('pointerup', () => {
+  const d = kfDrag; kfDrag = null; if (!d) return;
+  if (d.scrub) return kfSeek(KF.t);
+  if (!d.moved) kfSeek(d.k.t); else kfSeek(KF.t);
+});
+// the video of the keyframes (the same encoder as the animations)
+$('#kf-video').addEventListener('click', () => {
+  if (!kfAnimated()) return toast('Agregá al menos dos keyframes en una pista (I) para exportar.');
+  if (KF.playing) kfToggle();
+  kfFilm = true; $('#video').click();
+});
+kfDraw();
 
 loadPreset();
 sync();
