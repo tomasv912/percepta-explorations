@@ -499,7 +499,7 @@ function generate(st) {
   const lines = image && st.imgLines && img.depth;
   const n = lines ? Math.min(4e6, (Math.ceil(W / (st.size + st.dPx)) + 2) * (Math.ceil(H / st.dGap) + 2) * 3) : grid ? st.gridCols * gridRows : st.snap && !st.blend && st.dir !== '1b' ? PerceptaCells(st.count, st.size, (st.size + st.cellGap), 300000) : st.count;
   const px = new Float32Array(n), py = new Float32Array(n), size = new Float32Array(n), shade = new Uint8Array(n);
-  const pal = new Uint8Array(n), rgb = new Uint32Array(n), tlen = new Float32Array(n), dep = new Float32Array(n);
+  const pal = new Uint8Array(n), rgb = new Uint32Array(n), tlen = new Float32Array(n), dep = new Float32Array(n), lid = lines ? new Int32Array(n) : null;
   let got = 0;
   // depth: 0 nearest to 1 farthest (Profundidad de campo blurs what is off the focus).
   const add = (x, y, sizeK, color, palIdx, depth = .5) => {
@@ -557,14 +557,14 @@ function generate(st) {
           if (Math.abs(at(Dm, j + 1) - at(Dm, j)) > .12) continue;
           for (let L = Math.floor(Math.min(a, b)) + 1; L <= Math.max(a, b); L++) {
             const tt = (L - a) / (b - a), tone = at(M, j) + (at(M, j + 1) - at(M, j)) * tt;
-            cand.push([x, (j + tt + .5) / gh, tone, Math.min(gh - 1, j + Math.round(tt)) * gw + Math.min(gw - 1, Math.round(gx))]);
+            cand.push([x, (j + tt + .5) / gh, tone, Math.min(gh - 1, j + Math.round(tt)) * gw + Math.min(gw - 1, Math.round(gx)), L]);
           }
         }
       }
       sep = st.dPx / kImg;
       const dens = clamp(st.count / 45000, .05, 1), scOf = tn => st.dAM ? Math.pow(tn, .75) : 1, cellS = sz + sep, taken = new Map(), keyOf = (x, y) => x * 100003 + y;
       cand.sort((a, b) => b[2] - a[2]);
-      for (const [x, y, tn, k] of cand) {
+      for (const [x, y, tn, k, L] of cand) {
         if (got >= n) break;
         if (tn <= 0) continue;
         if (!st.dAM && r() > Math.min(1, Math.pow(tn, 1.2) * dens * 1.5)) continue;
@@ -574,7 +574,7 @@ function generate(st) {
         for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = taken.get(keyOf(cx + a, cy + b)); if (l) for (const [ox, oy, oh] of l) if (apartD(ox - x, oy - y) < half + oh + sep - 1e-7) { ok = false; break; } } // circles: apart by their radii and the space
         if (!ok) continue;
         const kk = keyOf(cx, cy); (taken.get(kk) || taken.set(kk, []).get(kk)).push([x, y, half]);
-        add(x, y, 1, col[k]); size[got - 1] = st.size * sc; shade[got - 1] = 0;
+        add(x, y, 1, col[k]); size[got - 1] = st.size * sc; shade[got - 1] = 0; lid[got - 1] = L; // its line (for Desplazamiento Suave)
       }
     }
     // Cuadrícula: one cube per node wherever the image is dark enough, sized by its tone.
@@ -766,7 +766,7 @@ function generate(st) {
   if (image) {
     // Kept flat here; place() turns and projects it, so rotating never regenerates.
     const g = { W, H, n: got, lx: cut(px), ly: cut(py), bs: cut(size), fit: { x0, x1, y0, y1, half, tl, tr, tt, tb },
-      size: new Float32Array(got), dp: new Float32Array(got), dep: new Float32Array(got), hx: new Float32Array(got), hy: new Float32Array(got), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen) };
+      size: new Float32Array(got), dp: new Float32Array(got), dep: new Float32Array(got), hx: new Float32Array(got), hy: new Float32Array(got), shade: cut(shade), pal: cut(pal), rgb: cut(rgb), tlen: cut(tlen), lid: lid ? cut(lid) : null };
     place(g, st);
     return g;
   }
@@ -1266,7 +1266,8 @@ function frameLoop(now) {
   const dt = last ? Math.min(.05, (now - last) / 1000) : 1 / 60; last = now;
   step(dt);
   // Animating: a new drawing Dibujos por segundo times a second, held in between (as stop motion).
-  if (animating() && smooth1b()) poseAt(0, flowTime() / S.loopDur); // 1B Suave: its circles, moved every screen frame
+  if (animating() && smooth1b()) sfT = flowTime() / S.loopDur; // 1B Suave: its circles slide on, every screen frame
+  else if (animMode() && smooth1b() && !filming) sfT = flowPausedT / S.loopDur;
   else if (animating() && smoothFlow()) sfT = flowTime() / S.loopDur; // Suave: every screen frame, continuous
   else if (animMode() && smoothFlow() && !filming) sfT = flowPausedT / S.loopDur;
   else if (animating()) { const fi = Math.floor((now - flowT0) / 1000 * +S.vidFps) % drawings(); if (fi !== shownFi) { shownFi = fi; poseAt(fi); } }
@@ -1298,7 +1299,7 @@ const flat = g => { const v = new Float32Array(g.n * 2); for (let i = 0; i < g.n
 // gen0 + strokes: each point copies the look of its source cube; removed points stay (del) so indices hold.
 function derive() {
   const { v, src } = edit, m = v.length / 2, g = { W: gen0.W, H: gen0.H, n: m, del: new Uint8Array(m) };
-  for (const k of ['size', 'shade', 'pal', 'rgb', 'tlen', 'dp', 'dep']) if (gen0[k]) { const a = new gen0[k].constructor(m); for (let i = 0; i < m; i++) a[i] = gen0[k][src[i]]; g[k] = a; }
+  for (const k of ['size', 'shade', 'pal', 'rgb', 'tlen', 'dp', 'dep', 'lid']) if (gen0[k]) { const a = new gen0[k].constructor(m); for (let i = 0; i < m; i++) a[i] = gen0[k][src[i]]; g[k] = a; }
   g.hx = new Float32Array(m); g.hy = new Float32Array(m);
   for (let i = 0; i < m; i++) { const x = v[i * 2]; if (x !== x) { g.del[i] = 1; g.hx[i] = gen0.hx[src[i]]; g.hy[i] = gen0.hy[src[i]]; } else { g.hx[i] = x; g.hy[i] = v[i * 2 + 1]; } }
   if (S.dir === '1b' && S.blend) pasaje1b(g);
@@ -1570,7 +1571,7 @@ function hash01(a, b) {
 const smoothFlow = () => S.motion === 'horiz' && S.flowStyle === 'smooth' && S.dir !== '1b' && !sheetFlow() && !!gen;
 // 1B keeps its own circles (its lines, its spacing): Suave moves them continuously, each frame, without the saltito
 const smooth1b = () => S.motion === 'horiz' && S.flowStyle === 'smooth' && S.dir === '1b';
-let SF = null, sfT = 0, SF_ON = false;
+let SF = null, sfT = 0, SF_ON = false, filmingRaw = false;
 function sfBuild() {
   const vert = S.flowDir === 'd' || S.flowDir === 'u', cell = S.size + S.cellGap, key = [gen.n, gen.W, gen.H, S.flowDir, cell].join();
   if (SF && SF.gen === gen && SF.key === key) return SF;
@@ -1637,8 +1638,81 @@ function sfFrame(t) {
   }
   return { G, X: Xo, Y: Yo };
 }
+// ---------- 1B: Desplazamiento Suave ----------
+// 1B's own circles slide on, each along its track: with the flow across (← →) its own line (so the lines, following
+// the photo's depth, hold and run); with the flow up or down its column. A track is its circles in order with, where
+// the picture leaves a gap, empty places a circle's pitch apart, and one empty place at each end: so every place is a
+// pitch from the next and a circle moving at a steady speed never jumps. Each circle takes the size the picture has
+// where it is (its size, blended from the places either side): it shrinks to nothing into a gap or off the end of its
+// track and grows back where the picture is. The same circles all along, every screen frame.
+let T1 = null;
+function tracks1b() {
+  const vert = S.flowDir === 'd' || S.flowDir === 'u', pitch = S.size + S.dPx, key = [gen.n, S.flowDir, pitch, S.dGap].join();
+  if (T1 && T1.gen === gen && T1.key === key) return T1;
+  const groups = new Map(), useLines = !vert && gen.lid;
+  for (let i = 0; i < gen.n; i++) {
+    if (gen.del[i]) continue;
+    const k = useLines ? gen.lid[i] : Math.floor((vert ? gen.hx[i] : gen.hy[i]) / (vert ? pitch : Math.max(pitch, S.dGap * .8)));
+    (groups.get(k) || groups.set(k, []).get(k)).push(i);
+  }
+  // a line that folds (the same level in two places) is followed branch by branch: in order across, each circle joins
+  // the branch whose last circle is nearest it (no more than half a line spacing away), else starts a new one
+  const runs = [];
+  for (const ids of groups.values()) {
+    ids.sort((a, b) => vert ? gen.hy[a] - gen.hy[b] : gen.hx[a] - gen.hx[b]);
+    if (!useLines) { runs.push(ids); continue; }
+    const br = [], tol = S.dGap * .5;
+    for (const i of ids) {
+      let best = null, bd = Infinity;
+      for (const b of br) { const j = b[b.length - 1], d = Math.abs(gen.hy[i] - gen.hy[j]); if (d < tol + Math.abs(gen.hx[i] - gen.hx[j]) * 1.2 && d < bd) { bd = d; best = b; } } // steep lines climb a lot per step
+      if (best) best.push(i); else br.push([i]);
+    }
+    runs.push(...br);
+  }
+  const tr = [], slotOf = new Int32Array(gen.n).fill(-1), trOf = new Int32Array(gen.n).fill(-1);
+  for (const ids of runs) {
+    const px = [], py = [], ps = [], at = (x, y, s) => { px.push(x); py.push(y); ps.push(s); };
+    // an empty place before the first and after the last (the wrap is between them, unseen)
+    const l = ids[ids.length - 1], dirx = vert ? 0 : 1, diry = vert ? 1 : 0, src = [];
+    const f0 = ids[0]; at(gen.hx[f0] - dirx * pitch, gen.hy[f0] - diry * pitch, 0); src.push(f0);
+    // the track's own step: its usual spacing (along a line, Tamaño + Espacio; up a column, the spacing of the lines)
+    const sp = []; for (let k = 1; k < ids.length; k++) sp.push(Math.hypot(gen.hx[ids[k]] - gen.hx[ids[k - 1]], gen.hy[ids[k]] - gen.hy[ids[k - 1]]));
+    sp.sort((a, b) => a - b); const step = Math.max(pitch, sp.length ? sp[sp.length >> 1] : pitch);
+    ids.forEach((i, k) => {
+      if (k) { const j = ids[k - 1], dx = gen.hx[i] - gen.hx[j], dy = gen.hy[i] - gen.hy[j], d = Math.hypot(dx, dy), e = d > step * 1.6 ? Math.round(d / step) - 1 : 0;
+        for (let q = 1; q <= e; q++) { at(gen.hx[j] + dx * q / (e + 1), gen.hy[j] + dy * q / (e + 1), 0); src.push(q <= e / 2 ? j : i); } }
+      slotOf[i] = px.length; trOf[i] = tr.length; at(gen.hx[i], gen.hy[i], gen.size[i]); src.push(i);
+    });
+    at(gen.hx[l] + dirx * pitch, gen.hy[l] + diry * pitch, 0); src.push(l);
+    tr.push({ px: Float32Array.from(px), py: Float32Array.from(py), ps: Float32Array.from(ps), m: px.length, step, src: Int32Array.from(src) });
+  }
+  // one speed for all, in the picture's pixels: the longest track once a loop, the others a whole number of times
+  const M = tr.reduce((a, t) => Math.max(a, t.m * t.step), 1);
+  for (const t of tr) t.turns = Math.max(1, Math.round(M / (t.m * t.step)));
+  return T1 = { gen, key, tr, slotOf, trOf };
+}
+function flow1bFrame(t) {
+  // one circle per place of every track, travelling; its look is that of the circle the place came from (fixed)
+  const F = tracks1b(), g = gen, sign = S.flowDir === 'l' || S.flowDir === 'u' ? -1 : 1;
+  let n = 0; for (const T of F.tr) n += T.m;
+  const Xo = new Float32Array(n), Yo = new Float32Array(n), size = new Float32Array(n), del = new Uint8Array(n), id = new Int32Array(n), srcOf = new Int32Array(n);
+  let o = 0;
+  for (const T of F.tr) {
+    const m = T.m;
+    for (let k = 0; k < m; k++, o++) {
+      const q = ((k + sign * t * T.turns * m) % m + m) % m, a = Math.floor(q), b = (a + 1) % m, f = q - a, w = b === 0 ? 0 : f;
+      // the wrap (last place to first) is crossed at size nothing, so unseen
+      const sz = b === 0 ? 0 : T.ps[a] + (T.ps[b] - T.ps[a]) * f;
+      Xo[o] = T.px[a] + (T.px[b] - T.px[a]) * w; Yo[o] = T.py[a] + (T.py[b] - T.py[a]) * w; size[o] = sz; del[o] = sz < S.size * .06 ? 1 : 0; id[o] = o; srcOf[o] = T.src[k];
+    }
+  }
+  const G = { W: g.W, H: g.H, n, del, size, id, base: g, shade: new Uint8Array(n), pal: new Uint8Array(n), rgb: new Uint32Array(n), tlen: new Float32Array(n), dp: g.dp ? new Float32Array(n) : null, dep: g.dep ? new Float32Array(n) : null };
+  for (let j2 = 0; j2 < n; j2++) { const s2 = srcOf[j2]; G.shade[j2] = g.shade[s2]; G.pal[j2] = g.pal[s2]; G.rgb[j2] = g.rgb[s2]; G.tlen[j2] = g.tlen[s2]; if (G.dp) G.dp[j2] = g.dp[s2]; if (G.dep) G.dep[j2] = g.dep[s2]; }
+  return { G, X: Xo, Y: Yo };
+}
 // draw / toSvg with the weave standing in for the picture's cubes
 function withSmoothFlow(fn) {
+  if (smooth1b() && gen && !filmingRaw) { const f = flow1bFrame(sfT), keep = [gen, X, Y]; gen = f.G; X = f.X; Y = f.Y; try { return fn(); } finally { [gen, X, Y] = keep; } }
   if (!smoothFlow()) return fn();
   const f = sfFrame(sfT); if (!f) return fn();
   const keep = [gen, X, Y, gone]; gen = f.G; X = f.X; Y = f.Y; gone = new Uint8Array(f.G.n); SF_ON = true;
@@ -1707,7 +1781,7 @@ $('#motion-export').addEventListener('click', async () => {
   try {
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d'), frameAt = i => {
-      if (smoothFlow()) sfT = i / N; else if (smooth1b()) poseAt(0, i / N); else poseAt(i);
+      if (smoothFlow() || smooth1b()) sfT = i / N; else poseAt(i);
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
       if (!png || S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, W, H); }
       ctx.setTransform(k, 0, 0, k, (panX - v.x) * k, (panY - v.y) * k); draw(ctx, S);
