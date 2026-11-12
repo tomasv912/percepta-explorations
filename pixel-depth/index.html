@@ -105,6 +105,14 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .lib button:hover { color: var(--text); }
 .lib button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); box-shadow: none; }
 .frame.placing { cursor: crosshair; }
+/* Goma: a small bar bottom right; with it on, dragging over the picture erases pixels */
+.erase-bar { position: absolute; right: 14px; bottom: 14px; z-index: 3; display: flex; align-items: center; gap: 6px; padding: 5px; border-radius: 10px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 4px 14px rgb(0 0 0 / .06); font: 12px var(--font); color: var(--text-2); }
+.erase-bar button { height: 28px; border: 0; border-radius: 7px; background: var(--fill); color: var(--text); font: 500 12px var(--font); padding: 0 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.erase-bar button:hover { background: var(--line); }
+.erase-bar button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); }
+.erase-bar button:disabled { opacity: .4; cursor: default; }
+.erase-bar input[type=range] { width: 90px; }
+.frame.erasing, .frame.erasing:active { cursor: none; }
 .sel { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 10px; background: var(--fill); box-shadow: inset 0 0 0 1px var(--line); }
 .sel .btns .btn { background: var(--surface); }
 .sel-head { display: flex; justify-content: space-between; align-items: center; font-weight: 500; }
@@ -117,6 +125,12 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 <div class="app">
   <main id="stage">
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Modelos en 3D sobre un plano, hechos de píxeles que se dispersan hacia el fondo"></canvas></div>
+    <div class="erase-bar" role="toolbar" aria-label="Goma">
+      <button id="er-tool" aria-pressed="false" title="Goma (E): arrastrá sobre la imagen para borrar píxeles sobrantes"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 2.5 13.5 6.5 7 13H3.5L2 11.5z"/><path d="M6 6l4 4M7 13h7"/></svg>Goma</button>
+      <input type="range" id="er-size" min="4" max="120" step="1" aria-label="Tamaño de la goma" title="Tamaño de la goma">
+      <button id="er-undo" title="Deshacer el último trazo (Ctrl+Z)" aria-label="Deshacer"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3 2.5 6l3 3"/><path d="M2.5 6H10a3.5 3.5 0 0 1 0 7H7"/></svg></button>
+      <button id="er-clear" title="Borrar todos los trazos de la goma">Limpiar</button>
+    </div>
     <div class="drop" id="drop" hidden>Soltá el modelo (.obj, .fbx, .glb, .gltf)</div>
     <div class="hud" id="stats">—</div>
   </main>
@@ -161,7 +175,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
       <section>
         <h2>Plano</h2>
-        <label class="check"><input type="checkbox" data-check="cut"> Recortar el plano a los modelos</label>
+        <label class="check" title="Solo los modelos, recortados limpios: sin los píxeles del plano alrededor"><input type="checkbox" data-check="noPlane"> Sin plano (solo los modelos)</label>
+        <label class="check" id="cut-row"><input type="checkbox" data-check="cut"> Recortar el plano a los modelos</label>
         <p class="hint" id="cut-hint">Sin margen: el plano arranca en el frente de los modelos y sigue hacia atrás en el ancho que ocupan, de punta a punta.</p>
         <div id="sl-mdens"></div>
         <label class="check"><input type="checkbox" data-check="cull"> Ocultar las caras de atrás</label>
@@ -237,7 +252,7 @@ const WHITE = '#F6F6F6', INK = '#272727';
 const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 const AW = 1920, AH = 1080, RES = 2, PW = 3, CELL = 1 / 150;
 const DEFAULTS = {
-  stroke: false, strokeW: .5,
+  stroke: false, strokeW: .5, noPlane: false, eraseR: 24,
   disp: .3, start: .35, soft: .7, rise: .35, thin: .35, fadeA: .5,
   square: false, round1a: false, dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, cut: false, lines: false, lGap: 14, lDot: 1, mdens: 3.5, cull: true, cityN: 16, cityGreen: .35, citySeed: 1, wave: .5, waveScale: .5, depth: 2.4,
   pitch: 24, yaw: 0, persp: .55, zoom: 1.3, frameY: .02,
@@ -271,7 +286,8 @@ const mesh = () => ({ T: [], bases: [] });
 // A triangle whose normal points away from ctr (a point inside the solid); two-sided when ctr is null.
 function tri(m, a, b, c, ctr, col) {
   let n = cross(sub(b, a), sub(c, a)); const l = Math.hypot(...n); if (l < 1e-12) return;
-  if (col !== undefined) (m.C || (m.C = [])).length = m.T.length / 13, m.C.push(col); // its own colour (Original) n = [n[0] / l, n[1] / l, n[2] / l];
+  n = [n[0] / l, n[1] / l, n[2] / l];
+  if (col !== undefined) (m.C || (m.C = [])).length = m.T.length / 13, m.C.push(col); // its own colour (Original)
   if (ctr && dot(n, sub([(a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3, (a[2] + b[2] + c[2]) / 3], ctr)) < 0) n = [-n[0], -n[1], -n[2]];
   m.T.push(...a, ...b, ...c, ...n, ctr ? 0 : 1);
 }
@@ -642,7 +658,7 @@ function linePoints() {
   };
   // the ground, a coarser grid of its heights, where no model stands (and inside the group with Recortar)
   const G = 3, gn = (i, j) => [X0 + i * CELL, field.h[j * nx + i], Z0 + j * CELL];
-  for (let j = 0; j + G < nz; j += G) for (let i = 0; i + G < nx; i += G) {
+  if (!S.noPlane) for (let j = 0; j + G < nz; j += G) for (let i = 0; i + G < nx; i += G) {
     if (base[(j + 1) * nx + i + 1] || !inside(i, j)) continue;
     const A = gn(i, j), B = gn(i + G, j), C = gn(i + G, j + G), D = gn(i, j + G);
     cut(A, B, C, null, null, 1); cut(A, C, D, null, null, 1);
@@ -656,12 +672,12 @@ function linePoints() {
 }
 function buildPoints() {
   if (S.lines) {
-    const key = JSON.stringify(['lines', fieldKey, S.lGap, S.lDot, S.size, S.zoom, S.yaw, S.seed, S.cut, S.depth]);
+    const key = JSON.stringify(['lines', fieldKey, S.lGap, S.lDot, S.size, S.zoom, S.yaw, S.seed, S.cut, S.depth, S.noPlane]);
     if (key !== ptsKey) { ptsKey = key; pts = linePoints(); }
     return;
   }
   const { nx, base, front } = field, per = count() / (PW * S.depth);
-  const key = JSON.stringify([fieldKey, count(), S.seed, S.cut]);
+  const key = JSON.stringify([fieldKey, count(), S.seed, S.cut, S.noPlane]);
   if (key !== ptsKey || !field.plane) {
     ptsKey = key;
     // Recortar: the plane only from the group's front edge back, and only as wide as the group.
@@ -672,7 +688,7 @@ function buildPoints() {
       return !S.cut || inside(p.i, p.j) || inside(p.i + 1, p.j) || inside(p.i, p.j + 1) || inside(p.i + 1, p.j + 1);
     });
   }
-  pts = field.plane.slice();
+  pts = S.noPlane ? [] : field.plane.slice();
   objs.forEach((o, i) => { for (const q of modelPoints(o, i, per)) pts.push(q); });
 }
 
@@ -731,8 +747,22 @@ function project(cam) {
   }
   return keep.reverse();
 }
+// Original on pixels without a colour of their own (the plane's, the scattered ones): one of the models' colours, in
+// the share each has of their surface (so the plane and what scatters from it are of the model's colours).
+let mpal = { key: '', v: [] };
+function modelPal() {
+  const key = objs.map(o => o.kind + ':' + o.seed).join();
+  if (mpal.key === key) return mpal.v;
+  const v = [], r = rng(97);
+  for (const o of objs) {
+    const m = meshOf(o.kind, o.seed); if (!m.C) continue;
+    for (let k = 0; k < 256; k++) v.push(m.C[Math.floor(r() * m.C.length)]);
+  }
+  return (mpal = { key, v }).v;
+}
 function colorOf(p) {
   if (S.colorMode === 'orig' && p.rgb !== undefined) return '#' + p.rgb.toString(16).padStart(6, '0');
+  if (S.colorMode === 'orig') { const P = modelPal(); if (P.length) return '#' + P[Math.floor(p.pick * P.length) % P.length].toString(16).padStart(6, '0'); }
   const P = S.palette;
   const c = S.colorMode === 'height' ? [INK, ...P][clamp(Math.floor(p.lift / field.top * (P.length + 1) * .999), 0, P.length)] : S.colorMode === 'random' ? [...P, PerceptaBg.pick(S.bg, S.bgFlip)][Math.floor(p.pick * (P.length + 1))] : S.ink;
   return onBg(c, S.bg);
@@ -864,7 +894,7 @@ function sync() {
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorMode !== 'ink'; $('#sl-strokeW').hidden = !S.stroke;
-  $('#cut-hint').hidden = !S.cut;
+  $('#cut-row').hidden = S.noPlane; $('#cut-hint').hidden = !S.cut || S.noPlane;
   $('#lines-row').hidden = true; $('#snap-row').hidden = true;
   $('#sl-lGap').hidden = $('#sl-lDot').hidden = !S.lines;
   const gridOnly = S.snap && !S.blend && !S.lines;
@@ -886,7 +916,7 @@ function screenBox(o) {
   return [Math.min(...pts2.map(p => p[0])), Math.min(...pts2.map(p => p[1])), Math.max(...pts2.map(p => p[0])), Math.max(...pts2.map(p => p[1]))];
 }
 function render() {
-  buildField(); buildPoints(); cam = camera(); list = project(cam);
+  buildField(); buildPoints(); cam = camera(); list = eraseFilter(project(cam));
   const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 48) / AW, (r.height - 84) / AH));
   const w = Math.round(AW * k), h = Math.round(AH * k), dpr = devicePixelRatio || 1;
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
@@ -895,6 +925,7 @@ function render() {
   const ctx = cv.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, pw, ph);
   ctx.setTransform(pw / AW, 0, 0, ph / AH, 0, 0);
   draw(ctx, list);
+  if (ER.on && ER.ptr) { ctx.save(); ctx.lineWidth = 1.5 * AW / pw; ctx.strokeStyle = '#8D8BC4'; ctx.setLineDash([4 * AW / pw, 3 * AW / pw]); ctx.beginPath(); ctx.arc(ER.ptr[0], ER.ptr[1], S.eraseR, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
   // On screen only: the selected model's footprint, or where the next one will go.
   const outline = (o, dash) => {
     const f = footprint(o); if (!f) return;
@@ -1018,10 +1049,67 @@ if (PerceptaHandoff.pending() === 'model-mesh') PerceptaHandoff.take('model-mesh
   if (!h || !h.pos?.length) return;
   uploads.push({ name: h.name || 'Modelo', mesh: finish(fitted(h.pos, 9, h.col || undefined)) }); renderLib();
   objs = [{ ...newObj('up' + (uploads.length - 1), 0, -S.depth / 2 + .7), s: 1 }]; sel = 0;
-  sync(); toast(`${h.name || 'Modelo'} desde Pixel Model`); history.replaceState(null, '', location.pathname);
+  S.noPlane = true; if (h.col) S.colorMode = 'orig'; // the model alone, cut out clean (Sin plano), in its own colours
+  sync(); toast(`${h.name || 'Modelo'} desde Pixel Model · sin plano (Plano → Sin plano para volver a ponerlo)`); history.replaceState(null, '', location.pathname);
 }).catch(err => { console.error('handoff', err); toast('No se pudo recibir el modelo.'); });
 // Pasaje's handles (toolbar.js) over the picture, and its two buttons.
 PerceptaBlendHandles({ frame, visible: () => S.dir !== '1b' && S.blend, get: () => [S.blendA, S.blendB], set: (A, B) => { S.blendA = A; S.blendB = B; sync(); } });
+// ---------- Goma ----------
+// Strokes over the picture (in its own pixels) that take away the pixels under them: the leftovers round a model, a
+// stray patch of plane. They stay where they were drawn on the picture (turning the view doesn't move them).
+const ER = { on: false, strokes: [], mask: null, key: '', ptr: null, cur: null };
+const ER_K = 2; // the mask at half the picture's pixels
+const schedule = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); };
+function eraseMask() {
+  const key = ER.strokes.length + ':' + ER.strokes.reduce((n, st) => n + st.length, 0);
+  if (ER.key === key && ER.mask) return ER.mask;
+  const W = Math.ceil(AW / ER_K), H = Math.ceil(AH / ER_K), m = new Uint8Array(W * H);
+  for (const st of ER.strokes) for (const [x, y, r] of st) {
+    const R = r / ER_K, cx = x / ER_K, cy = y / ER_K;
+    for (let j = Math.max(0, Math.floor(cy - R)); j <= Math.min(H - 1, Math.ceil(cy + R)); j++) for (let i = Math.max(0, Math.floor(cx - R)); i <= Math.min(W - 1, Math.ceil(cx + R)); i++) if ((i + .5 - cx) ** 2 + (j + .5 - cy) ** 2 <= R * R) m[j * W + i] = 1;
+  }
+  ER.key = key; ER.mask = { m, W, H }; return ER.mask;
+}
+function eraseFilter(items) {
+  if (!ER.strokes.length) return items;
+  const { m, W, H } = eraseMask();
+  return items.filter(it => { const i = Math.floor(it[0] / ER_K), j = Math.floor(it[1] / ER_K); return i < 0 || j < 0 || i >= W || j >= H || !m[j * W + i]; });
+}
+function eraseUI() {
+  $('#er-tool').setAttribute('aria-pressed', ER.on); frame.classList.toggle('erasing', ER.on);
+  $('#er-undo').disabled = $('#er-clear').disabled = !ER.strokes.length; $('#er-size').value = S.eraseR;
+}
+const eraseAdd = (x, y) => {
+  const st = ER.cur, last = st[st.length - 1];
+  if (last) { const d = Math.hypot(x - last[0], y - last[1]), n = Math.floor(d / (S.eraseR * .4)); for (let q = 1; q <= n; q++) st.push([last[0] + (x - last[0]) * q / (n + 1), last[1] + (y - last[1]) * q / (n + 1), S.eraseR]); }
+  st.push([x, y, S.eraseR]); ER.key = '';
+};
+frame.addEventListener('pointerdown', e => {
+  if (!ER.on) return;
+  e.stopImmediatePropagation(); frame.setPointerCapture(e.pointerId);
+  ER.cur = []; ER.strokes.push(ER.cur); eraseAdd(...toBoard(e)); eraseUI(); schedule();
+}, true);
+frame.addEventListener('pointermove', e => {
+  if (!ER.on) return;
+  e.stopImmediatePropagation(); ER.ptr = toBoard(e);
+  if (ER.cur) eraseAdd(...ER.ptr);
+  schedule();
+}, true);
+const eraseEnd = e => { if (!ER.on) return; e.stopImmediatePropagation(); ER.cur = null; eraseUI(); schedule(); };
+frame.addEventListener('pointerup', eraseEnd, true); frame.addEventListener('pointercancel', eraseEnd, true);
+frame.addEventListener('pointerleave', () => { if (ER.on) { ER.ptr = null; schedule(); } });
+frame.addEventListener('wheel', e => { if (!ER.on) return; e.preventDefault(); e.stopImmediatePropagation(); S.eraseR = clamp(Math.round(S.eraseR * Math.exp(-e.deltaY * .002)), 4, 120); eraseUI(); schedule(); }, { capture: true, passive: false });
+$('#er-tool').addEventListener('click', () => { ER.on = !ER.on; if (!ER.on) ER.ptr = null; eraseUI(); schedule(); });
+$('#er-size').addEventListener('input', e => { S.eraseR = +e.target.value; schedule(); });
+$('#er-undo').addEventListener('click', () => { ER.strokes.pop(); ER.key = ''; eraseUI(); schedule(); });
+$('#er-clear').addEventListener('click', () => { ER.strokes = []; ER.key = ''; eraseUI(); schedule(); toast('Goma: trazos borrados'); });
+addEventListener('keydown', e => {
+  if (e.target.closest?.('input:not([type=range]), textarea, select')) return;
+  if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'e') { ER.on = !ER.on; if (!ER.on) ER.ptr = null; eraseUI(); schedule(); }
+  else if (ER.on && e.key === 'Escape') { ER.on = false; ER.ptr = null; eraseUI(); schedule(); }
+  else if (ER.on && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && ER.strokes.length) { e.preventDefault(); ER.strokes.pop(); ER.key = ''; eraseUI(); schedule(); }
+});
+eraseUI();
 $('#blend-swap').addEventListener('click', () => { [S.blendA, S.blendB] = [S.blendB, S.blendA]; sync(); });
 $('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.slice(); S.blendB = DEFAULTS.blendB.slice(); sync(); });
 
@@ -1052,10 +1140,11 @@ PerceptaDirection({
 // Copiar / Pegar parámetros: the state and the models on the plane (uploaded ones can't travel).
 PerceptaParams({
   tool: 'pixel-depth',
-  get: () => ({ S, objs: objs.filter(o => !o.kind.startsWith('up')) }),
+  get: () => ({ S, objs: objs.filter(o => !o.kind.startsWith('up')), erase: ER.strokes }),
   set: d => {
     PerceptaParams.assign(S, DEFAULTS, d.S);
     if (Array.isArray(d.objs)) { objs = d.objs.filter(o => o && KINDS[o.kind]).map(o => ({ ...o })); sel = -1; }
+    if (Array.isArray(d.erase)) { ER.strokes = structuredClone(d.erase); ER.key = ''; eraseUI(); }
     sync();
   },
 });
