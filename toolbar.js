@@ -502,28 +502,33 @@
       quiet = true;
       if (!kit) {
         kit = window.PerceptaDial = DK.createDialKit(document.title || 'Percepta', config, { onAction: path => { const l = links.find(x => x.action && (x.g + '.' + x.k === path || path.endsWith('.' + x.k))); l?.set(); } });
+        // only the dial that was moved reaches the tool: each dial against its own previous value (a dial that still
+        // shows an old value, the tool having moved meanwhile, e.g. Escala after zooming with the wheel, never pushes it)
         kit.subscribe(values => {
-          if (quiet) return;
-          for (const l of links) { if (l.action) continue; const v = values[l.g]?.[l.k]; if (v === undefined || v === l.last) continue; l.last = v; if (v !== l.get()) l.set(v); }
+          const moved = [];
+          for (const l of links) { if (l.action) continue; const id = l.g + '.' + l.k, v = values[l.g]?.[l.k], p = dialPrev[id]; dialPrev[id] = v; if (!quiet && v !== undefined && v !== p) moved.push([l, v]); }
+          for (const [l, v] of moved) { l.last = v; if (v !== l.get()) l.set(v); }
         });
       } else kit.updateConfig(config);
       quiet = false;
       // and show it: every dial set to its control
       const all = {}; for (const l of links) if (!l.action) (all[l.g] = all[l.g] || {})[l.k] = l.last;
       quiet = true; try { kit.setValues(all); } finally { quiet = false; }
+      for (const g in all) for (const k in all[g]) dialPrev[g + '.' + k] = all[g][k];
     }
-    let quiet = false, pending = 0;
+    let quiet = false, pending = 0; const dialPrev = {};
     function pull() {
       pending = 0; const upd = {};
       for (const l of links) { if (l.action) continue; const v = l.get(); if (v !== l.last) { l.last = v; (upd[l.g] = upd[l.g] || {})[l.k] = v; } }
-      if (Object.keys(upd).length && kit) { quiet = true; try { kit.setValues(upd); } finally { quiet = false; } }
+      if (Object.keys(upd).length && kit) { quiet = true; try { kit.setValues(upd); } finally { quiet = false; } for (const g in upd) for (const k in upd[g]) dialPrev[g + '.' + k] = upd[g][k]; }
     }
     build();
     // the tool showed or hid something, or redrew a list: rebuild; a control moved: the dial follows
     let again = 0;
     new MutationObserver(() => { if (!again) again = requestAnimationFrame(() => { again = 0; build(); }); }).observe(host, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden'] });
     const soon = e => { if (e.target.closest?.('.pdk')) return; if (!pending) pending = requestAnimationFrame(pull); };
-    for (const t of ['input', 'change', 'click', 'keyup', 'pointerup']) addEventListener(t, soon, true);
+    for (const t of ['input', 'change', 'click', 'keyup', 'pointerup', 'wheel']) addEventListener(t, soon, true);
+    window.PerceptaDialPull = () => { if (!pending) pending = requestAnimationFrame(pull); }; // the tool changed itself (a keyframe, a drag): the dials follow
   }
   addEventListener('load', dialkit);
 
