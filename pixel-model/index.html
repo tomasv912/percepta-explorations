@@ -717,6 +717,8 @@ function loadRelief() {
     reliefLoading = null; if (preset !== 'relief') return;
     reliefSrc = R; const m = reliefMesh(R);
     if (!m.I.length) return toast('La imagen no tiene nada para levantar.');
+    // a picture given (or Imagen chosen) is shown straight on: no turn, no tilt
+    S.yaw = 0; S.pitch = 0;
     setModelTris(indexedTris(m.P, m.I), 'Imagen', m.col, m.alb); presetSeed = presetSig(); key = ''; sync();
   }, e => { clearTimeout(slow); reliefStatus(''); reliefLoading = null; console.error(e); toast('No se pudo hacer el modelo de la imagen.'); });
 }
