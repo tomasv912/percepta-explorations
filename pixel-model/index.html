@@ -196,6 +196,11 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 .kf-menu button kbd { margin-left: auto; font: 11px var(--mono); color: var(--text-3); }
 .kf-menu button[aria-checked="true"] { background: #E4DEFC; color: #111111; }
 .kf-menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 4px; }
+.ptools { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); z-index: 5; display: flex; flex-direction: column; gap: 2px; padding: 4px; border-radius: 11px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 4px 14px rgb(0 0 0 / .06); }
+.ptools button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 8px; background: none; color: var(--text-2); cursor: pointer; padding: 0; }
+.ptools button:hover { background: var(--fill); color: var(--text); }
+.ptools button[aria-pressed="true"] { background: var(--text); color: var(--surface); }
+.dof-h .a, .dof-h .m { border-color: #7B52D4 !important; } .dof-h .b, .dof-h .lab { background: #7B52D4 !important; } .dof-h line { stroke: #7B52D4; }
 .gone, .hud { display: none !important; } /* .hud: the pixel count over the picture, not shown */ /* taken out of the tool (still read by the code, at its fixed value) */
 </style>
 </head>
@@ -238,7 +243,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
     </div>
     <div class="tt" role="toolbar" aria-label="Animación">
       <div class="seg" data-key="anim" aria-label="Animación">
-        <button data-v="none">Quieta</button><button data-v="stable" title="Estable: las partículas quedan pegadas al modelo y siguen su forma al girar, sin saltos ni recálculo (con Turntable, keyframes o arrastrando)">Estable</button><button data-v="hover">Hover</button><button data-v="reveal">Reveal</button><button data-v="paint" title="Mantené apretado sobre el lienzo: los píxeles salen del cursor y van a su lugar">Interactivo</button>
+        <button data-v="none" hidden>Quieta</button><button data-v="stable" title="Estable: las partículas quedan pegadas al modelo y siguen su forma al girar, sin saltos ni recálculo (con Turntable, keyframes o arrastrando)">Estable</button><button data-v="hover">Hover</button><button data-v="reveal">Reveal</button><button data-v="paint" title="Mantené apretado sobre el lienzo: los píxeles salen del cursor y van a su lugar">Interactivo</button>
       </div>
       <button class="tt-play" id="turn" aria-pressed="false" title="Turntable: una vuelta entera, sola o junto a la animación elegida">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg>
@@ -431,7 +436,7 @@ const DEFAULTS = {
   count: 40000, size: 3, sizeMin: .6, sizeMax: 3, contrast: 1, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
-  colorMode: 'random', colorSrc: 'pal', colorHow: 'random', bloom: 0, bloomSel: false, ink: '#111111', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
+  colorMode: 'random', colorSrc: 'pal', colorHow: 'random', bloom: 0, bloomSel: false, dof: false, dofA: [.3, .25], dofB: [.7, .8], ink: '#111111', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
   rlDepth: .8, rlCut: .75, mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
@@ -1022,7 +1027,16 @@ function snapList(list) {
   }
   return out;
 }
-const sizeOf = p => S.size * lens();
+// Profundidad (the tool on the left): two points on the picture, Lejos and Cerca; along the line between them the
+// pixels grow from small (Lejos: a quarter of their size) to their whole size (Cerca), and keep so beyond each end.
+const DOF_FAR = .25;
+function dofK(p) {
+  if (!S.dof) return 1;
+  const ax = S.dofA[0] * AW, ay = S.dofA[1] * AH, dx = S.dofB[0] * AW - ax, dy = S.dofB[1] * AH - ay, L2 = dx * dx + dy * dy || 1;
+  const t = Math.min(1, Math.max(0, ((p.x + (p.dx || 0) - ax) * dx + (p.y + (p.dy || 0) - ay) * dy) / L2));
+  return DOF_FAR + (1 - DOF_FAR) * t;
+}
+const sizeOf = p => S.size * lens() * dofK(p);
 function draw(ctx, list, ox = 0, oy = 0, q = RES) {
   if (gridded()) list = snapList(list);
   const groups = new Map();
@@ -1153,7 +1167,8 @@ $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-in
 $('#colorHow').addEventListener('change', e => { S.colorHow = e.target.value; sync(); });
 const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => S.palette, () => S.bg, v => { S.bg = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
 const syncTheme = PerceptaTheme(stage, () => S.bg.toLowerCase() === '#111111', d => { S.bg = d ? '#111111' : '#FAFAFA'; S.bgFlip = false; sync(); });
-document.querySelectorAll('.seg[data-key]').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = b.dataset.v; sync(); } }));
+// (Animación: still unless one is chosen; the chosen one clicked again goes back to still)
+document.querySelectorAll('.seg[data-key]').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = seg.dataset.key === 'anim' && S.anim === b.dataset.v ? 'none' : b.dataset.v; sync(); } }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; if (inp.dataset.check === 'onlyPal') renderInks(); sync(); }));
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
@@ -1198,7 +1213,7 @@ function sync(fast) {
   $('#relief-controls').hidden = preset !== 'relief' || modelName.includes('.');
   if (preset && !modelName.includes('.') && presetSeed !== presetSig()) loadPreset();
   if (!model) { $('#stats').textContent = 'Cargando el modelo…'; return; }
-  updateBg(S.bgFlip); syncTheme();
+  updateBg(S.bgFlip); syncTheme(); window.syncTools?.();
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   if (S.aspect + S.orient !== artKey) { artKey = S.aspect + S.orient; setArtboard(); S.panX = S.panY = 0; if (typeof crop !== 'undefined') { crop = null; cropStack = []; cropUI(); } }
   const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, zS(), S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.sizeMin, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow, S.lineAM, S.lineDot, S.chaos, S.square, S.anim === 'stable', S.lines && S.blend && [S.blendA, S.blendB]]);
@@ -1883,6 +1898,16 @@ $('#video').addEventListener('click', async () => {
 });
 
 // Pasaje's handles (toolbar.js) over the picture, and its two buttons.
+// The tools on the left (as in a drawing program): Profundidad, on or off; on, its two points over the picture.
+{
+  const bar = document.createElement('div'); bar.className = 'ptools'; bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', 'Herramientas');
+  bar.innerHTML = '<button id="tool-dof" aria-pressed="false" title="Profundidad: dos puntos sobre la imagen, Lejos (píxeles chicos) y Cerca (píxeles grandes); arrastralos para acomodarlos"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="4" cy="13" r="1.6"/><circle cx="12.5" cy="6.5" r="3.8"/><path d="M5.4 11.6 9.6 7.6" stroke-dasharray="1.6 1.6"/></svg></button>';
+  stage.appendChild(bar);
+  for (const t of ['pointerdown', 'pointerup', 'click', 'dblclick', 'wheel']) bar.addEventListener(t, e => e.stopPropagation());
+  bar.querySelector('#tool-dof').addEventListener('click', () => { S.dof = !S.dof; sync(); toast(S.dof ? 'Profundidad: arrastrá Lejos y Cerca sobre la imagen' : 'Profundidad apagada'); });
+  window.syncTools = () => bar.querySelector('#tool-dof').setAttribute('aria-pressed', S.dof);
+}
+PerceptaBlendHandles({ frame, cls: 'dof-h', labels: ['Lejos', 'Cerca'], titles: ['Lejos: acá los píxeles son más chicos. Shift: ángulos de 15°', 'Cerca: acá los píxeles tienen su tamaño entero. Shift: ángulos de 15°', 'Mover los dos (Shift: en un eje)'], visible: () => S.dof, get: () => [S.dofA, S.dofB], set: (A, B) => { S.dofA = A; S.dofB = B; schedule(); }, view: () => { const v = viewBox(); return { x: v.x / AW, y: v.y / AH, w: v.w / AW, h: v.h / AH }; } });
 PerceptaBlendHandles({ frame, visible: () => S.blend, get: () => [S.blendA, S.blendB], set: (A, B) => { S.blendA = A; S.blendB = B; sync(); }, view: () => { const v = viewBox(); return { x: v.x / AW, y: v.y / AH, w: v.w / AW, h: v.h / AH }; } });
 $('#blend-swap').addEventListener('click', () => { [S.blendA, S.blendB] = [S.blendB, S.blendA]; sync(); });
 $('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.slice(); S.blendB = DEFAULTS.blendB.slice(); sync(); });

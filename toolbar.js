@@ -262,6 +262,10 @@
     }
     const el = document.createElement('div'); el.className = 'pbh';
     el.innerHTML = '<svg aria-hidden="true"><line stroke="#3d7bff" stroke-width="1.5" stroke-dasharray="5 4"/></svg><div class="h a" title="Desde acá empieza el orden (antes, todo caos). Shift: ángulos de 15°"></div><div class="h m" title="Mover el pasaje (Shift: en un eje)"></div><div class="h b" title="Desde acá todo ordenado. Shift: ángulos de 15°"></div><span class="lab la">Caos</span><span class="lab lb">Orden</span>';
+    // other uses name their ends (and say what they do)
+    if (o.labels) { el.querySelector('.la').textContent = o.labels[0]; el.querySelector('.lb').textContent = o.labels[1]; }
+    if (o.titles) { const hs = el.querySelectorAll('.h'); hs[0].title = o.titles[0]; hs[1].title = o.titles[1]; hs[2].title = o.titles[2]; }
+    if (o.cls) el.classList.add(o.cls);
     o.frame.appendChild(el);
     const [ha, hm, hb] = el.querySelectorAll('.h'), line = el.querySelector('line'), la = el.querySelector('.la'), lb = el.querySelector('.lb');
     const view = () => o.view ? o.view() : { x: 0, y: 0, w: 1, h: 1 };
