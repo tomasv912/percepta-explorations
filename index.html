@@ -56,7 +56,7 @@ window.PixelShell = (() => {
     try { f.contentWindow.focus(); f.contentWindow.dispatchEvent(new Event('resize')); } catch {}
   };
   return {
-    attach(model, image) { frames.model = model; frames.image = image; show(model); },
+    attach(model, image) { frames.model = model; frames.image = image; show(image); }, // it opens on the image (a default one, until another is given)
     // the other half takes the shared settings and the query (its preset), redraws, and shows
     go(o, path, q) { const f = half(path); f.contentWindow.PerceptaShared?.receive(o, q); show(f); },
     // a file or a render handed over: the half it is for takes it and shows

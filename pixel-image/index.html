@@ -237,15 +237,17 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       </section>
 
       <section>
-        <h2>Cubos</h2>
-        <div class="seg" data-key="style" aria-label="Estilo">
+        <h2>Píxeles</h2>
+        <div id="sl-sizeMin"></div>
+        <div id="sl-sizeMax"></div>
+        <div class="seg gone" data-key="style" aria-label="Estilo">
           <button data-v="mono">Mono</button><button data-v="variation">Variación</button>
         </div>
-        <div id="sl-count"></div>
-        <div id="sl-size"></div>
-        <div id="sl-mod"></div>
-        <div id="sl-variation"></div>
-        <div id="sl-grain"></div>
+        <div class="gone"><div id="sl-count"></div></div>
+        <div class="gone"><div id="sl-size"></div></div>
+        <div class="gone"><div id="sl-mod"></div></div>
+        <div class="gone"><div id="sl-variation"></div></div>
+        <div class="gone"><div id="sl-grain"></div></div>
         <div id="sl-dPx"></div>
         <div id="blend-controls">
 <p class="hint">Arrastrá los manejadores sobre el lienzo: <b>Caos</b> marca dónde empieza el orden y <b>Orden</b> dónde se completa; el punto del medio mueve los dos. Con Shift, la línea va en ángulos de 15°.</p>
@@ -286,7 +288,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div class="gone"><label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label></div>
       </section>
 
-      <section>
+      <section class="gone">
         <h2>Profundidad</h2>
         <p class="hint">Desenfoca lo que queda lejos del foco. Con la herramienta Foco (F) hacé clic sobre un cubo para enfocar a su distancia.</p>
         <div id="sl-dof"></div>
@@ -338,7 +340,7 @@ const DEFAULTS = {
   rfChannels: 3, rfFocus: .42, rfChaos: .7, rfSpread: .6, rfAmp: .5, rfFreq: 1, rfOrder: .7, rfWaist: 0,
   blModel: 'hortensia', blYaw: 0, blPitch: 0, blTravel: .5, blStem: .3, blLength: 1, blChannel: .45, blFlowers: 1, blSize: .5, blFlorets: 32, blShare: .5, orient: 'h',
   contrast: 1.2, threshold: .1, invert: false, grid: false, gridCols: 140, rotX: 0, rotY: 0, rotZ: 0,
-  style: 'mono', count: 45000, size: 3.5, mod: .6, variation: .35, grain: .12,
+  style: 'mono', count: 45000, size: 3.5, sizeMin: .8, sizeMax: 3.5, mod: .6, variation: .35, grain: .12,
   colorMode: 'single', colorSrc: 'single', colorHow: 'tone', pastel: true, ink: '#272727', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF'],
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
@@ -564,12 +566,12 @@ function generate(st) {
         if (tn <= 0) continue;
         if (!st.dAM && r() > Math.min(1, Math.pow(tn, 1.2) * dens * 1.5)) continue;
         const sc = scOf(tn); if (sc < .08) continue;
-        const half = sc * sz / 2, cx = Math.floor(x / cellS), cy = Math.floor(y / cellS);
+        const px = st.sizeMin + (st.sizeMax - st.sizeMin) * sc, half = px / kImg / 2, cx = Math.floor(x / cellS), cy = Math.floor(y / cellS);
         let ok = true;
         for (let a = -1; a <= 1 && ok; a++) for (let b = -1; b <= 1 && ok; b++) { const l = taken.get(keyOf(cx + a, cy + b)); if (l) for (const [ox, oy, oh] of l) if (apartD(ox - x, oy - y) < half + oh + sep - 1e-7) { ok = false; break; } } // circles: apart by their radii and the space
         if (!ok) continue;
         const kk = keyOf(cx, cy); (taken.get(kk) || taken.set(kk, []).get(kk)).push([x, y, half]);
-        add(x, y, 1, col[k]); size[got - 1] = st.size * sc; shade[got - 1] = 0; lid[got - 1] = L; // its line (for Desplazamiento Suave)
+        add(x, y, 1, col[k]); size[got - 1] = px; shade[got - 1] = 0; lid[got - 1] = L; // its line (for Desplazamiento Suave)
       }
     }
     // Cuadrícula: one cube per node wherever the image is dark enough, sized by its tone.
@@ -1124,6 +1126,8 @@ const SLIDERS = {
   threshold: { label: 'Umbral', min: 0, max: .99, step: .01, fmt: pct, emph: true },
   count: { label: 'Cubos', values: steps(10, [10, 100], [100, 200], [200, 2000], [1000, 150000]), fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño', values: steps(1, [.5, 50], [10, 200]), fmt: v => v + ' px' },
+  sizeMin: { label: 'Tamaño mínimo', values: steps(.2, [.1, 4], [.5, 40]), fmt: v => v.toLocaleString('es') + ' px' },
+  sizeMax: { label: 'Tamaño máximo', values: steps(.5, [.5, 50], [10, 200]), fmt: v => v.toLocaleString('es') + ' px' },
   mod: { label: 'Tamaño según profundidad o tono', min: 0, max: 1, step: .01, fmt: pct },
   variation: { label: 'Variación', min: 0, max: 1, step: .01, fmt: pct },
   grain: { label: 'Variación de tono', min: 0, max: .4, step: .01, fmt: pct },
@@ -1190,6 +1194,8 @@ function paintSwatch(el, hex) {
   const inp = el.querySelector('input'); if (inp.value !== hex) inp.value = hex;
 }
 function sync() {
+  // the largest is the size everything else spaces by; the smallest never above it
+  S.size = S.sizeMax; if (S.sizeMin > S.sizeMax) S.sizeMin = S.sizeMax;
   if (S.source === 'image' && !img) S.source = 'waves';
   if (S.colorSrc === 'image' && S.source !== 'image') S.colorSrc = 'single';
   S.colorMode = S.colorSrc === 'pal' ? S.colorHow : S.colorSrc; // Color: its source, and for the palette its behaviour
@@ -1232,7 +1238,7 @@ function sync() {
   markPalette();
   document.querySelectorAll('[data-pal]').forEach(inp => { const hex = S.palette[+inp.dataset.pal]; if (inp.value !== hex) inp.value = hex; inp.parentElement.style.background = hex; });
   const key = JSON.stringify([S.seed, S.aspect, S.source, imgId, S.rfChannels, S.rfFocus, S.rfChaos, S.rfSpread, S.rfAmp, S.rfFreq, S.rfOrder, S.rfWaist, S.motion === 'horiz' && S.flowDir === 'r' && S.source === 'refract', S.blModel, S.blYaw, S.blPitch, S.blTravel, S.blStem, S.blLength, S.blChannel, S.blFlowers, S.blSize, S.blFlorets, S.blShare, S.orient, S.layers, S.amp, S.freq, S.complexity, S.persp, S.thickness, S.fade, S.waveCenter, S.motion === 'horiz' && S.flowDir === 'r', S.wThresh, S.contrast, S.threshold, S.invert, S.dir, S.imgLines && depthId, S.dGap, S.dPx, S.dRelief, S.dAM,
-    S.style, S.count, S.size, S.snap && !S.blend && (S.size + S.cellGap), S.chaos, S.dir === '1b' && S.blend, S.square, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
+    S.style, S.count, S.size, S.sizeMin, S.snap && !S.blend && (S.size + S.cellGap), S.chaos, S.dir === '1b' && S.blend, S.square, S.mod, S.variation, S.palette.length, S.trail, S.trailAngle, S.trailJitter, S.grid, S.gridCols]);
   const pkey = [S.rotX, S.rotY, S.rotZ].join();
   if (key !== genKey) {
     gen0 = generate(S); genKey = key; placeKey = pkey; rebuild(true);
@@ -1294,7 +1300,7 @@ function derive() {
   for (const k of ['size', 'shade', 'pal', 'rgb', 'tlen', 'dp', 'dep', 'lid']) if (gen0[k]) { const a = new gen0[k].constructor(m); for (let i = 0; i < m; i++) a[i] = gen0[k][src[i]]; g[k] = a; }
   g.hx = new Float32Array(m); g.hy = new Float32Array(m);
   for (let i = 0; i < m; i++) { const x = v[i * 2]; if (x !== x) { g.del[i] = 1; g.hx[i] = gen0.hx[src[i]]; g.hy[i] = gen0.hy[src[i]]; } else { g.hx[i] = x; g.hy[i] = v[i * 2 + 1]; } }
-  if (S.dir === '1b' && S.blend) pasaje1b(g);
+  if (S.dir === '1b' && (S.blend || S.chaos > 0)) pasaje1b(g); // Caos (all over) or Pasaje (from Caos to order)
   return g;
 }
 // Pasaje in 1B: each circle keeps its place on its line (following the photo's depth) on the Orden side and comes off
@@ -1306,7 +1312,7 @@ function pasaje1b(g) {
   const m = g.n, J = S.chaos * (linesOn(S) ? S.dGap * 1.6 : S.size * 10), r = rng(S.seed * 31 + 5), ord = new Float32Array(m);
   for (let i = 0; i < m; i++) {
     const gx = gauss(r), gy = gauss(r); if (g.del[i]) continue;
-    const o = PerceptaOrder((g.hx[i] + panX) / g.W, (g.hy[i] + panY) / g.H, S.blendA, S.blendB), f = 1 - o; ord[i] = o;
+    const o = S.blend ? PerceptaOrder((g.hx[i] + panX) / g.W, (g.hy[i] + panY) / g.H, S.blendA, S.blendB) : 0, f = 1 - o; ord[i] = o;
     g.hx[i] += gx * J * .5 * f; g.hy[i] += gy * J * .5 * f;
   }
   const idx = []; for (let i = 0; i < m; i++) if (!g.del[i]) idx.push(i);
@@ -1844,6 +1850,9 @@ PerceptaHandoff.on('model-image', h => {
 PerceptaShared.init({ S, names: { one: 'single', pal: 'pal', orig: 'image' }, after: () => sync() });
 PerceptaHandoff.on('image-file', f => openFile(f));
 window.PixelImage = { hasImage: () => !!img }; // for the page holding both halves
+// The picture Pixel opens with (a building, from below), until another is given.
+{ const el = new Image(); el.onload = () => { if (img) return; loadImage(el); S.source = 'image'; sync(); }; el.src = 'default.jpg'; }
+window.PERCEPTA_SLIDERS = SLIDERS; // for the panel (DialKit): the sliders with uneven stops
 sync();
 </script>
 </body>

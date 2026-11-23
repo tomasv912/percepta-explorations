@@ -414,8 +414,16 @@
         for (const el of sc.querySelectorAll('input[type=range], input[type=checkbox], input[type=color], input.text, select, .seg, .presets, .inks, .levels, button')) {
           if (el.closest('.pdk')) continue;
           if (el.matches('input[type=range]')) {
+            // a slider over uneven stops (the page's SLIDERS[key].values) moves an index: its dial shows the value itself
+            const def = (window.PERCEPTA_SLIDERS || {})[el.id.replace(/^in-/, '')], vals = def && def.values;
+            const fire = () => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
+            if (vals) {
+              const near = v => vals.reduce((b, x, i) => Math.abs(x - v) < Math.abs(vals[b] - v) ? i : b, 0), small = vals.slice(1).reduce((m, x, i) => Math.min(m, x - vals[i]), Infinity);
+              add(el, el.closest('.slider') || el, labelOf(el), [vals[+el.value], vals[0], vals[vals.length - 1], small], { get: () => vals[+el.value], set: v => { el.value = near(v); fire(); } });
+              continue;
+            }
             const min = +el.min || 0, max = el.max === '' ? 100 : +el.max, step = el.step === 'any' || !el.step ? (max - min) / 100 : +el.step;
-            add(el, el.closest('.slider') || el, labelOf(el), [+el.value, min, max, step], { get: () => +el.value, set: v => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); } });
+            add(el, el.closest('.slider') || el, labelOf(el), [+el.value, min, max, step], { get: () => +el.value, set: v => { el.value = v; fire(); } });
           } else if (el.matches('input[type=checkbox]')) {
             add(el, el.closest('label') || el, clean(el.closest('label')?.textContent || el.getAttribute('aria-label')), el.checked, { get: () => el.checked, set: v => { el.checked = v; el.dispatchEvent(new Event('change', { bubbles: true })); } });
           } else if (el.matches('input[type=color]')) {
