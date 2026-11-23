@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pixel Model</title>
+<title>Model</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
 :root {
@@ -134,7 +134,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 #building-controls .seg { flex-wrap: wrap; }
 #building-controls .seg button, #shape-controls .seg button { flex: 1 0 30%; }
 #shape-controls .seg { flex-wrap: wrap; }
-#bonsai-controls { display: flex; flex-direction: column; gap: 10px; }
 #block-controls { display: flex; flex-direction: column; gap: 10px; }
 .crop-hud { position: absolute; bottom: 72px; left: 14px; flex-direction: column; align-items: stretch; display: flex; gap: 4px; align-items: center; white-space: nowrap; z-index: 4; padding: 4px; border-radius: 10px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); font-size: 12px; color: var(--text-2); }
 .crop-hud b { color: var(--text); font-weight: 500; margin: 4px 6px; }
@@ -154,7 +153,6 @@ main.kf-open .send { bottom: calc(14px + var(--kfh)); }
 main.kf-open .kf-tab { display: none; }
 main.kf-open { padding-bottom: calc(120px + var(--kfh)); }
 main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
-body.kf-open .dialkit-panel[data-position="bottom-left"] { bottom: calc(16px + 168px); }
 .kf-head select#kf-fmt { width: 112px; }
 .kf-head select#kf-res { width: 92px; }
 .kf-head { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px; border-bottom: 1px solid var(--line); flex: none; }
@@ -206,7 +204,7 @@ body.kf-open .dialkit-panel[data-position="bottom-left"] { bottom: calc(16px + 1
     <div class="drop" id="drop" hidden>Soltá el modelo (.obj, .fbx, .glb, .gltf)</div>
     <div class="hud" id="stats">—</div>
     <div class="crop-hud" id="crop-hud"><button id="crop-tool" aria-pressed="false" title="Recortar (C): arrastrá un recuadro sobre el modelo, o clic para acercar ×2. Las flechas lo desplazan">Recortar</button><b id="crop-label" hidden>Recorte</b><button id="crop-back" hidden title="Vuelve al recorte anterior">Vista anterior</button><button id="crop-clear" hidden title="Muestra el cuadro entero">Quitar recorte</button></div>
-    <div class="send" role="group" aria-label="Enviar a otra tool"><button class="btn primary" id="to-waves" title="Renderiza la vista actual (luz, sombras y profundidad) y la abre en Pixel Waves como imagen">Enviar a Pixel Waves</button><button class="btn primary" id="to-depth" title="Lleva el modelo tal cual está a Pixel Depth, sobre su plano">Enviar a Pixel Depth</button></div>
+    <div class="send" role="group" aria-label="Enviar a otra tool"><button class="btn primary" id="to-waves" title="Renderiza la vista actual (luz, sombras y profundidad) y la abre en Imagen">Enviar a Imagen</button></div>
     <button class="kf-tab" id="kf-tab" title="Línea de tiempo con keyframes de rotación, posición y zoom (I inserta un keyframe)"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 7h12" stroke="currentColor" stroke-width="1.2"/><rect x="3.2" y="4.7" width="4.6" height="4.6" transform="rotate(45 5.5 7)" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/></svg>Timeline <b id="kf-count" hidden></b></button>
     <div class="kf" id="kf" hidden role="region" aria-label="Línea de tiempo de keyframes">
       <div class="kf-head">
@@ -291,10 +289,6 @@ body.kf-open .dialkit-panel[data-position="bottom-left"] { bottom: calc(16px + 1
       <section>
         <h2>Modelo</h2>
         <div class="presets" id="presets" aria-label="Modelos"></div>
-        <div id="bonsai-controls">
-          <div id="sl-bzFlowers"></div>
-          <p class="hint" id="bonsai-hint">Cada semilla (R) arma otro bonsái. Sus colores (tronco, hojas y flores) se ven con Color → Original.</p>
-        </div>
         <div id="block-controls">
           <div class="seg" data-key="mzCount" aria-label="Cantidad de manzanas"><button data-v="1">1</button><button data-v="2">2</button><button data-v="4">4</button><button data-v="6">6</button><button data-v="8">8</button></div>
           <div id="sl-mzHeight"></div>
@@ -336,9 +330,9 @@ body.kf-open .dialkit-panel[data-position="bottom-left"] { bottom: calc(16px + 1
 
       <section>
         <h2>Píxeles</h2>
-        <div class="row ord-row" style="grid-template-columns:56px 1fr" title="Como en la barra de arriba y en Pixel Waves: Caótico (sueltos, se superponen), Engrillado (uno por celda) o Pasaje (de desorden a orden, con manejadores sobre el lienzo). Son de la dirección 1A.">
+        <div class="row ord-row" style="grid-template-columns:56px 1fr" title="Caótico: los círculos con su Caos. Pasaje: de Caos a líneas limpias a lo largo del lienzo, con manejadores">
           <span>Orden</span>
-          <div class="seg" id="ord-seg" aria-label="Orden de los píxeles"><button data-ord="chaos">Caótico</button><button data-ord="grid">Engrillado</button><button data-ord="blend">Pasaje</button></div>
+          <div class="seg" id="ord-seg" aria-label="Orden de los píxeles"><button data-ord="chaos">Caótico</button><button data-ord="blend">Pasaje</button></div>
         </div>
         <div id="blend-controls">
 <p class="hint">Arrastrá los manejadores sobre el lienzo: <b>Caos</b> marca dónde empieza el orden y <b>Orden</b> dónde se completa; el punto del medio mueve los dos. Con Shift, la línea va en ángulos de 15°.</p>
@@ -348,16 +342,10 @@ body.kf-open .dialkit-panel[data-position="bottom-left"] { bottom: calc(16px + 1
         <div id="sl-size"></div>
         <div id="sl-contrast"></div>
         <div id="sl-threshold"></div>
-        <div id="sl-edge"></div>
-        <div id="sl-jitter"></div>
-        <label class="check" id="lines-row" title="En vez de salpicados, los píxeles corren en líneas horizontales que siguen la forma del modelo: más juntos donde es oscuro (frecuencia modulada)"><input type="checkbox" data-check="lines"> Líneas horizontales (frecuencia modulada)</label>
         <div id="sl-lineGap"></div>
         <div id="sl-lineDot"></div>
         <div id="sl-lineFollow"></div>
         <label class="check" id="lineAM-row" title="Los píxeles quedan parejos sobre la línea y se achican con la luz hasta desaparecer"><input type="checkbox" data-check="lineAM"> Modular el tamaño con la luz</label>
-        <label class="check" id="snap-row" title="Los píxeles se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
-        <div id="sl-cell"></div>
-        <div id="sl-cellGap"></div>
         <div class="row">
           <span>Semilla</span>
           <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
@@ -437,14 +425,11 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', colorSrc: 'ink', colorHow: 'tone', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
-  mzCount: '1', mzHeight: 1.5, bzFlowers: .5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
+  mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
-// 1B spacing: circles keep apart by their distance; squares (Cuadrados) by the larger of their two offsets, so
-// their corners can't touch either.
-// Round pixels: 1B's circles (unless Cuadrados), or 1A with Círculos.
-const roundNow = () => S.dir === '1b' ? S.lines && !S.snap && !S.square : !!S.round1a;
+const roundNow = () => true; // the pixel is always round
 const apartD = (dx, dy) => S.square ? Math.max(Math.abs(dx), Math.abs(dy)) : Math.hypot(dx, dy);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
 const mix = (a, b, t) => a + (b - a) * t;
@@ -454,11 +439,11 @@ function rng(seed) {
 }
 
 // ---------- Model ----------
-// Built-in models, each with variations from the seed (R): a bonsai and a skyscraper (scans, simplified, in models/),
-// and Building, generated here and shaped by its own settings; or an uploaded file. Positions are centred and scaled
+// Built-in models, each with variations from the seed (R): a skyscraper (a scan, simplified, in models/), and
+// Building, Manzanas and Formas, generated here and shaped by its own settings; or an uploaded file. Positions are centred and scaled
 // to fit a unit sphere.
-const PRESETS = [['bonsai', 'Bonsai'], ['pbonsai', 'Bonsai procedural'], ['rascacielos', 'Rascacielos'], ['building', 'Building'], ['blocks', 'Manzanas'], ['shapes', 'Formas']];
-let model = null, modelName = '', preset = 'bonsai', presetSeed = -1, loadingPreset = null;
+const PRESETS = [['rascacielos', 'Rascacielos'], ['building', 'Building'], ['blocks', 'Manzanas'], ['shapes', 'Formas']];
+let model = null, modelName = '', preset = 'rascacielos', presetSeed = -1, loadingPreset = null;
 // An indexed mesh into 18-float triangles, with smooth normals (each vertex the area-weighted sum of its faces).
 function indexedTris(P, I) {
   const N = new Float32Array(P.length), out = new Float32Array(I.length / 3 * 18);
@@ -474,19 +459,6 @@ function indexedTris(P, I) {
   }
   return out;
 }
-// The bonsai, read once: 'PXM1', vertex and triangle counts, its box, positions as 16-bit steps across the box, indices.
-// The bonsai is the scan with no pot: its tray and the roots that ran over the tray's soil cut away.
-const pxmCache = {};
-async function bonsaiMesh(file = 'bonsai.pxm') {
-  if (pxmCache[file]) return pxmCache[file];
-  const buf = await (await fetch('models/' + file)).arrayBuffer(), dv = new DataView(buf), nv = dv.getUint32(4, true), nt = dv.getUint32(8, true);
-  const mn = [0, 1, 2].map(c => dv.getFloat32(12 + c * 4, true)), mx = [0, 1, 2].map(c => dv.getFloat32(24 + c * 4, true));
-  const q = new Uint16Array(buf, 36, nv * 3), P = new Float32Array(nv * 3);
-  for (let i = 0; i < nv * 3; i++) P[i] = mn[i % 3] + q[i] / 65535 * (mx[i % 3] - mn[i % 3]);
-  // PXM2 also carries a colour per triangle after the indices
-  const col = dv.getUint32(0, true) === 0x324d5850 ? new Uint32Array(buf.slice(36 + nv * 6 + nt * 12, 36 + nv * 6 + nt * 16)) : null;
-  return pxmCache[file] = { P, I: new Uint32Array(buf.slice(36 + nv * 6, 36 + nv * 6 + nt * 12)), mn, mx, col };
-}
 // The skyscraper, read once from its OBJ (each face keeps its own corners, so its faces stay flat).
 let skyBase = null;
 async function skyMesh() {
@@ -495,7 +467,7 @@ async function skyMesh() {
   for (let i = 0; i < P.length; i += 3) for (let c = 0; c < 3; c++) { mn[c] = Math.min(mn[c], P[i + c]); mx[c] = Math.max(mx[c], P[i + c]); }
   return skyBase = { P, I: Uint32Array.from({ length: P.length / 3 }, (_, i) => i), mn, mx, col: P.col };
 }
-// A variation of a scan (seed 1 is the scan as it is). Above `keep` (the bonsai's pot; nothing for the tower) it grows
+// A variation of a scan (seed 1 is the scan as it is). Above `keep` (nothing for the tower) it grows
 // taller or squatter, wider one way, narrows towards the top (taper), leans and bends, twists round its axis; it may
 // be mirrored.
 function variant(base, seed, o) {
@@ -513,7 +485,6 @@ function variant(base, seed, o) {
   }
   return out;
 }
-const BONSAI_VAR = { keep: .05, tall: .22, wide: .22, bend: .9, twist: 1.6, taper: 0 };
 const SKY_VAR = { keep: 0, tall: .3, wide: .25, bend: .25, twist: 1.4, taper: .45 };
 // Building, from its settings (Tipo, Ancho, Profundidad, Altura, Pisos, Retiros, Afinado, Torsión, Aletas, Losas,
 // Coronamiento) and the seed for what they leave open (the type, when Al azar; tier proportions; the crown).
@@ -670,164 +641,17 @@ function shapeMesh(kind, seed) {
   return { P: Float32Array.from(P), I: Uint32Array.from(I) };
 }
 // What the current preset is made from: its seed, and Building's settings or the shape.
-// ---------- Bonsai colours and the procedural bonsai ----------
-// 3D value noise (fractal), from a seed: smooth in space, so neighbouring triangles get neighbouring tones.
-function noise3(seed) {
-  const h = (x, y, z) => { let n = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 1442695041) ^ Math.imul(seed, 1274126177); n = Math.imul(n ^ n >>> 13, 1103515245); return ((n ^ n >>> 16) >>> 0) / 4294967296; };
-  const s = t => t * t * (3 - 2 * t);
-  const v = (x, y, z) => {
-    const X = Math.floor(x), Y = Math.floor(y), Z = Math.floor(z), fx = s(x - X), fy = s(y - Y), fz = s(z - Z);
-    return mix(mix(mix(h(X, Y, Z), h(X + 1, Y, Z), fx), mix(h(X, Y + 1, Z), h(X + 1, Y + 1, Z), fx), fy), mix(mix(h(X, Y, Z + 1), h(X + 1, Y, Z + 1), fx), mix(h(X, Y + 1, Z + 1), h(X + 1, Y + 1, Z + 1), fx), fy), fz);
-  };
-  return (x, y, z, oct = 3) => { let a = 0, w = .5, n = 0; for (let o = 0; o < oct; o++) { a += w * v(x, y, z); n += w; x *= 2.03; y *= 2.03; z *= 2.03; w *= .5; } return a / n; };
-}
-// Tones from dark to light: bark, leaves, blossom.
-// They follow the palette's violets (OKLCH lightness .6–.9, soft chroma): the same pastel light, other hues.
-const BARK = [0x9C785D, 0xBB9274, 0xD6B298, 0xEDD6C5], LEAF = [0x769F6D, 0x8CBE81, 0xAAD5A1, 0xD2E9CD], BLOOM = [0x8D8BC4, 0xA8A5EB, 0xC2C0FD, 0xDEDEFF];
-const tone = (stops, t) => {
-  t = clamp(t) * (stops.length - 1); const i = Math.min(stops.length - 2, Math.floor(t)), f = t - i, a = stops[i], b = stops[i + 1];
-  return [16, 8, 0].reduce((c, sh) => c | Math.round(mix(a >> sh & 255, b >> sh & 255, f)) << sh, 0);
-};
-// A colour per triangle: wood brown in streaks along its length, leaves in patches of greens, and the blossom
-// (Flores: its share of the leaves) in clusters, more of it on top and outside, violet.
-function paintBonsai(P, I, isWood, seed, flowers) {
-  const nt = I.length / 3, n1 = noise3(seed * 31 + 1), n2 = noise3(seed * 31 + 2), n3 = noise3(seed * 31 + 3), r = rng(seed * 977 + 5), col = new Uint32Array(nt);
-  const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
-  for (let i = 0; i < P.length; i += 3) for (let c = 0; c < 3; c++) { mn[c] = Math.min(mn[c], P[i + c]); mx[c] = Math.max(mx[c], P[i + c]); }
-  const k = 1 / Math.max(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]), cx = (mn[0] + mx[0]) / 2, cz = (mn[2] + mx[2]) / 2, C = new Float32Array(nt * 3), leaves = [];
-  for (let t = 0; t < nt; t++) for (let c = 0; c < 3; c++) C[t * 3 + c] = (P[I[t * 3] * 3 + c] + P[I[t * 3 + 1] * 3 + c] + P[I[t * 3 + 2] * 3 + c]) / 3 * k;
-  let y0 = 1e9, y1 = -1e9;
-  for (let t = 0; t < nt; t++) if (!isWood(t)) { y0 = Math.min(y0, C[t * 3 + 1]); y1 = Math.max(y1, C[t * 3 + 1]); }
-  for (let t = 0; t < nt; t++) {
-    const x = C[t * 3], y = C[t * 3 + 1], z = C[t * 3 + 2];
-    if (isWood(t)) { col[t] = tone(BARK, .15 + .75 * n1(x * 28, y * 5, z * 28) + (r() - .5) * .3); continue; }
-    col[t] = tone(LEAF, .1 + .8 * n2(x * 9, y * 9, z * 9) + (r() - .5) * .35);
-    // bloom score: clustered noise, raised on top and towards the outside of the crown
-    const up = (y - y0) / ((y1 - y0) || 1), out = Math.hypot(x - cx * k, z - cz * k) * 2;
-    leaves.push([t, n3(x * 16, y * 16, z * 16, 2) + .22 * up + .12 * out]);
-  }
-  const share = clamp(flowers) * .5;
-  if (share > 0 && leaves.length) {
-    const cut = leaves.map(l => l[1]).sort((a, b) => b - a)[Math.floor(share * (leaves.length - 1))];
-    for (const [t, sc] of leaves) if (sc >= cut) { const x = C[t * 3], y = C[t * 3 + 1], z = C[t * 3 + 2]; col[t] = tone(BLOOM, .15 + .7 * n1(x * 40 + 9, y * 40, z * 40) + (r() - .5) * .45); }
-  }
-  return col;
-}
-// The scanned bonsai's own materials say which triangles are wood (its first one) and which leaves.
-const paintCache = {};
-function bonsaiCol(base) {
-  const sig = S.seed + ':' + S.bzFlowers;
-  if (paintCache.sig !== sig) { const wood = base.col[0]; paintCache.sig = sig; paintCache.col = paintBonsai(base.P, base.I, t => base.col[t] === wood, S.seed, S.bzFlowers); }
-  return paintCache.col;
-}
-const icoBase = {};
-function icoUnit(level = 3) {
-  if (icoBase[level]) return icoBase[level];
-  const t = (1 + Math.sqrt(5)) / 2, nrm = v => { const l = Math.hypot(...v); return v.map(c => c / l); };
-  let V = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]].map(nrm);
-  let F = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
-  for (let s = 0; s < level; s++) {
-    const mid = new Map(), m = (a, b) => { const key = Math.min(a, b) + ':' + Math.max(a, b); if (!mid.has(key)) { V.push(nrm(V[a].map((c, i) => (c + V[b][i]) / 2))); mid.set(key, V.length - 1); } return mid.get(key); };
-    F = F.flatMap(([a, b, c]) => { const ab = m(a, b), bc = m(b, c), ca = m(c, a); return [[a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]]; });
-  }
-  return icoBase[level] = { V, F };
-}
-// Bonsai procedural, after the scanned one: a short, massive trunk that leaves its rooted base almost lying down,
-// then turns up into the crown; a wide, low dome of a crown, offset over the trunk's lean; thin limbs fanning into
-// it, each splitting into twigs; and the foliage as hundreds of small loose clusters about the twigs (airy, with
-// gaps), not solid pads. Each seed another tree of the same kind. Wood and leaves are told apart for paintBonsai.
-function bonsaiGen(seed) {
-  const r = rng(seed * 4241 + 7), nz = noise3(seed * 17 + 11), T = Math.PI * 2, P = [], I = [], wood = [];
-  const vert = (x, y, z) => (P.push(x, y, z), P.length / 3 - 1);
-  const add = (a, b) => a.map((v, i) => v + b[i]), sub = (a, b) => a.map((v, i) => v - b[i]), mul = (a, s) => a.map(v => v * s);
-  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-  const nrm = a => mul(a, 1 / (Math.hypot(...a) || 1)), lerp = (a, b, t) => add(mul(a, 1 - t), mul(b, t));
-  const bez = (p0, p1, p2, p3, t) => { const u = 1 - t; return add(add(mul(p0, u * u * u), mul(p1, 3 * u * u * t)), add(mul(p2, 3 * u * t * t), mul(p3, t * t * t))); };
-  // a tube along pts, radius rad(i, angle), rings carried along the path; closed at its end
-  const tube = (pts, rad, sides) => {
-    const rings = []; let N0 = null;
-    for (let i = 0; i < pts.length; i++) {
-      const Tg = nrm(sub(pts[Math.min(pts.length - 1, i + 1)], pts[Math.max(0, i - 1)]));
-      const N = N0 ? nrm(sub(N0, mul(Tg, dot(N0, Tg)))) : nrm(cross(Tg, Math.abs(Tg[1]) < .9 ? [0, 1, 0] : [1, 0, 0])), B = cross(Tg, N); N0 = N;
-      rings.push(P.length / 3);
-      for (let k = 0; k < sides; k++) { const th = k / sides * T, rr = rad(i, th), c = Math.cos(th) * rr, s = Math.sin(th) * rr; vert(pts[i][0] + N[0] * c + B[0] * s, pts[i][1] + N[1] * c + B[1] * s, pts[i][2] + N[2] * c + B[2] * s); }
-    }
-    for (let i = 0; i + 1 < pts.length; i++) for (let k = 0; k < sides; k++) {
-      const a = rings[i] + k, b = rings[i] + (k + 1) % sides, c = rings[i + 1] + (k + 1) % sides, d = rings[i + 1] + k;
-      I.push(a, b, c, a, c, d); wood.push(1, 1);
-    }
-    const tip = vert(...pts[pts.length - 1]), L = rings[rings.length - 1], foot = vert(...pts[0]), F0 = rings[0];
-    for (let k = 0; k < sides; k++) { I.push(L + k, L + (k + 1) % sides, tip, F0 + (k + 1) % sides, F0 + k, foot); wood.push(1, 1); }
-  };
-  // the trunk's lean (d, along the ground) and the crown: a low dome over the lean, wider than tall
-  const la = r() * T, d = [Math.cos(la), 0, Math.sin(la)], side = [-d[2], 0, d[0]], up = [0, 1, 0];
-  const reach = .45 + r() * .2, Ax = .8 + r() * .2, Ay = .32 + r() * .08, Az = .6 + r() * .15;
-  const C = add(add(mul(d, reach), mul(side, (r() - .5) * .2)), [0, .34 + r() * .08, 0]);
-  // a point of the dome: u along the lean, v up, w across, each in [-1, 1] (v ≥ 0 its upper half)
-  const dome = (u, v, w) => add(C, add(add(mul(d, u * Ax), mul(up, v * Ay)), mul(side, w * Az)));
-  const inDome = p => { const q = sub(p, C); return (dot(q, d) / Ax) ** 2 + (q[1] / Ay) ** 2 * (q[1] < 0 ? .4 : 1) + (dot(q, side) / Az) ** 2; };
-  // the trunk: leaves the ground low (12–35° up), bends up and ends inside the crown
-  const r0 = .09 + r() * .04, rise = .2 + r() * .4, NS = 26;
-  const t0 = [0, 0, 0], t1 = add(mul(d, .32 + r() * .1), [0, .15 * rise + .02, 0]), t2 = add(add(mul(d, reach * .75), mul(side, (r() - .5) * .3)), [0, .14 + r() * .08, 0]), t3 = add(C, [0, -.04 - r() * .06, 0]);
-  const trunk = Array.from({ length: NS + 1 }, (_, i) => bez(t0, t1, t2, t3, i / NS));
-  const tR = h => r0 * (1 - .75 * Math.pow(h, .7)) + r0 * .55 * Math.exp(-h * 12);
-  const roots = 3 + Math.floor(r() * 3), rph = r() * T;
-  tube(trunk, (i, th) => { const h = i / NS; return tR(h) * (1 + .3 * Math.exp(-h * 8) * Math.max(0, Math.sin(roots * th + rph)) ** 2) * (1 + .22 * (nz(Math.cos(th) * 3, h * 9, Math.sin(th) * 3) - .5)); }, 16);
-  // exposed roots (nebari): short, thick, along the ground from the base
-  for (let k = 0, n = 4 + Math.floor(r() * 4); k < n; k++) {
-    const a = rph + k / n * T + (r() - .5) * .7, dir = [Math.cos(a), 0, Math.sin(a)], len = .12 + r() * .18, pts = [];
-    for (let j = 0; j <= 6; j++) { const t = j / 6; pts.push(add(mul(dir, len * t + r0 * .4), [0, r0 * .5 * (1 - t) * (1 - t) - .01 * t, 0])); }
-    tube(pts, i => Math.max(.004, r0 * .45 * (1 - i / 6 * .85)), 7);
-  }
-  // the base sits on the ground: nothing of the wood below it (a flat foot, as if on soil)
-  for (let i = 1; i < P.length; i += 3) P[i] = Math.max(P[i], 0);
-  // foliage: small loose clusters, a little flat, lumpy
-  const ico = icoUnit(1), leaf = (c, s) => {
-    const base = P.length / 3, sy = .55 + r() * .25, yaw = r() * T, cy = Math.cos(yaw), sn = Math.sin(yaw);
-    for (const v of ico.V) {
-      const f = s * (1 + .45 * (nz(c[0] * 30 + v[0], c[1] * 30 + v[1], c[2] * 30 + v[2], 2) - .5)), x = v[0] * f, z = v[2] * f;
-      vert(c[0] + x * cy - z * sn, c[1] + v[1] * f * sy, c[2] + x * sn + z * cy);
-    }
-    for (const [a, b, c2] of ico.F) { I.push(base + a, base + b, base + c2); wood.push(0); }
-  };
-  const tuft = (c, n, spread) => { for (let k = 0; k < n; k++) { const p = add(c, [(r() - .5) * spread, (r() - .3) * spread * .6, (r() - .5) * spread]); if (inDome(p) < 1.15) leaf(p, .011 + r() * .015); } };
-  // a branch from p0 to p1 through a bent middle; twigs off it towards nearby points of the dome; leaves at the end
-  const branch = (p0, p1, ra, depth) => {
-    const M = depth ? 6 : 9, bend = mul(nrm([r() - .5, r() * .6, r() - .5]), sub(p1, p0).length ? Math.hypot(...sub(p1, p0)) * .25 : 0), pts = [];
-    const m1 = add(lerp(p0, p1, .33), bend), m2 = add(lerp(p0, p1, .66), mul(bend, .5));
-    for (let j = 0; j <= M; j++) pts.push(bez(p0, m1, m2, p1, j / M));
-    tube(pts, i => Math.max(.004, ra * (1 - .8 * i / M)), depth ? 5 : 7);
-    if (depth < 2) for (let k = 0, n = depth ? 2 + Math.floor(r() * 2) : 3 + Math.floor(r() * 3); k < n; k++) {
-      const j = Math.floor(M * (.35 + .55 * r())), from = pts[j], q = sub(from, C);
-      const u = clamp(dot(q, d) / Ax + (r() - .5) * .9, -1, 1), w = clamp(dot(q, side) / Az + (r() - .5) * .9, -1, 1), v = Math.sqrt(Math.max(0, 1 - u * u - w * w)) * (r() * 1.4 - .4);
-      branch(from, dome(u * (.8 + r() * .2), v, w * (.8 + r() * .2)), ra * (1 - .8 * j / M) * .65, depth + 1);
-    }
-    // leaves: along the outer part and round the tip
-    for (let j = Math.floor(M * .5); j <= M; j += 2) tuft(pts[j], depth ? 2 : 1, .14);
-    tuft(p1, depth === 2 ? 10 + Math.floor(r() * 6) : 4, .2);
-  };
-  // limbs: from the trunk's upper part, fanning out into the dome (more towards the lean)
-  for (let k = 0, n = 5 + Math.floor(r() * 4); k < n; k++) {
-    const h = .5 + .5 * Math.pow(r(), .7), from = trunk[Math.round(h * NS)], a = k / n * T + r() * .8;
-    const u = Math.cos(a) * (.55 + r() * .4), w = Math.sin(a) * (.55 + r() * .4), v = Math.sqrt(Math.max(0, 1 - u * u - w * w)) * (r() * 1.1 - .2);
-    branch(from, dome(u, v, w), tR(h) * .55, 0);
-  }
-  // fill: a few more clusters through the dome, so the crown reads whole (still airy)
-  for (let k = 0; k < 70; k++) { const u = r() * 2 - 1, w = r() * 2 - 1, v = r() * 1.6 - .6; if (u * u + w * w + v * v < 1) tuft(dome(u, v, w), 2, .08); }
-  return { P: Float32Array.from(P), I: Uint32Array.from(I), wood };
-}
-const presetSig = () => preset + ':' + (preset === 'blocks' ? [S.seed, S.mzCount, S.mzHeight].join() : preset === 'shapes' ? S.shape + ':' + S.seed : preset === 'bonsai' || preset === 'pbonsai' ? [S.seed, S.bzFlowers].join() : preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
+const presetSig = () => preset + ':' + (preset === 'blocks' ? [S.seed, S.mzCount, S.mzHeight].join() : preset === 'shapes' ? S.shape + ':' + S.seed : preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
 function loadPreset() {
   const sig = presetSig(), which = preset;
   if (which === 'blocks') { const m = blocks(S.seed); setModelTris(indexedTris(m.P, m.I), 'Manzanas'); presetSeed = sig; return; }
   if (which === 'shapes') { const m = shapeMesh(S.shape, S.seed); setModelTris(indexedTris(m.P, m.I), SHAPES.find(x => x[0] === S.shape)[1]); presetSeed = sig; return; }
   if (which === 'building') { const m = building(S.seed); setModelTris(indexedTris(m.P, m.I), 'Building'); presetSeed = sig; return; }
-  if (which === 'pbonsai') { const m = bonsaiGen(S.seed); setModelTris(indexedTris(m.P, m.I), 'Bonsai procedural', paintBonsai(m.P, m.I, t => m.wood[t], S.seed, S.bzFlowers)); presetSeed = sig; return; }
   if (loadingPreset) return;
-  loadingPreset = (which === 'bonsai' ? bonsaiMesh() : skyMesh()).then(base => {
+  loadingPreset = skyMesh().then(base => {
     loadingPreset = null;
     if (preset !== which || modelName.includes('.')) return loadPreset();
-    setModelTris(indexedTris(variant(base, S.seed, which === 'bonsai' ? BONSAI_VAR : SKY_VAR), base.I), which === 'bonsai' ? 'Bonsai' : 'Rascacielos', which === 'bonsai' ? bonsaiCol(base) : base.col || null); presetSeed = presetSig(); key = ''; sync();
+    setModelTris(indexedTris(variant(base, S.seed, SKY_VAR), base.I), 'Rascacielos', base.col || null); presetSeed = presetSig(); key = ''; sync();
   }, () => { loadingPreset = null; toast('No se pudo cargar el modelo.'); });
 }
 // Triangles with normals (18 per triangle): centred and scaled like setModel, normals kept.
@@ -1130,7 +954,6 @@ const cv = $('#cv'), frame = $('#frame'), stage = $('#stage');
 let raf = 0, fastNext = false;
 const pct = v => Math.round(v * 100) + '%', deg = v => Math.round(v) + '°';
 const SLIDERS = {
-  bzFlowers: { label: 'Flores', min: 0, max: 1, step: .01, fmt: v => v ? Math.round(v * 100) + '%' : 'sin flores' },
   strokeW: { label: 'Grosor del contorno', min: .1, max: 3, step: .05, fmt: v => v.toFixed(2) + ' px' },
   yaw: { label: 'Giro', min: -180, max: 180, step: 1, fmt: deg },
   pitch: { label: 'Inclinación', min: -89, max: 89, step: 1, fmt: deg },
@@ -1139,13 +962,10 @@ const SLIDERS = {
   lightEl: { label: 'Altura', min: 0, max: 85, step: 1, fmt: deg },
   ambient: { label: 'Luz ambiente', min: 0, max: .8, step: .01, fmt: pct },
   shadow: { label: 'Sombras proyectadas', min: 0, max: 1, step: .01, fmt: pct },
-  cell: { label: 'Tamaño de la celda', min: 2, max: 40, step: 1, fmt: v => v + ' px', emph: true },
-  cellGap: { label: 'Espacio entre píxeles', min: 0, max: 30, step: .1, fmt: v => v.toLocaleString('es', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' px', emph: true },
   count: { label: 'Densidad', min: 2000, max: 200000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño del píxel', min: 1, max: 24, step: .5, fmt: v => v + ' px', emph: true },
   threshold: { label: 'Umbral', min: 0, max: .9, step: .01, fmt: v => v ? Math.round(v * 100) + '%' : 'sin umbral' },
   contrast: { label: 'Contraste', min: .5, max: 12, step: .05, fmt: v => v.toFixed(2) },
-  edge: { label: 'Bordes y superposiciones', min: 0, max: 2, step: .01, fmt: pct },
   fps: { label: 'Dibujos por segundo', min: 1, max: 60, step: 1, fmt: String, emph: true },
   handJit: { label: 'Temblor', min: 0, max: 2, step: .05, fmt: v => v ? Math.round(v * 100) + '%' : 'sin temblor' },
   boil: { label: 'Variación', min: .02, max: 1, step: .01, fmt: pct },
@@ -1176,7 +996,6 @@ const SLIDERS = {
   lineGap: { label: 'Separación de las líneas', min: 3, max: 80, step: 1, fmt: v => v + ' px', emph: true },
   lineDot: { label: 'Espacio entre píxeles', min: 0, max: 23, step: 1, values: [0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5, 6, 8, 10, 15, 20], fmt: v => v.toLocaleString('es', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + ' px', emph: true },
   lineFollow: { label: 'Seguir la forma', min: 0, max: 1, step: .01, fmt: pct },
-  jitter: { label: 'Superposición', min: 0, max: 3, step: .01, fmt: pct },
 };
 for (const [key, d] of Object.entries(SLIDERS)) {
   const host = $('#sl-' + key);
@@ -1221,8 +1040,7 @@ function sync(fast) {
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
   $('#inks').hidden = S.colorSrc !== 'ink'; $('#how-row').hidden = S.colorSrc === 'ink'; $('#colorHow').value = S.colorHow; $('#onlypal-row').hidden = S.colorSrc !== 'pal'; $('#palsets').hidden = S.colorSrc === 'orig'; $('#sl-strokeW').hidden = !S.stroke; markPalette();
   const gridOnly = S.snap && !S.blend && !S.lines;
-  $('#sl-count').hidden = gridOnly; $('#sl-size').hidden = false; $('#sl-cell').hidden = true; $('#sl-cellGap').hidden = !gridded() || S.lines; if (typeof syncModeBar === 'function') syncModeBar();
-  $('#lines-row').hidden = true; $('#snap-row').hidden = true;
+  $('#sl-count').hidden = gridOnly; $('#sl-size').hidden = false; if (typeof syncModeBar === 'function') syncModeBar();
   $('#sl-lineGap').hidden = $('#sl-lineFollow').hidden = $('#sl-lineDot').hidden = $('#lineAM-row').hidden = !S.lines;
   document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn'))); });
   if (S.anim === 'enter') { $('#sl-revHold').hidden = S.entInf; $('#sl-entStay').hidden = !S.entInf; }
@@ -1232,8 +1050,6 @@ function sync(fast) {
   $('#building-controls').hidden = preset !== 'building' || modelName.includes('.');
   $('#shape-controls').hidden = preset !== 'shapes' || modelName.includes('.');
   $('#block-controls').hidden = preset !== 'blocks' || modelName.includes('.');
-  $('#bonsai-controls').hidden = (preset !== 'bonsai' && preset !== 'pbonsai') || modelName.includes('.');
-  $('#bonsai-hint').textContent = preset === 'pbonsai' ? 'Cada semilla (R) arma otro bonsái. Sus colores (tronco, hojas y flores) se ven con Color → Original.' : 'La semilla (R) lo deforma y cambia dónde florece. Sus colores se ven con Color → Original.';
   if (preset && !modelName.includes('.') && presetSeed !== presetSig()) loadPreset();
   if (!model) { $('#stats').textContent = 'Cargando el modelo…'; return; }
   updateBg(S.bgFlip);
@@ -1908,42 +1724,28 @@ PerceptaBlendHandles({ frame, visible: () => S.blend, get: () => [S.blendA, S.bl
 $('#blend-swap').addEventListener('click', () => { [S.blendA, S.blendB] = [S.blendB, S.blendA]; sync(); });
 $('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.slice(); S.blendB = DEFAULTS.blendB.slice(); sync(); });
 
-// The mode bar (top middle): in 1A Caótico (loose, overlapping), Engrillado (one per cell) or Pasaje (from one to the
-// other across the picture: Dirección, Dónde ocurre, Largo); in 1B the circles' Caos.
-const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label="Modo"><button data-ord="chaos" title="Píxeles sueltos que se superponen">Caótico</button><button data-ord="grid" title="Cada píxel en su celda, separado de los demás">Engrillado</button><button data-ord="blend" title="De desorden a orden en una misma composición">Pasaje</button></div><label class="pm-sq" id="pm-rd" title="Puntos redondos en vez de cuadrados"><input type="checkbox" id="pm-round"> Círculos</label>
-  <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label><label class="pm-sq" id="pm-sq" title="Píxeles cuadrados en vez de redondos, igual de separados"><input type="checkbox" id="pm-square"> Cuadrados</label>`);
+// The mode bar (top middle): the circles' Caos and Pasaje (from Caos to the clean lines across the picture).
+const modeBar = PerceptaModeBar(stage, `  <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label>`);
 const ordOf = () => S.blend ? 'blend' : S.snap ? 'grid' : 'chaos';
-modeBar.querySelector('#pm-1a').addEventListener('click', e => { const b = e.target.closest('[data-ord]'); if (!b) return; S.snap = b.dataset.ord === 'grid'; S.blend = b.dataset.ord === 'blend'; sync(); });
-// the same choice in the sidebar (Píxeles → Orden), always there: Engrillado and Pasaje are of 1A, so in 1B they take you
-// to 1A (as its button would)
+// the same choice in the sidebar (Píxeles → Orden)
 $('#ord-seg').addEventListener('click', e => {
   const b = e.target.closest('[data-ord]'); if (!b) return;
-  S.snap = b.dataset.ord === 'grid' && S.dir !== '1b'; S.blend = b.dataset.ord === 'blend';
-  if (S.blend && S.dir === '1b' && S.chaos < .25) S.chaos = .7; // 1B's Pasaje runs from Caos to clean lines: some Caos to start from
+  S.blend = b.dataset.ord === 'blend';
+  if (S.blend && S.chaos < .25) S.chaos = .7; // 1B's Pasaje runs from Caos to clean lines: some Caos to start from
   sync();
 });
-// 1B's bar: Pasaje beside Caos
+// Pasaje beside Caos
 modeBar.querySelector('#pm-1b').insertAdjacentHTML('afterend', '<label class="pm-sq" id="pm-pas1b" title="Pasaje: de Caos a líneas limpias a lo largo del lienzo, con los manejadores"><input type="checkbox" id="pm-blend1b"> Pasaje</label>');
 modeBar.querySelector('#pm-blend1b').addEventListener('change', e => { S.blend = e.target.checked; if (S.blend && S.chaos < .25) S.chaos = .7; sync(); });
 modeBar.querySelector('#pm-chaos').addEventListener('input', e => { S.chaos = +e.target.value; sync(); });
-modeBar.querySelector('#pm-square').addEventListener('change', e => { S.square = e.target.checked; sync(); });
-modeBar.querySelector('#pm-round').addEventListener('change', e => { S.round1a = e.target.checked; sync(); });
 function syncModeBar() {
-  const b1 = S.dir === '1b';
-  modeBar.querySelector('#pm-1a').hidden = modeBar.querySelector('#pm-rd').hidden = b1; modeBar.querySelector('#pm-round').checked = !!S.round1a; modeBar.querySelector('#pm-1b').hidden = modeBar.querySelector('#pm-sq').hidden = !b1; modeBar.querySelector('#pm-square').checked = S.square;
   document.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ord === ordOf()));
-  $('#ord-seg [data-ord="grid"]').hidden = b1; modeBar.querySelector('#pm-pas1b').hidden = !b1; modeBar.querySelector('#pm-blend1b').checked = !!S.blend;
+  modeBar.querySelector('#pm-blend1b').checked = !!S.blend;
   const ch = modeBar.querySelector('#pm-chaos'); if (+ch.value !== S.chaos) ch.value = S.chaos; ch.style.setProperty('--p', S.chaos * 100 + '%');
   modeBar.querySelector('#pm-chaos-out').textContent = Math.round(S.chaos * 100) + '%';
   $('#blend-controls').hidden = !S.blend;
 }
 
-// Dirección (toolbar.js): 1A square pixels, all one size, scattered by the light; 1B round pixels on horizontal lines
-// that follow the model, frequency modulated (closer together where dark), never overlapping.
-PerceptaDirection({
-  get: () => S.dir,
-  set: v => { S.dir = v; if (v === '1a') S.lines = false; else { S.lines = true; S.snap = false; } sync(); }, // Pasaje stays on across both
-});
 // ---------- Enviar a otra tool ----------
 // Pixel Waves: the view as it is now, rendered (the light, the cast shadows: grey on white) with its depth map (near
 // light), cropped to the model; Waves takes it as its Imagen and, in 1B, lays its lines over that depth. Pixel Depth:
@@ -1970,12 +1772,6 @@ $('#to-waves').addEventListener('click', async () => {
   ctx.putImageData(im, 0, 0);
   const blob = await new Promise(r => c.toBlob(r, 'image/png'));
   PerceptaHandoff.send('', 'model-image', { name: modelName, blob, depth: { w, h, data: D }, colored: !!modelCol && S.colorMode === 'orig' });
-});
-$('#to-depth').addEventListener('click', () => {
-  if (!model) return;
-  const pos = new Float32Array(model.length / 2);
-  for (let t = 0, q = 0; t < model.length; t += 18) for (let j = 0; j < 9; j++) pos[q++] = model[t + j];
-  PerceptaHandoff.send('pixel-depth/', 'model-mesh', { name: modelName, pos, col: modelCol });
 });
 
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pixel Waves</title>
+<title>Imagen</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
 :root {
@@ -194,15 +194,12 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           <div id="sl-contrast"></div>
           <div id="sl-threshold"></div>
           <label class="check"><input type="checkbox" data-check="invert"> Invertir luces y sombras</label>
-          <label class="check" id="imgLines-row" title="Calcula la profundidad de la foto (en el navegador) y dibuja líneas horizontales que siguen su volumen"><input type="checkbox" data-check="imgLines"> Líneas que siguen la profundidad</label>
           <div id="depth-controls">
             <p class="hint" id="depth-status"></p>
             <div id="sl-dGap"></div>
             <div id="sl-dRelief"></div>
             <label class="check" title="Los píxeles se achican con la luz hasta desaparecer; apagado, se juntan más en lo oscuro"><input type="checkbox" data-check="dAM"> Modular el tamaño con la luz</label>
           </div>
-          <label class="check" id="grid-row"><input type="checkbox" data-check="grid"> Puntos en cuadrícula</label>
-          <div id="sl-gridCols"></div>
           <div id="sl-rotX"></div>
           <div id="sl-rotY"></div>
           <div id="sl-rotZ"></div>
@@ -249,10 +246,6 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         <div id="sl-variation"></div>
         <div id="sl-grain"></div>
         <div id="sl-dPx"></div>
-        <label class="check" id="circle-row" title="Cada partícula es un círculo en vez de un cuadrado (con las líneas de profundidad siempre lo son)"><input type="checkbox" data-check="circle"> Partículas circulares</label>
-        <label class="check" id="snap-row" title="Los cubos se ubican en una grilla de su tamaño, uno por celda: uno al lado del otro, sin encimarse"><input type="checkbox" data-check="snap"> Engrillar (uno al lado del otro, sin encimarse)</label>
-        <div id="sl-cell"></div>
-        <div id="sl-cellGap"></div>
         <div id="blend-controls">
 <p class="hint">Arrastrá los manejadores sobre el lienzo: <b>Caos</b> marca dónde empieza el orden y <b>Orden</b> dónde se completa; el punto del medio mueve los dos. Con Shift, la línea va en ángulos de 15°.</p>
           <div class="btns"><button class="btn" id="blend-swap" type="button">Invertir</button><button class="btn" id="blend-reset" type="button">Restablecer</button></div>
@@ -348,7 +341,7 @@ const DEFAULTS = {
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#FAFAFA', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2, imgLines: false, dGap: 18, dPx: 1, circle: false, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: 1, onlyPal: false, cseed: 1, square: false, dir: '1a', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0,
+  dof: 0, focus: 0, focusBand: .2, imgLines: true, dGap: 18, dPx: 1, circle: true, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: 1, onlyPal: false, cseed: 1, square: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0,
   motion: 'still', flowStyle: 'smooth', flowDir: 'r', wThresh: 0, loopDur: 6, vidFps: '60', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
@@ -1127,15 +1120,12 @@ const SLIDERS = {
   rfOrder: { label: 'Orden', min: 0, max: 1, step: .01, fmt: pct },
   contrast: { label: 'Contraste', min: .3, max: 4, step: .05, fmt: v => v.toFixed(2) },
   threshold: { label: 'Umbral', min: 0, max: .99, step: .01, fmt: pct, emph: true },
-  cell: { label: 'Tamaño de la celda', min: 2, max: 60, step: 1, fmt: v => v + ' px', emph: true },
-  cellGap: { label: 'Espacio entre píxeles', min: 0, max: 30, step: .1, fmt: v => v.toLocaleString('es', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' px', emph: true },
   count: { label: 'Cubos', values: steps(10, [10, 100], [100, 200], [200, 2000], [1000, 150000]), fmt: v => v < 10000 ? v.toLocaleString('es') : Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño', values: steps(1, [.5, 50], [10, 200]), fmt: v => v + ' px' },
   mod: { label: 'Tamaño según profundidad o tono', min: 0, max: 1, step: .01, fmt: pct },
   variation: { label: 'Variación', min: 0, max: 1, step: .01, fmt: pct },
   grain: { label: 'Variación de tono', min: 0, max: .4, step: .01, fmt: pct },
   soft: { label: 'Suavidad del borde', min: 0, max: 1, step: .01, fmt: pct },
-  gridCols: { label: 'Columnas', min: 20, max: 400, step: 1, fmt: String, emph: true },
   rotX: { label: 'Rotación arriba–abajo', min: -85, max: 85, step: 1, fmt: v => Math.round(v) + '°' },
   rotY: { label: 'Rotación izquierda–derecha', min: -85, max: 85, step: 1, fmt: v => Math.round(v) + '°' },
   rotZ: { label: 'Rotación en el plano', min: -180, max: 180, step: 1, fmt: v => Math.round(v) + '°' },
@@ -1232,9 +1222,9 @@ function sync() {
   $('#blModel').value = S.blModel; $('#sl-blFlorets').hidden = S.blModel !== 'hortensia';
   updateBg(S.bgFlip);
   const b1 = S.dir === '1b';
-  $('#depth-controls').hidden = !S.imgLines; $('#circle-row').hidden = $('#imgLines-row').hidden = true; $('#snap-row').hidden = true; $('#sl-dPx').hidden = !b1; $('#grid-row').hidden = S.imgLines; if (image && S.imgLines) ensureDepth();
-  $('#sl-gridCols').hidden = !S.grid || S.imgLines; const gridOnly = S.snap && !S.blend && S.dir !== '1b', cells = (S.snap || S.blend) && S.dir !== '1b';
-  $('#sl-count').hidden = (image && S.grid) || gridOnly; $('#sl-size').hidden = false; $('#sl-cell').hidden = true; $('#sl-cellGap').hidden = !cells; if (typeof syncModeBar === 'function') syncModeBar();
+  $('#depth-controls').hidden = !S.imgLines; if (image && S.imgLines) ensureDepth();
+  const gridOnly = S.snap && !S.blend && S.dir !== '1b', cells = (S.snap || S.blend) && S.dir !== '1b';
+  $('#sl-count').hidden = (image && S.grid) || gridOnly; $('#sl-size').hidden = false; if (typeof syncModeBar === 'function') syncModeBar();
   $('.rt-bar [data-tool="rotate"]').hidden = !image; if (!image && tools.tool === 'rotate') tools.setTool('scatter');
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
   markPalette();
@@ -1854,37 +1844,20 @@ PerceptaBlendHandles({ frame, visible: () => S.blend, get: () => [S.blendA, S.bl
 $('#blend-swap').addEventListener('click', () => { [S.blendA, S.blendB] = [S.blendB, S.blendA]; sync(); });
 $('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.slice(); S.blendB = DEFAULTS.blendB.slice(); sync(); });
 
-// The mode bar (top middle): in 1A Caótico (loose, overlapping), Engrillado (one per cell) or Pasaje (from one to the
-// other across the picture: Dirección, Dónde ocurre, Largo); in 1B the circles' Caos.
-const modeBar = PerceptaModeBar(stage, `  <div class="seg" id="pm-1a" aria-label="Modo"><button data-ord="chaos" title="Píxeles sueltos que se superponen">Caótico</button><button data-ord="grid" title="Cada píxel en su celda, separado de los demás">Engrillado</button><button data-ord="blend" title="De desorden a orden en una misma composición">Pasaje</button></div><label class="pm-sq" id="pm-rd" title="Puntos redondos en vez de cuadrados"><input type="checkbox" id="pm-round"> Círculos</label>
-  <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label><label class="pm-sq" id="pm-sq" title="Píxeles cuadrados en vez de redondos, igual de separados"><input type="checkbox" id="pm-square"> Cuadrados</label>`);
+// The mode bar (top middle): the circles' Caos and Pasaje (they scatter on the Caos side, fall into place on the Orden side).
+const modeBar = PerceptaModeBar(stage, `  <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label>`);
 const ordOf = () => S.blend ? 'blend' : S.snap ? 'grid' : 'chaos';
-modeBar.querySelector('#pm-1a').addEventListener('click', e => { const b = e.target.closest('[data-ord]'); if (!b) return; S.snap = b.dataset.ord === 'grid'; S.blend = b.dataset.ord === 'blend'; sync(); });
 modeBar.querySelector('#pm-chaos').addEventListener('input', e => { S.chaos = +e.target.value; sync(); });
-// 1B's bar: Pasaje beside Caos (the circles scatter on the Caos side and fall into their places on the Orden side)
+// Pasaje beside Caos (the circles scatter on the Caos side and fall into their places on the Orden side)
 modeBar.querySelector('#pm-1b').insertAdjacentHTML('afterend', '<label class="pm-sq" id="pm-pas1b" title="Pasaje: los círculos se dispersan del lado de Caos y caen en su lugar del lado de Orden, siguiendo la profundidad"><input type="checkbox" id="pm-blend1b"> Pasaje</label>');
 modeBar.querySelector('#pm-blend1b').addEventListener('change', e => { S.blend = e.target.checked; S.snap = false; if (S.blend && S.chaos < .25) S.chaos = .7; sync(); });
-modeBar.querySelector('#pm-square').addEventListener('change', e => { S.square = e.target.checked; sync(); });
-modeBar.querySelector('#pm-round').addEventListener('change', e => { S.circle = e.target.checked; sync(); });
 function syncModeBar() {
-  const b1 = S.dir === '1b';
-  modeBar.querySelector('#pm-1a').hidden = modeBar.querySelector('#pm-rd').hidden = b1; modeBar.querySelector('#pm-round').checked = !!S.circle; modeBar.querySelector('#pm-1b').hidden = modeBar.querySelector('#pm-sq').hidden = !b1; modeBar.querySelector('#pm-square').checked = S.square;
-  modeBar.querySelectorAll('[data-ord]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ord === ordOf()));
   const ch = modeBar.querySelector('#pm-chaos'); if (+ch.value !== S.chaos) ch.value = S.chaos; ch.style.setProperty('--p', S.chaos * 100 + '%');
   modeBar.querySelector('#pm-chaos-out').textContent = Math.round(S.chaos * 100) + '%';
   $('#blend-controls').hidden = !S.blend;
-  modeBar.querySelector('#pm-pas1b').hidden = !b1; modeBar.querySelector('#pm-blend1b').checked = !!S.blend;
+  modeBar.querySelector('#pm-blend1b').checked = !!S.blend;
 }
 
-const direction = PerceptaDirection({
-  get: () => S.dir,
-  set: v => {
-    S.dir = v;
-    if (v === '1a') { S.circle = false; S.imgLines = false; S.style = 'mono'; }
-    else { S.circle = true; S.imgLines = true; S.snap = false; } // Pasaje stays on across both
-    sync();
-  },
-});
 // From Pixel Model (Enviar a Pixel Waves): its render as the Imagen, and its depth map as the picture's depth.
 if (PerceptaHandoff.pending() === 'model-image') PerceptaHandoff.take('model-image').then(h => {
   if (!h) return;
@@ -1895,7 +1868,7 @@ if (PerceptaHandoff.pending() === 'model-image') PerceptaHandoff.take('model-ima
     for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) D[j * gw + i] = h.depth.data[Math.min(h.depth.h - 1, Math.floor((j + .5) / gh * h.depth.h)) * h.depth.w + Math.min(h.depth.w - 1, Math.floor((i + .5) / gw * h.depth.w))];
     // the model's render: its white around the model is no picture (so Invertir doesn't fill it)
     img.alpha = Float32Array.from(D, v => v > 0 ? 1 : 0); imgId++;
-    img.depth = D; depthId++; S.source = 'image'; if (h.colored) S.colorSrc = 'image'; sync(); toast(`${h.name || 'Modelo'} desde Pixel Model`);
+    img.depth = D; depthId++; S.source = 'image'; if (h.colored) S.colorSrc = 'image'; sync(); toast(`${h.name || 'Modelo'} desde Model`);
     history.replaceState(null, '', location.pathname);
   };
   el.src = url;
