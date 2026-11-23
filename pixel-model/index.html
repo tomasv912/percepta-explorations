@@ -214,7 +214,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         <span class="tm" id="kf-tm">0.00 / 5.00 s</span>
         <button id="kf-ins" title="Insertar keyframe (I)">◆ Keyframe</button>
         <label>Duración <input id="kf-dur" type="number" min="0.5" max="120" step="0.5" value="5" aria-label="Duración en segundos"> s</label>
-        <label class="kf-morph" title="Morph de Forma: cuánto gira todo en el cambio, de una forma a la otra (180: media vuelta, 360: una vuelta; negativo: al otro lado)">Giro <input id="kf-mrot" type="number" min="-720" max="720" step="15" aria-label="Giro del morph en grados"> °</label>
+        <label class="kf-morph" title="Morph de Forma: cuánto gira todo en el cambio, de una forma a la otra (90: un cuarto de vuelta, 180: media vuelta, 360: una vuelta; negativo: al otro lado)">Giro <input id="kf-mrot" type="number" min="-720" max="720" step="15" aria-label="Giro del morph en grados"> °</label>
         <label class="kf-morph" title="Morph de Forma: cuánto los revuelve un ruido fractal a mitad de camino (en px)">Ruido <input id="kf-mnoise" type="number" min="0" max="400" step="5" aria-label="Ruido del morph"></label>
         <span class="sp"></span>
         <label>Cuadros <select id="kf-fps" aria-label="Cuadros por segundo"><option>12</option><option>15</option><option>24</option><option>30</option><option>60</option></select></label>
@@ -1882,7 +1882,7 @@ function syncModeBar() {
 // a track of keys. Between two keys the value eases along the curve chosen for that stretch (its button in the
 // middle). I opens the menu to insert a key of any of the three at the playhead, with the view as it is now.
 // Playing (or scrubbing) sets the view at that moment; Píxeles fijos keeps the pixels on the model while it moves.
-const KF = { dur: 5, t: 0, rot: [], pos: [], zoom: [], shape: [], mRot: 180, mNoise: 50, sel: null, playing: false, open: false };
+const KF = { dur: 5, t: 0, rot: [], pos: [], zoom: [], shape: [], mRot: 90, mNoise: 50, sel: null, playing: false, open: false };
 const KF_TRACKS = { rot: 'rotación', pos: 'posición', zoom: 'zoom', shape: 'forma' };
 // Curves: Lineal, Suave (in and out), Entrada (slow start), Salida (slow end), Constante (holds, then jumps).
 const EASES = [['inout', 'Suave', u => u * u * (3 - 2 * u)], ['linear', 'Lineal', u => u], ['in', 'Entrada suave', u => u * u * u], ['out', 'Salida suave', u => 1 - (1 - u) ** 3], ['hold', 'Constante', u => u < 1 ? 0 : 1]];
@@ -1990,7 +1990,7 @@ function kfPair(A, B) {
   for (let r = 0; r < N; r++) { if (seenA[oa[r]]) extra[r] = 1; else seenA[oa[r]] = 1; if (seenB[ib[r]]) extra[r] = 2; else seenB[ib[r]] = 1; }
   return { ia: oa, ib, extra };
 }
-// On the way, the whole turns by Giro, steadily, always the same way: the first model leaves turning from where it is,
+// On the way, the whole turns by Giro, always the same way, easing in and out: the first model leaves turning from where it is,
 // the second arrives turning into where it is (each about its middle), and the pixels go from the one to the other.
 // And a fractal noise stirs them (curl of an fBm: it swirls without bunching them up), most at the middle of the
 // stretch. Both are nothing at the keys, so each model is reached exactly.
@@ -2005,7 +2005,8 @@ function kfMorph(A, B, u, P) {
   const NA = A.length, NB = B.length;
   if (!NA || !NB) return (NA ? A : B).map(p => ({ ...p, sc: (p.sc ?? 1) * (NA ? 1 - u : u) }));
   const out = [], mix = (a, b) => a + (b - a) * u, bump = Math.sin(Math.PI * u), [ax, ay] = P.ca, [bx, by] = P.cb;
-  const cx = mix(ax, bx), cy = mix(ay, by), T = P.T, cr = Math.cos(T * u), sr = Math.sin(T * u), amp = KF.mNoise * bump;
+  const g = u * u * u * (u * (u * 6 - 15) + 10); // the turn starts and ends softly (smootherstep)
+  const cx = mix(ax, bx), cy = mix(ay, by), T = P.T, cr = Math.cos(T * g), sr = Math.sin(T * g), amp = KF.mNoise * bump;
   const f = 2.2 / Math.max(AW, AH), zt = u * 1.6, e = .02, sm = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
   const mixC = (p, q) => p === undefined || q === undefined ? (u < .5 ? p : q) : (Math.round(mix(p >> 16 & 255, q >> 16 & 255)) << 16 | Math.round(mix(p >> 8 & 255, q >> 8 & 255)) << 8 | Math.round(mix(p & 255, q & 255)));
   for (let i = 0; i < P.ia.length; i++) {
