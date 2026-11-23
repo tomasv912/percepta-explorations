@@ -231,19 +231,13 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
     </div>
     <div class="tt" role="toolbar" aria-label="Animación">
       <div class="seg" data-key="anim" aria-label="Animación">
-        <button data-v="none">Quieta</button><button data-v="boil">A mano</button><button data-v="stable" title="Estable: las partículas quedan pegadas al modelo y siguen su forma al girar, sin saltos ni recálculo (con Turntable, keyframes o arrastrando)">Estable</button><button data-v="float">Flotar</button><button data-v="hover">Hover</button><button data-v="reveal">Reveal</button><button data-v="enter">Entrada</button><button data-v="paint" title="Mantené apretado sobre el lienzo: los píxeles salen del cursor y van a su lugar">Interactivo</button>
+        <button data-v="none">Quieta</button><button data-v="stable" title="Estable: las partículas quedan pegadas al modelo y siguen su forma al girar, sin saltos ni recálculo (con Turntable, keyframes o arrastrando)">Estable</button><button data-v="hover">Hover</button><button data-v="reveal">Reveal</button><button data-v="paint" title="Mantené apretado sobre el lienzo: los píxeles salen del cursor y van a su lugar">Interactivo</button>
       </div>
       <button class="tt-play" id="turn" aria-pressed="false" title="Turntable: una vuelta entera, sola o junto a la animación elegida">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8A5.5 5.5 0 1 1 11.6 3.8"/><path d="M13.5 2.5v3h-3"/></svg>
         Turntable
       </button>
-      <i class="tt-sep" data-for="boil float hover turn"></i>
-      <div id="sl-fps" data-for="boil"></div>
-      <div id="sl-boil" data-for="boil"></div>
-      <div id="sl-handJit" data-for="boil"></div>
-      <div id="sl-floatAmp" data-for="float"></div>
-      <div id="sl-floatSpeed" data-for="float"></div>
-      <div id="sl-floatScale" data-for="float"></div>
+      <i class="tt-sep" data-for="hover turn"></i>
       <div id="sl-hoverRadius" data-for="hover"></div>
       <div id="sl-hoverForce" data-for="hover"></div>
       <div class="seg" data-key="revDir" aria-label="Dirección del reveal" data-for="reveal">
@@ -252,35 +246,28 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
       <div id="sl-revOrg" data-for="reveal"></div>
       <div id="sl-revSoft" data-for="reveal"></div>
       <label class="tt-check" data-for="reveal" title="Cada píxel crece de 0 a 100% al aparecer; apagado, aparece de golpe"><input type="checkbox" data-check="revScale"> Crecen de 0 a 100%</label>
-      <div class="seg" data-key="entDir" aria-label="Desde dónde entran" data-for="enter">
-        <button data-v="top" title="Desde arriba">↓</button><button data-v="left" title="Desde la izquierda">→</button><button data-v="bottom" title="Desde abajo">↑</button><button data-v="right" title="Desde la derecha">←</button>
-      </div>
-      <div id="sl-entSpread" data-for="enter"></div>
-      <div id="sl-entStagger" data-for="enter"></div>
-      <label class="tt-check" data-for="enter" title="El modelo se forma y los píxeles siguen entrando por un lado mientras otros tantos se van por el opuesto, en loop"><input type="checkbox" data-check="entInf"> Infinito</label>
-      <div id="sl-entStay" data-for="enter"></div>
       <div id="sl-paintRate" data-for="paint"></div>
       <div id="sl-paintDur" data-for="paint"></div>
       <label class="tt-check" data-for="paint" title="Cada píxel cae en un lugar al azar del modelo, no en el más cercano al cursor"><input type="checkbox" data-check="paintRand"> Lugar al azar</label>
       <button class="tt-play" id="paint-reset" data-for="paint" title="Vacía el lienzo para pintar de nuevo">Reiniciar</button>
       <button class="tt-play" id="paint-all" data-for="paint" title="Completa el modelo desde el cursor (o el centro)">Completar</button>
-      <div class="seg" data-key="ease" aria-label="Curva de movimiento" data-for="reveal enter paint">
+      <div class="seg" data-key="ease" aria-label="Curva de movimiento" data-for="reveal paint">
         <button data-v="lin" title="Lineal">Lineal</button><button data-v="in" title="Arranca lento y acelera">Acelera</button><button data-v="out" title="Arranca rápido y frena">Frena</button><button data-v="inOut" title="Lento, rápido, lento">Suave</button><button data-v="back" title="Se pasa un poco y vuelve">Rebote</button>
       </div>
-      <div id="sl-revHold" data-for="reveal enter"></div>
+      <div id="sl-revHold" data-for="reveal"></div>
       <div class="seg" data-key="ttDir" aria-label="Sentido" data-for="turn">
         <button data-v="1" title="A la derecha" aria-label="A la derecha">→</button><button data-v="-1" title="A la izquierda" aria-label="A la izquierda">←</button>
       </div>
       <label class="tt-check" data-for="turn" title="Los píxeles quedan pegados al modelo y giran con él; apagado, cada cuadro se dibuja de nuevo"><input type="checkbox" data-check="ttFixed"> Píxeles fijos</label>
-      <div id="sl-ttDur" data-for="boil float hover turn reveal enter"></div>
-      <i class="tt-sep" data-for="boil float hover turn reveal enter paint"></i>
-      <div class="seg" data-key="ttFps" aria-label="Cuadros por segundo del video" data-for="boil float hover turn reveal enter paint">
+      <div id="sl-ttDur" data-for="hover turn reveal"></div>
+      <i class="tt-sep" data-for="hover turn reveal paint"></i>
+      <div class="seg" data-key="ttFps" aria-label="Cuadros por segundo del video" data-for="hover turn reveal paint">
         <button data-v="8">8</button><button data-v="9">9</button><button data-v="12">12</button><button data-v="15">15</button><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button>
       </div>
-      <div class="seg" data-key="vidFmt" aria-label="Formato del video" data-for="boil float hover turn reveal enter paint">
+      <div class="seg" data-key="vidFmt" aria-label="Formato del video" data-for="hover turn reveal paint">
         <button data-v="mp4" title="MP4 4K, a calidad máxima">MP4</button><button data-v="png" title="Secuencia de imágenes: cada cuadro como PNG, sin pérdida, en un .zip (pesa mucho más)">Secuencia PNG (.zip)</button>
       </div>
-      <button class="btn primary" id="video" data-for="boil float hover turn reveal enter paint" title="MP4 4K en loop, recortado al modelo, con el fondo (MP4 no tiene transparencia)">Exportar video</button>
+      <button class="btn primary" id="video" data-for="hover turn reveal paint" title="MP4 4K en loop, recortado al modelo, con el fondo (MP4 no tiene transparencia)">Exportar video</button>
     </div>
   </main>
 
@@ -966,12 +953,6 @@ const SLIDERS = {
   size: { label: 'Tamaño del píxel', min: 1, max: 24, step: .5, fmt: v => v + ' px', emph: true },
   threshold: { label: 'Umbral', min: 0, max: .9, step: .01, fmt: v => v ? Math.round(v * 100) + '%' : 'sin umbral' },
   contrast: { label: 'Contraste', min: .5, max: 12, step: .05, fmt: v => v.toFixed(2) },
-  fps: { label: 'Dibujos por segundo', min: 1, max: 60, step: 1, fmt: String, emph: true },
-  handJit: { label: 'Temblor', min: 0, max: 2, step: .05, fmt: v => v ? Math.round(v * 100) + '%' : 'sin temblor' },
-  boil: { label: 'Variación', min: .02, max: 1, step: .01, fmt: pct },
-  floatAmp: { label: 'Amplitud', min: 0, max: 40, step: .5, fmt: v => v + ' px', emph: true },
-  floatSpeed: { label: 'Velocidad', min: .02, max: 2, step: .01, fmt: v => v.toFixed(2) },
-  floatScale: { label: 'Escala', min: .2, max: 4, step: .05, fmt: v => '×' + v.toFixed(2) },
   hoverRadius: { label: 'Radio', min: 30, max: 500, step: 5, fmt: v => v + ' px', emph: true },
   hoverForce: { label: 'Fuerza', min: .1, max: 3, step: .01, fmt: pct },
   revOrg: { label: 'Orgánico', min: 0, max: 1, step: .01, fmt: pct, emph: true },
@@ -979,9 +960,6 @@ const SLIDERS = {
   paintRate: { label: 'Ritmo', min: 200, max: 30000, step: 100, fmt: v => v.toLocaleString('es') + '/s' },
   paintDur: { label: 'Vuelo', min: .1, max: 3, step: .05, fmt: v => v.toFixed(2).replace('.', ',') + ' s' },
   revHold: { label: 'Quieto al final', min: 0, max: .8, step: .01, fmt: pct },
-  entSpread: { label: 'Dispersión', min: 0, max: 1, step: .01, fmt: pct },
-  entStagger: { label: 'Escalonado', min: 0, max: 1, step: .01, fmt: pct },
-  entStay: { label: 'Formando el modelo', min: .1, max: .95, step: .01, fmt: pct },
   mzHeight: { label: 'Alturas', min: .5, max: 8, step: .1, fmt: v => '×' + v.toFixed(1).replace('.', ','), emph: true },
   bH: { label: 'Altura', min: 1, max: 20, step: .1, fmt: v => v.toFixed(1), emph: true },
   bW: { label: 'Ancho', min: .3, max: 3, step: .01, fmt: v => v.toFixed(2) },
@@ -1050,7 +1028,6 @@ function sync(fast) {
   $('#sl-count').hidden = gridOnly; $('#sl-size').hidden = false; if (typeof syncModeBar === 'function') syncModeBar();
   $('#sl-lineGap').hidden = $('#sl-lineFollow').hidden = $('#sl-lineDot').hidden = $('#lineAM-row').hidden = !S.lines;
   document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn'))); });
-  if (S.anim === 'enter') { $('#sl-revHold').hidden = S.entInf; $('#sl-entStay').hidden = !S.entInf; }
   if (!filming) $('#video').textContent = S.vidFmt === 'png' ? 'Exportar secuencia (.zip)' : 'Exportar video';
   $('#turn').setAttribute('aria-pressed', S.turn);
   document.querySelectorAll('[data-p]').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === preset && !modelName.includes('.')));
