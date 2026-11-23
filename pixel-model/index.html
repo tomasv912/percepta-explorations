@@ -284,9 +284,9 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         <h2>Fuente</h2>
         <div class="presets" id="presets" aria-label="Fuente"></div>
         <div id="relief-controls">
+          <button class="btn" id="relief-upload" title="Una imagen (JPG, PNG…): se convierte en un modelo 3D con su profundidad">Subir imagen</button>
           <div id="sl-rlDepth"></div>
           <div id="sl-rlCut"></div>
-          <button class="btn" id="relief-upload" title="Una imagen (JPG, PNG…): se convierte en un modelo 3D con su profundidad">Subir imagen</button>
           <p class="hint" id="relief-status" hidden></p>
         </div>
         <div id="block-controls">
@@ -709,7 +709,7 @@ function loadRelief() {
   const slow = setTimeout(() => reliefStatus('Calculando la profundidad de la imagen… (la primera vez descarga el modelo de profundidad)'), 400);
   reliefLoading = reliefImage().then(R => {
     clearTimeout(slow); reliefStatus('');
-    reliefLoading = null; if (preset !== 'relief' || modelName.includes('.')) return;
+    reliefLoading = null; if (preset !== 'relief') return;
     reliefSrc = R; const m = reliefMesh(R);
     if (!m.I.length) return toast('La imagen no tiene nada para levantar.');
     setModelTris(indexedTris(m.P, m.I), 'Imagen', m.col, m.alb); presetSeed = presetSig(); key = ''; sync();
@@ -741,7 +741,8 @@ function loadPreset() {
   if (loadingPreset) return;
   loadingPreset = skyMesh().then(base => {
     loadingPreset = null;
-    if (preset !== which || modelName.includes('.')) return loadPreset();
+    if (preset !== which) return loadPreset();
+    if (modelName.includes('.')) return; // a file was given meanwhile
     setModelTris(indexedTris(variant(base, S.seed, SKY_VAR), base.I), 'Rascacielos', base.col || null); presetSeed = presetSig(); key = ''; sync();
   }, () => { loadingPreset = null; toast('No se pudo cargar el modelo.'); });
 }
@@ -1128,11 +1129,12 @@ for (const [key, d] of Object.entries(SLIDERS)) {
   input.addEventListener('change', () => sync());
   input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
 }
-$('#presets').innerHTML = PRESETS.map(([k, n]) => `<button data-p="${k}">${n}</button>`).join('');
+// and, after a 3D file is given, the file itself (so Fuente shows it, and choosing Imagen or another is a change)
+$('#presets').innerHTML = PRESETS.map(([k, n]) => `<button data-p="${k}">${n}</button>`).join('') + '<button data-p="file" hidden>Modelo subido</button>';
 $('#presets').addEventListener('click', e => {
-  const b = e.target.closest('[data-p]'); if (!b) return;
+  const b = e.target.closest('[data-p]'); if (!b || b.dataset.p === 'file') return;
   // Imagen: the image half, if it has a picture already; otherwise pick one
-  preset = b.dataset.p; if (preset === 'relief') reliefSrc = null; loadPreset(); key = ''; sync();
+  preset = b.dataset.p; modelName = ''; if (preset === 'relief') reliefSrc = null; loadPreset(); key = ''; sync(); // a source chosen: no longer the file given before
 });
 const renderInks = () => { $('#inks').innerHTML = [...S.palette, ...(S.onlyPal ? [] : [INK, WHITE])].map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join(''); };
 renderInks();
@@ -1176,7 +1178,10 @@ function sync(fast) {
   document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn'))); });
   if (!filming) $('#video').textContent = S.vidFmt === 'png' ? 'Exportar secuencia (.zip)' : 'Exportar video';
   $('#turn').setAttribute('aria-pressed', S.turn);
-  document.querySelectorAll('[data-p]').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === preset && !modelName.includes('.')));
+  const fileB = $('[data-p="file"]'), isFile = modelName.includes('.');
+  if (fileB.hidden === isFile) fileB.hidden = !isFile;
+  if (isFile && fileB.textContent !== modelName) fileB.textContent = modelName;
+  document.querySelectorAll('[data-p]').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === 'file' ? isFile : b.dataset.p === preset && !isFile));
   $('#building-controls').hidden = preset !== 'building' || modelName.includes('.');
   $('#shape-controls').hidden = preset !== 'shapes' || modelName.includes('.');
   $('#block-controls').hidden = preset !== 'blocks' || modelName.includes('.');
