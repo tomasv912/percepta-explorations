@@ -1876,7 +1876,7 @@ PerceptaHandoff.on('image-file', f => openFile(f));
 // model half, makes a relief of them); and a picture given there, taken here without showing this half
 window.PixelImage = {
   hasImage: () => !!img,
-  relief: async () => { if (!img) return null; const me = img, id = imgId; await ensureDepth(); return { id, gw: me.gw, gh: me.gh, lum: me.lum, rgb: me.rgb, alpha: me.alpha, depth: me.depth, ar: me.ar }; },
+  relief: async () => { for (let i = 0; !img && i < 200; i++) await new Promise(r => setTimeout(r, 50)); if (!img) return null; const me = img, id = imgId; await ensureDepth(); return { id, gw: me.gw, gh: me.gh, lum: me.lum, rgb: me.rgb, alpha: me.alpha, depth: me.depth, ar: me.ar }; },
   load: file => new Promise((ok, no) => { const el = new Image(), url = URL.createObjectURL(file); el.onload = () => { URL.revokeObjectURL(url); loadImage(el); S.source = 'image'; sync(); ok(); }; el.onerror = () => { URL.revokeObjectURL(url); no(new Error('imagen')); }; el.src = url; }),
 };
 // The picture Pixel opens with (a building, from below), until another is given.
