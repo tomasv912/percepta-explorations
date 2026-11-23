@@ -360,7 +360,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         <div class="seg" data-key="colorSrc" aria-label="Color">
           <button data-v="ink">Un color</button><button data-v="pal" title="Los 3 colores de la paleta, más el negro o el blanco opuesto al fondo">Paleta</button><button data-v="orig" title="El color original del modelo (sus materiales), uno por partícula">Original</button>
         </div>
-        <div class="row" id="how-row" style="grid-template-columns:auto 1fr">
+        <div class="row gone" id="how-row" style="grid-template-columns:auto 1fr">
           <span>Comportamiento</span>
           <label class="swatch bg-pick"><select id="colorHow" aria-label="Comportamiento del color"><option value="tone">Por tono</option><option value="random">Al azar</option></select></label>
         </div>
@@ -427,7 +427,7 @@ const DEFAULTS = {
   count: 40000, size: 3, sizeMin: .6, sizeMax: 3, contrast: 1, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
-  colorMode: 'ink', colorSrc: 'ink', colorHow: 'tone', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
+  colorMode: 'ink', colorSrc: 'ink', colorHow: 'random', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
   rlDepth: .8, rlCut: .75, mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
@@ -1110,6 +1110,7 @@ let artKey = '';
 function sync(fast) {
   // the largest is the size everything spaces by and draws at (a pixel's share of it, sc, goes down to the smallest)
   S.size = S.sizeMax; if (S.sizeMin > S.sizeMax) S.sizeMin = S.sizeMax;
+  S.colorHow = 'random'; // Comportamiento: always Al azar (not offered)
   S.colorMode = S.colorSrc === 'pal' ? S.colorHow : S.colorSrc; // Color: its source, and for the palette its behaviour
   window.kfHook?.(); // keyframes: a change made with the playhead on a key rewrites that key; the diamonds follow
   for (const k of Object.keys(SLIDERS)) {
