@@ -286,6 +286,17 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
   <aside>
     <div class="controls">
       <section>
+        <h2>Presets</h2>
+        <div class="row" style="grid-template-columns:56px 1fr">
+          <span>Preset</span>
+          <label class="swatch bg-pick"><select id="preset-list" aria-label="Preset"></select></label>
+        </div>
+        <button class="btn" id="preset-save" title="Guarda los parámetros de ahora como un preset con nombre (con npm run dev, en presets.json del repo)">Guardar preset</button>
+        <button class="btn" id="preset-del" hidden title="Borra el preset elegido">Borrar preset</button>
+        <button class="btn" id="preset-dl" hidden title="Descarga presets.json con los presets del repo y los de este navegador, para sumarlo al repo">Descargar presets.json</button>
+      </section>
+
+      <section>
         <h2>Fuente</h2>
         <div class="presets" id="presets" aria-label="Fuente"></div>
         <div id="relief-controls">
@@ -2306,6 +2317,65 @@ function kfDiamonds() {
   $('#out-pos').textContent = `${Math.round(S.panX)}, ${Math.round(S.panY)}`;
 }
 window.kfHook = () => { if (kfAutoKey() && KF.open) kfDraw(); kfDiamonds(); };
+
+// ---------- Presets ----------
+// Saved settings, by name, for anyone working in the repository: they live in presets.json at its root (read by every
+// copy of Pixel). Run from the repo with `npm run dev` (scripts/dev.mjs), Guardar preset writes straight into that
+// file: commit it and everyone has the preset. Anywhere else (a published copy, another server) a preset is kept in
+// this browser, and Descargar presets.json gives the file with it, to put in the repo. A preset is the look: colour,
+// light, pixels, format, Imagen's settings…; never the camera (giro, inclinación, escala, posición) nor the model.
+const PRESET_SKIP = new Set(['yaw', 'pitch', 'zoom', 'panX', 'panY', 'colorMode', 'size', 'turn']);
+const PRESET_LS = 'pixel-presets';
+let presetsRepo = [], presetsLocal = [], presetServer = false, presetSel = '';
+const presetParams = () => { const o = {}; for (const k of Object.keys(DEFAULTS)) if (!PRESET_SKIP.has(k)) o[k] = structuredClone(S[k]); return o; };
+const presetAt = v => v.startsWith('r:') ? presetsRepo[+v.slice(2)] : v.startsWith('l:') ? presetsLocal[+v.slice(2)] : null;
+async function loadPresets() {
+  try { const r = await fetch('/api/presets', { cache: 'no-store' }); if (r.ok && /json/.test(r.headers.get('content-type') || '')) { presetsRepo = (await r.json()).presets || []; presetServer = true; } } catch {}
+  if (!presetServer) try { const r = await fetch('../presets.json', { cache: 'no-store' }); if (r.ok) presetsRepo = (await r.json()).presets || []; } catch {}
+  try { presetsLocal = JSON.parse(localStorage.getItem(PRESET_LS)) || []; } catch { presetsLocal = []; }
+  renderPresets();
+}
+function renderPresets() {
+  const sel = $('#preset-list');
+  sel.innerHTML = `<option value="">${presetsRepo.length + presetsLocal.length ? 'Elegí un preset' : 'Sin presets'}</option>`
+    + presetsRepo.map((p, i) => `<option value="r:${i}">${p.name.replace(/</g, '&lt;')}</option>`).join('')
+    + presetsLocal.map((p, i) => `<option value="l:${i}">${p.name.replace(/</g, '&lt;')} (este navegador)</option>`).join('');
+  sel.value = presetAt(presetSel) ? presetSel : '';
+  $('#preset-del').hidden = !sel.value || (sel.value.startsWith('r:') && !presetServer);
+  $('#preset-dl').hidden = presetServer || !presetsLocal.length;
+}
+const saveLocal = () => { try { localStorage.setItem(PRESET_LS, JSON.stringify(presetsLocal)); } catch {} };
+const saveRepo = () => fetch('/api/presets', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ presets: presetsRepo }) }).then(r => { if (!r.ok) throw new Error(r.status); });
+$('#preset-list').addEventListener('change', e => {
+  const p = presetAt(presetSel = e.target.value); renderPresets(); if (!p) return;
+  for (const [k, v] of Object.entries(p.params || {})) if (k in DEFAULTS && !PRESET_SKIP.has(k)) S[k] = structuredClone(v);
+  renderInks(); key = ''; sync(); toast(`Preset: ${p.name}`);
+});
+$('#preset-save').addEventListener('click', async () => {
+  const cur = presetAt(presetSel), name = prompt('Nombre del preset', cur?.name || '')?.trim(); if (!name) return;
+  const item = { name, tool: 'pixel', params: presetParams() };
+  if (presetServer) {
+    const i = presetsRepo.findIndex(p => p.name === name); if (i >= 0) presetsRepo[i] = item; else presetsRepo.push(item);
+    try { await saveRepo(); presetSel = 'r:' + presetsRepo.findIndex(p => p.name === name); toast(`"${name}" guardado en presets.json: hacé commit para compartirlo`); }
+    catch { toast('No se pudo escribir presets.json.'); }
+  } else {
+    const i = presetsLocal.findIndex(p => p.name === name); if (i >= 0) presetsLocal[i] = item; else presetsLocal.push(item);
+    saveLocal(); presetSel = 'l:' + presetsLocal.findIndex(p => p.name === name);
+    toast(`"${name}" guardado en este navegador. Para el repo: Descargar presets.json (o usá npm run dev)`);
+  }
+  renderPresets();
+});
+$('#preset-del').addEventListener('click', async () => {
+  const p = presetAt(presetSel); if (!p || !confirm(`¿Borrar el preset "${p.name}"?`)) return;
+  if (presetSel.startsWith('l:')) { presetsLocal.splice(+presetSel.slice(2), 1); saveLocal(); }
+  else { presetsRepo.splice(+presetSel.slice(2), 1); try { await saveRepo(); } catch { toast('No se pudo escribir presets.json.'); } }
+  presetSel = ''; renderPresets(); toast(`Preset "${p.name}" borrado`);
+});
+$('#preset-dl').addEventListener('click', () => {
+  const all = [...presetsRepo]; for (const p of presetsLocal) { const i = all.findIndex(q => q.name === p.name); if (i >= 0) all[i] = p; else all.push(p); }
+  download('presets.json', new Blob([JSON.stringify({ presets: all }, null, 2) + '\n'], { type: 'application/json' }));
+});
+loadPresets();
 
 // The model half of Pixel: what it shares with the image half (taken when coming from it), the model asked for, and a
 // 3D file given to it.
