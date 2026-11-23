@@ -360,7 +360,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
       <section>
         <h2>Color</h2>
         <div class="seg" data-key="colorSrc" aria-label="Color">
-          <button data-v="ink">Un color</button><button data-v="pal" title="Los colores de la paleta (el amarillo, solo en modo oscuro), más el negro o el blanco opuesto al fondo">Paleta</button><button data-v="orig" title="El color original del modelo (sus materiales), uno por partícula">Original</button>
+          <button data-v="ink">Un color</button><button data-v="pal" title="Los colores de la paleta, al azar (el amarillo, solo en modo oscuro); el negro y el blanco quedan para el fondo">Paleta</button><button data-v="orig" title="El color original del modelo (sus materiales), uno por partícula">Original</button>
         </div>
         <div class="row gone" id="how-row" style="grid-template-columns:auto 1fr">
           <span>Comportamiento</span>
@@ -378,7 +378,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
           <label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label><button class="btn icon bg-flip" id="bg-flip" hidden aria-label="Blanco o negro para el color del fondo"><i></i></button>
         </div>
         </div>
-        <label class="check" id="onlypal-row" title="Los píxeles usan solamente los colores de la paleta: nunca blanco ni negro (tampoco el color del fondo)"><input type="checkbox" data-check="onlyPal"> Solo la paleta (sin blanco ni negro)</label>
+        <label class="check gone" id="onlypal-row" title="Los píxeles usan solamente los colores de la paleta: nunca blanco ni negro (tampoco el color del fondo)"><input type="checkbox" data-check="onlyPal"> Solo la paleta (sin blanco ni negro)</label>
         <div class="gone"><label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label></div>
       </section>
 
@@ -973,7 +973,7 @@ const lum = h => { const n = parseInt(h.slice(1), 16); return .2126 * (n >> 16 &
 let toneMemo = { k: '', v: null };
 function toneList() {
   const k = S.palette.join() + S.onlyPal + S.bg + S.bgFlip;
-  if (toneMemo.k !== k) toneMemo = { k, v: [...(S.onlyPal ? usablePal(S) : palNow(S))].sort((a, b) => lum(b) - lum(a)).concat(S.onlyPal ? [] : [PerceptaBg.pick(S.bg, S.bgFlip)]) };
+  if (toneMemo.k !== k) toneMemo = { k, v: [...(S.onlyPal ? usablePal(S) : palNow(S))].sort((a, b) => lum(b) - lum(a)) };
   return toneMemo.v;
 }
 function colorOf(p) {
@@ -981,9 +981,9 @@ function colorOf(p) {
   // (Por tono: shaded by its light; Al azar: the colour as it is)
   if (S.colorMode === 'orig' && p.rgb !== undefined) { const k = S.colorHow === 'random' ? 1 : .45 + .55 * clamp(p.tone ?? 1), c = p.rgb;
     return '#' + (((c >> 16 & 255) * k) << 16 | ((c >> 8 & 255) * k) << 8 | (c & 255) * k | 1 << 24).toString(16).slice(1); }
-  // Paleta por tono: light to dark over the palette (by lightness) and, last, the background's opposite
+  // Paleta por tono: light to dark over the palette (by lightness); Al azar: any of its colours
   const P = S.onlyPal ? usablePal(S) : palNow(S), T = S.colorMode === 'tone' ? toneList() : null, c = T ? T[clamp(Math.floor((1 - p.tone) * T.length), 0, T.length - 1)]
-    : S.colorMode === 'random' ? (S.onlyPal ? P[Math.floor(p.pick * P.length)] : [...P, PerceptaBg.pick(S.bg, S.bgFlip)][Math.floor(p.pick * (P.length + 1))]) : S.ink; // Al azar: with the background's opposite too
+    : S.colorMode === 'random' ? (S.onlyPal ? P[Math.floor(p.pick * P.length)] : P[Math.floor(p.pick * P.length)]) : S.ink; // Al azar: the palette's colours only (black and white are for the background)
   return S.onlyPal ? palOnly(c, S) : onBg(c, S.bg);
 }
 // Pixels are drawn where they are now: home plus the animation's offset (p.dx, p.dy).
@@ -1157,6 +1157,7 @@ function sync(fast) {
   S.size = S.sizeMax; if (S.sizeMin > S.sizeMax) S.sizeMin = S.sizeMax;
   S.colorHow = 'random'; // Comportamiento: always Al azar (not offered)
   S.chaos = 0; S.blend = false; // Caos and Pasaje: not offered
+  S.onlyPal = false; // the palette never has black or white in it (they are for the background), so nothing to choose
   S.colorMode = S.colorSrc === 'pal' ? S.colorHow : S.colorSrc; // Color: its source, and for the palette its behaviour
   window.kfHook?.(); // keyframes: a change made with the playhead on a key rewrites that key; the diamonds follow
   for (const k of Object.keys(SLIDERS)) {
