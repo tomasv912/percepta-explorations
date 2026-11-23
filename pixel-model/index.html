@@ -754,17 +754,27 @@ function colAt(buf, x, y) {
   const ix = Math.min(buf.W - 1, Math.max(0, Math.floor((x - buf.box.x0) * buf.k))), iy = Math.min(buf.H - 1, Math.max(0, Math.floor((y - buf.box.y0) * buf.k))), t = buf.tid[iy * buf.W + ix];
   return t >= 0 ? modelCol[t] : undefined;
 }
+// The camera is its own: a model is centred and scaled to fit the first time it is made, and changing its settings
+// (Relieve, Cortar saltos, Building's height, Alturas…) keeps that same centre and scale, so the view never jumps or
+// zooms out. Another model (another source, another picture, another Forma, a file) is fitted afresh.
+let fitKey = '', fitAt = null;
+const fitKeyNow = () => preset === 'relief' ? 'relief:' + (reliefSrc?.id ?? '') : preset === 'shapes' ? 'shapes:' + S.shape : preset;
 function setModelTris(tris, name, col = null, alb = null) {
   modelCol = col; modelAlb = alb;
-  let cx = 0, cy = 0, cz = 0, n = 0;
-  for (let i = 0; i < tris.length; i += 18) for (let j = 0; j < 9; j += 3) { cx += tris[i + j]; cy += tris[i + j + 1]; cz += tris[i + j + 2]; n++; }
-  cx /= n; cy /= n; cz /= n;
-  let r = 0; for (let i = 0; i < tris.length; i += 18) for (let j = 0; j < 9; j += 3) r = Math.max(r, Math.hypot(tris[i + j] - cx, tris[i + j + 1] - cy, tris[i + j + 2] - cz));
+  const fk = fitKeyNow();
+  if (fk !== fitKey || !fitAt) {
+    let cx = 0, cy = 0, cz = 0, n = 0;
+    for (let i = 0; i < tris.length; i += 18) for (let j = 0; j < 9; j += 3) { cx += tris[i + j]; cy += tris[i + j + 1]; cz += tris[i + j + 2]; n++; }
+    cx /= n; cy /= n; cz /= n;
+    let r = 0; for (let i = 0; i < tris.length; i += 18) for (let j = 0; j < 9; j += 3) r = Math.max(r, Math.hypot(tris[i + j] - cx, tris[i + j + 1] - cy, tris[i + j + 2] - cz));
+    fitKey = fk; fitAt = [cx, cy, cz, r];
+  }
+  const [cx, cy, cz, r] = fitAt;
   for (let i = 0; i < tris.length; i += 18) for (let j = 0; j < 9; j += 3) { tris[i + j] = (tris[i + j] - cx) / r; tris[i + j + 1] = (tris[i + j + 1] - cy) / r; tris[i + j + 2] = (tris[i + j + 2] - cz) / r; }
   model = tris; modelName = name;
 }
 function setModel(pos, name) {
-  modelCol = pos.col || null; modelAlb = null;
+  modelCol = pos.col || null; modelAlb = null; fitKey = ''; // a file: fitted on its own (and whatever comes next, afresh)
   let cx = 0, cy = 0, cz = 0, n = pos.length / 3;
   for (let i = 0; i < pos.length; i += 3) { cx += pos[i]; cy += pos[i + 1]; cz += pos[i + 2]; }
   cx /= n; cy /= n; cz /= n;
