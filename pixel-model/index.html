@@ -1007,13 +1007,13 @@ for (const [key, d] of Object.entries(SLIDERS)) {
   input.addEventListener('change', () => sync());
   input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
 }
-// The same Fuente as the image half: an image or Olas, Refracción, Flor go there (drawn with depth); models turn here.
-const SOURCES_2D = [['2d:image', 'Imagen'], ['2d:waves', 'Olas'], ['2d:refract', 'Refracción'], ['2d:bloom', 'Flor']];
+// The same Fuente as the image half: Imagen goes there (drawn with its depth); the models turn here.
+const SOURCES_2D = [['2d:image', 'Imagen']];
 $('#presets').innerHTML = [...SOURCES_2D, ...PRESETS].map(([k, n]) => `<button data-p="${k}">${n}</button>`).join('');
 $('#presets').addEventListener('click', e => {
   const b = e.target.closest('[data-p]'); if (!b) return;
-  if (b.dataset.p === '2d:image') return $('#file').click();
-  if (b.dataset.p.startsWith('2d:')) return PerceptaShared.go(S, '', 'source=' + b.dataset.p.slice(3));
+  // Imagen: the image half, if it has a picture already; otherwise pick one
+  if (b.dataset.p === '2d:image') return window.PERCEPTA_EMBED && window.parent.PixelShell.hasImage() ? PerceptaShared.go(S, 'pixel-image/') : $('#file').click();
   preset = b.dataset.p; loadPreset(); key = ''; sync();
 });
 const renderInks = () => { $('#inks').innerHTML = [...S.palette, ...(S.onlyPal ? [] : [INK, WHITE])].map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join(''); };
@@ -1497,7 +1497,7 @@ frame.addEventListener('pointerleave', () => { hover = null; animate(); });
 async function openFile(file) {
   if (!file) return;
   // an image goes to the image half, drawn with its depth
-  if (file.type?.startsWith('image/')) { toast('Abriendo la imagen…'); return PerceptaHandoff.send('', 'image-file', file); }
+  if (file.type?.startsWith('image/')) return PerceptaHandoff.send('pixel-image/', 'image-file', file);
   try {
     const name = file.name.toLowerCase();
     const pos = name.endsWith('.obj') ? Stipple3D.parseOBJ(await file.text()) : name.endsWith('.fbx') ? await Stipple3D.parseFBX(await file.arrayBuffer()) : Stipple3D.parseGLB(await file.arrayBuffer());
@@ -1780,7 +1780,7 @@ $('#to-waves').addEventListener('click', async () => {
   }
   ctx.putImageData(im, 0, 0);
   const blob = await new Promise(r => c.toBlob(r, 'image/png'));
-  PerceptaHandoff.send('', 'model-image', { name: modelName, blob, depth: { w, h, data: D }, colored: !!modelCol && S.colorMode === 'orig' });
+  PerceptaHandoff.send('pixel-image/', 'model-image', { name: modelName, blob, depth: { w, h, data: D }, colored: !!modelCol && S.colorMode === 'orig' });
 });
 
 
@@ -2022,10 +2022,12 @@ function kfDiamonds() {
 }
 window.kfHook = () => { if (kfAutoKey() && KF.open) kfDraw(); kfDiamonds(); };
 
-// Arriving from the image half: what the two share, the model asked for, a file it was given.
-PerceptaShared.take(S, { one: 'ink', pal: 'pal', orig: 'orig' });
-{ const q = new URLSearchParams(location.search).get('preset'); if (q && PRESETS.some(p => p[0] === q)) preset = q; }
-if (PerceptaHandoff.pending() === 'model-file') PerceptaHandoff.take('model-file').then(f => { if (f) openFile(f); history.replaceState(null, '', location.pathname); });
+// The model half of Pixel: what it shares with the image half (taken when coming from it), the model asked for, and a
+// 3D file given to it.
+PerceptaShared.init({ S, names: { one: 'ink', pal: 'pal', orig: 'orig' },
+  apply: q => { const p = q.get('preset'); if (p && PRESETS.some(x => x[0] === p) && (p !== preset || modelName.includes('.'))) { preset = p; modelName = ''; } },
+  after: () => { if (!modelName.includes('.')) loadPreset(); key = ''; sync(); } });
+PerceptaHandoff.on('model-file', f => openFile(f));
 loadPreset();
 sync();
 </script>

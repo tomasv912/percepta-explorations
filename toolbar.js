@@ -3,9 +3,9 @@
 // Home only. The Percepta mark links to Home.
 (() => {
   // Pixel is one tool with two ways of working, chosen by what goes in: an image (or Olas, Refracción, Flor) at the
-  // root, a 3D model at pixel-model/. Both are the same tab.
+  // pixel-image/, a 3D model at pixel-model/, both held by the page at the root. All the same tab.
   const EXPLORATIONS = [
-    { name: 'Pixel', path: '', also: ['pixel-model/'] },
+    { name: 'Pixel', path: '', also: ['pixel-model/', 'pixel-image/'] },
   ];
   // Tools that belong to no direction: only on Home, not in the bar.
   const GENERAL = [{ name: 'Photo Preset', path: 'photo-preset/' }];
@@ -47,7 +47,9 @@
     return `<a href="${link(e.path)}"${current}>${e.name}</a>`;
   }).join('');
   nav.innerHTML = `<a class="tb-brand" href="${link('home/')}"${isHere('home/') ? ' aria-current="page"' : ''}>Percepta</a><div class="tb-tabs">${links}${crumb}</div>`;
-  script.replaceWith(nav);
+  // Inside Pixel (one half of it, in its frame) the page holding both has the bar
+  window.PERCEPTA_EMBED = window !== window.top && !!window.parent.PixelShell;
+  if (window.PERCEPTA_EMBED) script.remove(); else script.replaceWith(nav);
   window.PERCEPTA_EXPLORATIONS = EXPLORATIONS; window.PERCEPTA_GENERAL = GENERAL;
 
   // The palette every tool with colour uses (more can be listed to offer a choice). White and black stay as they are (#FAFAFA, #272727): they are the two
@@ -278,11 +280,21 @@
   window.PerceptaHandoff = (() => {
     const db = () => new Promise((res, rej) => { const q = indexedDB.open('percepta-handoff', 1); q.onupgradeneeded = () => q.result.createObjectStore('h'); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
     const tx = async (mode, fn) => { const d = await db(); return new Promise((res, rej) => { const t = d.transaction('h', mode), r = fn(t.objectStore('h')); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); }); };
-    return {
-      async send(path, key, value) { await tx('readwrite', s => s.put(value, key)); location.href = new URL(path + '?from=' + encodeURIComponent(key), root).href; },
+    const handlers = {};
+    const H = {
+      // send: keep the value and go to path (inside Pixel: the other half, shown at once, no page load)
+      async send(path, key, value) {
+        await tx('readwrite', s => s.put(value, key));
+        if (window.PERCEPTA_EMBED) return window.parent.PixelShell.deliver(path, key, window.PerceptaShared?.mine());
+        location.href = new URL(path + '?from=' + encodeURIComponent(key), root).href;
+      },
       async take(key) { const v = await tx('readonly', s => s.get(key)); await tx('readwrite', s => s.delete(key)); return v; },
       pending: () => new URLSearchParams(location.search).get('from'),
+      // on: what a page does with a value sent to it, now (if it came with the page) or whenever one arrives
+      on(key, fn) { handlers[key] = fn; if (H.pending() === key) H.take(key).then(v => { if (v) fn(v); history.replaceState(null, '', location.pathname); }); },
+      deliver(key) { return H.take(key).then(v => { if (v && handlers[key]) handlers[key](v); }); },
     };
+    return H;
   })();
   // Pixel's two halves (image, model) share what they have in common when you go from one to the other: the colour
   // (palette, source, behaviour, only the palette), the background, Caos and Pasaje, the outline. go(path, query)
@@ -291,20 +303,28 @@
     const KEY = 'percepta-shared', keys = ['palette', 'onlyPal', 'bg', 'bgFlip', 'colorHow', 'chaos', 'blend', 'blendA', 'blendB', 'stroke', 'strokeW', 'aspect', 'orient'];
     // the two halves name the colour sources differently
     const toCommon = { single: 'one', ink: 'one', pal: 'pal', image: 'orig', orig: 'orig' };
+    let page = null; // { S, names, apply(query), after() }: this half
+    const pack = S => { const o = {}; for (const k of keys) if (k in S) o[k] = structuredClone(S[k]); if (S.colorSrc) o.colorSrc = toCommon[S.colorSrc] || 'one'; if (S.ink) o.ink = S.ink; return o; };
+    const put = (o, q) => {
+      if (!page) return; const { S, names } = page;
+      if (o) { for (const k of keys) if (k in o && k in S) S[k] = structuredClone(o[k]); if (o.colorSrc && names[o.colorSrc]) S.colorSrc = names[o.colorSrc]; if (o.ink && 'ink' in S) S.ink = o.ink; }
+      page.apply?.(new URLSearchParams(q || ''));
+    };
     return {
+      // a half says what it is; anything carried over to it (a page load from the other half) is put in
+      init(p) {
+        page = p; let o = null; try { o = JSON.parse(sessionStorage.getItem(KEY)); sessionStorage.removeItem(KEY); } catch {}
+        put(o, location.search.slice(1));
+      },
+      // go to the other half (path), with this one's shared settings and a query (the source, the preset)
       go(S, path, query = '') {
-        const o = {}; for (const k of keys) if (k in S) o[k] = S[k];
-        if (S.colorSrc) o.colorSrc = toCommon[S.colorSrc] || 'one'; if (S.ink) o.ink = S.ink;
-        try { sessionStorage.setItem(KEY, JSON.stringify(o)); } catch {}
+        if (window.PERCEPTA_EMBED) return window.parent.PixelShell.go(pack(S), path, query);
+        try { sessionStorage.setItem(KEY, JSON.stringify(pack(S))); } catch {}
         location.href = new URL(path + (query ? '?' + query : ''), root).href;
       },
-      take(S, srcNames) {
-        let o = null; try { o = JSON.parse(sessionStorage.getItem(KEY)); sessionStorage.removeItem(KEY); } catch {}
-        if (!o) return;
-        for (const k of keys) if (k in o && k in S) S[k] = o[k];
-        if (o.colorSrc && srcNames[o.colorSrc]) S.colorSrc = srcNames[o.colorSrc];
-        if (o.ink && 'ink' in S) S.ink = o.ink;
-      },
+      // inside Pixel: the other half hands its settings and query over, this one takes them and redraws
+      receive(o, q) { put(o, q); page?.after?.(); },
+      mine: () => page ? pack(page.S) : null,
     };
   })();
 
@@ -381,7 +401,7 @@
     const DK = window.DialKit, aside = document.querySelector('aside'); if (!DK || !aside) return;
     const host = aside.querySelector('.controls') || aside, mount = document.createElement('div'); mount.className = 'pdk'; host.prepend(mount);
     DK.createDialRoot({ mode: 'inline', target: mount, theme: 'system' });
-    const shown = el => !el.closest('[hidden]');
+    const shown = el => !el.closest('[hidden], .gone');
     const clean = t => (t || '').replace(/\s+/g, ' ').replace(/[.]/g, '\u2024').trim(); // a dot would split the dial's path: a look-alike
     const labelOf = el => clean(el.closest('.slider, label, .row')?.querySelector('label, span')?.textContent || el.getAttribute('aria-label') || el.title || el.id);
     let links = [], kit = null, sig = '';
