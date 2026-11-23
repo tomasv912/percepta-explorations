@@ -6,11 +6,11 @@
     { name: 'Pixel Waves', path: '' },
     { name: 'Pixel Model', path: 'pixel-model/' },
     { name: 'Pixel Depth', path: 'pixel-depth/' },
-    { name: 'Pixel Trail', path: 'pixel-trail/' },
-    { name: 'Pixel Motion', path: 'pixel-motion/' },
-    { name: 'Pixel Stipple', path: 'pixel-stipple/' },
     {
       name: 'Descartes', path: 'descartes/', children: [
+        { name: 'Pixel Trail', path: 'pixel-trail/' },
+        { name: 'Pixel Motion', path: 'pixel-motion/' },
+        { name: 'Pixel Stipple', path: 'pixel-stipple/' },
         { name: 'Pixel Rise', path: 'pixel-rise/' },
         { name: 'Cluster', path: 'cluster/' },
         { name: 'Cube Dispersion', path: 'cube-dispersion/' },
