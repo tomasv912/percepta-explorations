@@ -192,6 +192,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 .kf-menu button kbd { margin-left: auto; font: 11px var(--mono); color: var(--text-3); }
 .kf-menu button[aria-checked="true"] { background: #E4DEFC; color: #272727; }
 .kf-menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 4px; }
+.gone { display: none !important; } /* taken out of the tool (still read by the code, at its fixed value) */
 </style>
 </head>
 <body>
@@ -203,7 +204,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Un modelo 3D dibujado con píxeles"></canvas></div>
     <div class="drop" id="drop" hidden>Soltá el modelo (.obj, .fbx, .glb, .gltf)</div>
     <div class="hud" id="stats">—</div>
-    <div class="crop-hud" id="crop-hud"><button id="crop-tool" aria-pressed="false" title="Recortar (C): arrastrá un recuadro sobre el modelo, o clic para acercar ×2. Las flechas lo desplazan">Recortar</button><b id="crop-label" hidden>Recorte</b><button id="crop-back" hidden title="Vuelve al recorte anterior">Vista anterior</button><button id="crop-clear" hidden title="Muestra el cuadro entero">Quitar recorte</button></div>
+    <div class="crop-hud gone" id="crop-hud"><button id="crop-tool" aria-pressed="false" title="Recortar (C): arrastrá un recuadro sobre el modelo, o clic para acercar ×2. Las flechas lo desplazan">Recortar</button><b id="crop-label" hidden>Recorte</b><button id="crop-back" hidden title="Vuelve al recorte anterior">Vista anterior</button><button id="crop-clear" hidden title="Muestra el cuadro entero">Quitar recorte</button></div>
     <div class="send" role="group" aria-label="Enviar a otra tool"><button class="btn primary" id="to-waves" title="Renderiza la vista actual (luz, sombras y profundidad) y la abre como imagen, con su profundidad">Convertir en imagen</button></div>
     <button class="kf-tab" id="kf-tab" title="Línea de tiempo con keyframes de rotación, posición y zoom (I inserta un keyframe)"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 7h12" stroke="currentColor" stroke-width="1.2"/><rect x="3.2" y="4.7" width="4.6" height="4.6" transform="rotate(45 5.5 7)" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/></svg>Timeline <b id="kf-count" hidden></b></button>
     <div class="kf" id="kf" hidden role="region" aria-label="Línea de tiempo de keyframes">
@@ -332,7 +333,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         <div id="sl-lineGap"></div>
         <div id="sl-lineDot"></div>
         <div id="sl-lineFollow"></div>
-        <label class="check" id="lineAM-row" title="Los píxeles quedan parejos sobre la línea y se achican con la luz hasta desaparecer"><input type="checkbox" data-check="lineAM"> Modular el tamaño con la luz</label>
+        <div class="gone"><label class="check" id="lineAM-row" title="Los píxeles quedan parejos sobre la línea y se achican con la luz hasta desaparecer"><input type="checkbox" data-check="lineAM"> Modular el tamaño con la luz</label></div>
         <div class="row">
           <span>Semilla</span>
           <input class="text" id="seed" inputmode="numeric" aria-label="Semilla">
@@ -351,8 +352,8 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
           <span>Comportamiento</span>
           <label class="swatch bg-pick"><select id="colorHow" aria-label="Comportamiento del color"><option value="tone">Por tono</option><option value="random">Al azar</option></select></label>
         </div>
-        <label class="check" title="Cada partícula dibujada con su contorno en vez de rellena; la línea queda adentro, así no cambia el tamaño"><input type="checkbox" data-check="stroke"> Contorno (sin relleno)</label>
-        <div id="sl-strokeW"></div>
+        <div class="gone"><label class="check" title="Cada partícula dibujada con su contorno en vez de rellena; la línea queda adentro, así no cambia el tamaño"><input type="checkbox" data-check="stroke"> Contorno (sin relleno)</label></div>
+        <div class="gone"><div id="sl-strokeW"></div></div>
         <div id="palsets"></div>
         <div class="levels" id="inks" aria-label="Color"></div>
         <div class="row" style="grid-template-columns:56px 1fr auto">
@@ -360,7 +361,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
           <label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label><button class="btn icon bg-flip" id="bg-flip" hidden aria-label="Blanco o negro para el color del fondo"><i></i></button>
         </div>
         <label class="check" id="onlypal-row" title="Los cubos usan solamente los 3 colores de la paleta: nunca blanco ni negro (tampoco el color del fondo)"><input type="checkbox" data-check="onlyPal"> Solo los 3 colores (sin blanco ni negro)</label>
-        <label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label>
+        <div class="gone"><label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label></div>
       </section>
 
       <section>
@@ -378,6 +379,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         <button data-v="1">×1</button><button data-v="2">×2</button><button data-v="4">×4</button>
       </div>
       <button class="btn primary big" id="png">Exportar PNG</button>
+      <button class="btn big" id="jpg">Exportar JPG</button>
       <button class="btn big" id="svg">Exportar SVG</button>
     </footer>
   </aside>
@@ -1107,7 +1109,6 @@ $('#crop-back').addEventListener('click', () => { crop = cropStack.pop() ?? null
 $('#crop-clear').addEventListener('click', () => { if (crop) setCrop(null); });
 addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input, textarea, select')) return;
-  if (e.key.toLowerCase() === 'c') { cropMode = !cropMode; cropUI(); return; }
   if (e.key === 'Escape' && cropMode) { cropMode = false; cropUI(); return; }
   const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
   if (!crop || !d) return;
@@ -1544,15 +1545,26 @@ function exportBox() {
 $('#png').addEventListener('click', async () => {
   const eb = exportBox(); if (!eb) return toast('No hay píxeles en el recorte.');
   const b = eb.b, k = expRes() * eb.z, W = (b.x1 - b.x0) * k, H = (b.y1 - b.y0) * k, suffix = S.expScale === '1' ? '' : `@${S.expScale}x`;
-  const paint = (ctx, y) => { ctx.setTransform(k, 0, 0, k, 0, -y); ctx.save(); ctx.beginPath(); ctx.rect(0, 0, b.x1 - b.x0, b.y1 - b.y0); ctx.clip(); if (S.bgExport) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, b.x1 - b.x0, b.y1 - b.y0); } draw(ctx, exportList(), b.x0, b.y0, k); ctx.restore(); };
+  const withBg = false, paint = (ctx, y) => { ctx.setTransform(k, 0, 0, k, 0, -y); ctx.save(); ctx.beginPath(); ctx.rect(0, 0, b.x1 - b.x0, b.y1 - b.y0); ctx.clip(); if (S.bgExport || withBg) { ctx.fillStyle = S.bg; ctx.fillRect(0, 0, b.x1 - b.x0, b.y1 - b.y0); } draw(ctx, exportList(), b.x0, b.y0, k); ctx.restore(); };
   toast(`Generando PNG ${W} × ${H}…`);
   try {
     let blob;
     if (typeof CompressionStream === 'function') blob = await stripPNG(W, H, paint);
     else { const c = document.createElement('canvas'); c.width = W; c.height = H; paint(c.getContext('2d'), 0); blob = await new Promise(r => c.toBlob(r, 'image/png')); }
     if (!blob) throw new Error('png');
-    download(`pixel-model-${S.seed}${suffix}.png`, blob);
+    download(`pixel-${S.seed}${suffix}.png`, blob);
   } catch (err) { toast('No se pudo generar el PNG.'); }
+});
+// PNG: the pixels alone (transparent around); JPG: on the background
+$('#jpg').addEventListener('click', async () => {
+  const eb = exportBox(); if (!eb) return toast('No hay píxeles en el recorte.');
+  const b = eb.b, k = expRes() * eb.z, W = Math.round((b.x1 - b.x0) * k), H = Math.round((b.y1 - b.y0) * k), suffix = S.expScale === '1' ? '' : `@${S.expScale}x`;
+  if (W * H > 2.6e8) return toast('Es muy grande para un JPG: probá ×1 o ×2.');
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d'); ctx.fillStyle = S.bg; ctx.fillRect(0, 0, W, H);
+  ctx.setTransform(k, 0, 0, k, 0, 0); draw(ctx, exportList(), b.x0, b.y0, k);
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', .95));
+  blob ? download(`pixel-${S.seed}${suffix}.jpg`, blob) : toast('No se pudo generar el JPG.');
 });
 $('#svg').addEventListener('click', () => {
   const eb = exportBox(); if (!eb) return toast('No hay píxeles en el recorte.');
@@ -1569,7 +1581,7 @@ $('#svg').addEventListener('click', () => {
   }
   for (const [c, d] of groups) out.push(c.startsWith('line|') ? `<path ${PerceptaStroke.attrs(c.slice(5), S.strokeW * k)} d="${d}"/>` : `<path fill="${c}" d="${d}"/>`);
   out.push('</svg>');
-  download(`pixel-model-${S.seed}${S.expScale === '1' ? '' : `@${S.expScale}x`}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));
+  download(`pixel-${S.seed}${S.expScale === '1' ? '' : `@${S.expScale}x`}.svg`, new Blob([out.join('')], { type: 'image/svg+xml' }));
 });
 
 // A .zip of files as they are (no compression), for the PNG sequence.
