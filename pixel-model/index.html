@@ -194,7 +194,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 .kf-menu button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 7px 10px; border: 0; border-radius: 7px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .kf-menu button:hover, .kf-menu button:focus-visible { background: var(--fill); outline: none; }
 .kf-menu button kbd { margin-left: auto; font: 11px var(--mono); color: var(--text-3); }
-.kf-menu button[aria-checked="true"] { background: #E4DEFC; color: #272727; }
+.kf-menu button[aria-checked="true"] { background: #E4DEFC; color: #111111; }
 .kf-menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 4px; }
 .gone, .hud { display: none !important; } /* .hud: the pixel count over the picture, not shown */ /* taken out of the tool (still read by the code, at its fixed value) */
 </style>
@@ -360,7 +360,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
       <section>
         <h2>Color</h2>
         <div class="seg" data-key="colorSrc" aria-label="Color">
-          <button data-v="ink">Un color</button><button data-v="pal" title="Los 3 colores de la paleta, más el negro o el blanco opuesto al fondo">Paleta</button><button data-v="orig" title="El color original del modelo (sus materiales), uno por partícula">Original</button>
+          <button data-v="ink">Un color</button><button data-v="pal" title="Los colores de la paleta (el amarillo, solo en modo oscuro), más el negro o el blanco opuesto al fondo">Paleta</button><button data-v="orig" title="El color original del modelo (sus materiales), uno por partícula">Original</button>
         </div>
         <div class="row gone" id="how-row" style="grid-template-columns:auto 1fr">
           <span>Comportamiento</span>
@@ -370,6 +370,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         <div class="gone"><div id="sl-strokeW"></div></div>
         <div id="palsets" class="gone"></div>
         <div id="sl-bloom"></div>
+        <label class="check" title="Solo brillan los píxeles amarillos, blancos y lavanda"><input type="checkbox" data-check="bloomSel"> Bloom solo en amarillo, blanco y lavanda</label>
         <div class="levels" id="inks" aria-label="Color"></div>
         <div class="gone">
         <div class="row" style="grid-template-columns:56px 1fr auto">
@@ -377,7 +378,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
           <label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label><button class="btn icon bg-flip" id="bg-flip" hidden aria-label="Blanco o negro para el color del fondo"><i></i></button>
         </div>
         </div>
-        <label class="check" id="onlypal-row" title="Los cubos usan solamente los 3 colores de la paleta: nunca blanco ni negro (tampoco el color del fondo)"><input type="checkbox" data-check="onlyPal"> Solo los 3 colores (sin blanco ni negro)</label>
+        <label class="check" id="onlypal-row" title="Los píxeles usan solamente los colores de la paleta: nunca blanco ni negro (tampoco el color del fondo)"><input type="checkbox" data-check="onlyPal"> Solo la paleta (sin blanco ni negro)</label>
         <div class="gone"><label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label></div>
       </section>
 
@@ -409,7 +410,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 // (stipple3d.js), then stippled — more pixels in the shade and on edges, where one part passes over another.
 // Drag the model to turn it.
 const BACKGROUNDS = window.PERCEPTA_BACKGROUNDS;
-const WHITE = '#FAFAFA', INK = '#272727';
+const WHITE = '#FAFAFA', INK = '#111111';
 const onBg = (c, bg) => PerceptaBg.swap(c, bg, S.bgFlip);
 // The artboard: Formato's proportion, width to height, turned on its side in Vertical (as in Pixel Waves), its long
 // side 1600.
@@ -430,7 +431,7 @@ const DEFAULTS = {
   count: 40000, size: 3, sizeMin: .6, sizeMax: 3, contrast: 1, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
-  colorMode: 'random', colorSrc: 'pal', colorHow: 'random', bloom: 0, ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
+  colorMode: 'random', colorSrc: 'pal', colorHow: 'random', bloom: 0, bloomSel: false, ink: '#111111', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
   rlDepth: .8, rlCut: .75, mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
@@ -955,15 +956,18 @@ function stipple(n, r, sc = scene) {
   }
   return out;
 }
-// Solo los 3 colores: the palette less any colour that is the background, never black or white. A colour that would
+// Solo la paleta: the palette less any colour that is the background, never black or white. A colour that would
 // disappear on the background becomes another palette colour, chosen by k.
-const usablePal = st => { const P = st.palette.filter(c => c.toLowerCase() !== st.bg.toLowerCase()); return P.length ? P : st.palette; };
+// The palette in use: all of it on the dark background; on a light one, without the yellow (it never shows there).
+const YELLOW = '#f5b921';
+const palNow = st => lum(st.bg) < 128 ? st.palette : st.palette.filter(c => c.toLowerCase() !== YELLOW);
+const usablePal = st => { const P = palNow(st).filter(c => c.toLowerCase() !== st.bg.toLowerCase()); return P.length ? P : palNow(st); };
 const palOnly = (c, st, k = 0) => { const U = usablePal(st); return U.some(u => u.toLowerCase() === c.toLowerCase()) ? c : U[k % U.length]; };
 const lum = h => { const n = parseInt(h.slice(1), 16); return .2126 * (n >> 16 & 255) + .7152 * (n >> 8 & 255) + .0722 * (n & 255); };
 let toneMemo = { k: '', v: null };
 function toneList() {
   const k = S.palette.join() + S.onlyPal + S.bg + S.bgFlip;
-  if (toneMemo.k !== k) toneMemo = { k, v: [...(S.onlyPal ? usablePal(S) : S.palette)].sort((a, b) => lum(b) - lum(a)).concat(S.onlyPal ? [] : [PerceptaBg.pick(S.bg, S.bgFlip)]) };
+  if (toneMemo.k !== k) toneMemo = { k, v: [...(S.onlyPal ? usablePal(S) : palNow(S))].sort((a, b) => lum(b) - lum(a)).concat(S.onlyPal ? [] : [PerceptaBg.pick(S.bg, S.bgFlip)]) };
   return toneMemo.v;
 }
 function colorOf(p) {
@@ -972,7 +976,7 @@ function colorOf(p) {
   if (S.colorMode === 'orig' && p.rgb !== undefined) { const k = S.colorHow === 'random' ? 1 : .45 + .55 * clamp(p.tone ?? 1), c = p.rgb;
     return '#' + (((c >> 16 & 255) * k) << 16 | ((c >> 8 & 255) * k) << 8 | (c & 255) * k | 1 << 24).toString(16).slice(1); }
   // Paleta por tono: light to dark over the palette (by lightness) and, last, the background's opposite
-  const P = S.onlyPal ? usablePal(S) : S.palette, T = S.colorMode === 'tone' ? toneList() : null, c = T ? T[clamp(Math.floor((1 - p.tone) * T.length), 0, T.length - 1)]
+  const P = S.onlyPal ? usablePal(S) : palNow(S), T = S.colorMode === 'tone' ? toneList() : null, c = T ? T[clamp(Math.floor((1 - p.tone) * T.length), 0, T.length - 1)]
     : S.colorMode === 'random' ? (S.onlyPal ? P[Math.floor(p.pick * P.length)] : [...P, PerceptaBg.pick(S.bg, S.bgFlip)][Math.floor(p.pick * (P.length + 1))]) : S.ink; // Al azar: with the background's opposite too
   return S.onlyPal ? palOnly(c, S) : onBg(c, S.bg);
 }
@@ -1028,11 +1032,14 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
 // three of the softest are laid back, stretched, under the sharp pixels: added light on a dark background, a soft
 // haze of their colour on a light one. The same in the view and in every export.
 let bloomL = null, bloomLv = [];
+const GLOW = new Set(['#f5b921', '#fafafa', '#e3dcfd']); // amarillo, blanco, lavanda
 function drawB(ctx, list, ox = 0, oy = 0, q = RES) {
   if (!(S.bloom > 0)) return draw(ctx, list, ox, oy, q);
   const T = ctx.getTransform(), W = ctx.canvas.width, H = ctx.canvas.height, sc = Math.hypot(T.a, T.b);
   const L = bloomL ||= document.createElement('canvas'); if (L.width !== W || L.height !== H) { L.width = W; L.height = H; }
-  const lx = L.getContext('2d'); lx.setTransform(1, 0, 0, 1, 0, 0); lx.clearRect(0, 0, W, H); lx.setTransform(T); draw(lx, list, ox, oy, q);
+  // Solo en amarillo, blanco y lavanda: only those pixels glow (the layer holds them alone; the rest are drawn plain)
+  const only = S.bloomSel ? list.filter(p => GLOW.has(colorOf(p).toLowerCase())) : list;
+  const lx = L.getContext('2d'); lx.setTransform(1, 0, 0, 1, 0, 0); lx.clearRect(0, 0, W, H); lx.setTransform(T); draw(lx, only, ox, oy, q);
   // the halves: level i is 2^(i+1) times smaller
   let src = L, w = W, h = H; const lv = [];
   for (let i = 0; i < 7 && w > 8 && h > 8; i++) {
@@ -1047,7 +1054,8 @@ function drawB(ctx, list, ox = 0, oy = 0, q = RES) {
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   ctx.globalCompositeOperation = dark ? 'lighter' : 'source-over';
   for (const [r, a] of [[4, .8], [12, .65], [32, .5]]) { ctx.globalAlpha = Math.min(1, a * S.bloom * (dark ? 1.6 : 1.1)); ctx.drawImage(lv[at(r)], 0, 0, W, H); }
-  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.drawImage(L, 0, 0);
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  if (S.bloomSel) { ctx.restore(); ctx.save(); draw(ctx, list, ox, oy, q); ctx.setTransform(1, 0, 0, 1, 0, 0); } else ctx.drawImage(L, 0, 0);
   if (dark) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(1, .45 * S.bloom); ctx.drawImage(lv[at(3)], 0, 0, W, H); }
   ctx.restore();
 }
@@ -1126,7 +1134,7 @@ const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
 $('#colorHow').addEventListener('change', e => { S.colorHow = e.target.value; sync(); });
 const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => S.palette, () => S.bg, v => { S.bg = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
-const syncTheme = PerceptaTheme(stage, () => S.bg.toLowerCase() === '#272727', d => { S.bg = d ? '#272727' : '#FAFAFA'; S.bgFlip = false; sync(); });
+const syncTheme = PerceptaTheme(stage, () => S.bg.toLowerCase() === '#111111', d => { S.bg = d ? '#111111' : '#FAFAFA'; S.bgFlip = false; sync(); });
 document.querySelectorAll('.seg[data-key]').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = b.dataset.v; sync(); } }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; if (inp.dataset.check === 'onlyPal') renderInks(); sync(); }));
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });

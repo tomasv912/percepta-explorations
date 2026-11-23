@@ -52,14 +52,15 @@
   script.remove(); // no bar on top (the nav is built but not shown)
   window.PERCEPTA_EXPLORATIONS = EXPLORATIONS; window.PERCEPTA_GENERAL = GENERAL;
 
-  // The palette every tool with colour uses (more can be listed to offer a choice). White and black stay as they are (#FAFAFA, #272727): they are the two
+  // The palette every tool with colour uses (more can be listed to offer a choice). White and black stay as they are (#FAFAFA, #111111): they are the two
   // backgrounds, and the ink; a palette only swaps the colours. palettePicker(host, get, set) fills host with one
   // button per palette, pressed when get() matches, set(colors) on click; returns a function that re-marks it.
   const PALETTES = [
-    { name: 'Percepta', colors: ['#E4DEFC', '#A8A5EC', '#A0C2FF'] },
+    // violeta, lila, celeste, amarillo (only on the dark background: the tools leave it out on a light one), verde, lavanda
+    { name: 'Percepta', colors: ['#7B52D4', '#B386FF', '#84BFFF', '#F5B921', '#6BCDAE', '#E3DCFD'] },
   ];
   window.PERCEPTA_PALETTES = PALETTES;
-  window.PERCEPTA_BACKGROUNDS = [['#FAFAFA', 'Blanco'], ['#272727', 'Negro']];
+  window.PERCEPTA_BACKGROUNDS = [['#FAFAFA', 'Blanco'], ['#111111', 'Negro']];
   style.textContent += `
 .pal-sets { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .pal-sets button { display: flex; height: 22px; padding: 0; border: 0; border-radius: 5px; overflow: hidden; cursor: pointer; box-shadow: 0 0 0 1px var(--line); background: none; }
@@ -70,7 +71,7 @@
   // Backgrounds: white, black or any colour of the palette in use. A colour that is the background's is never used
   // in the picture: on white it turns black, on black white, and on a palette colour whichever of the two stands
   // out more from it (contrast ratio), unless flipped with the button beside the Fondo menu.
-  const WHITE = '#FAFAFA', INK = '#272727';
+  const WHITE = '#FAFAFA', INK = '#111111';
   const lin = c => { const v = c / 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
   const lum = h => { const n = parseInt(h.slice(1), 16); return .2126 * lin(n >> 16 & 255) + .7152 * lin(n >> 8 & 255) + .0722 * lin(n & 255); };
   const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
@@ -136,7 +137,7 @@
 .pth-tg { display: flex; padding: 3px; gap: 2px; border-radius: 10px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 4px 14px rgb(0 0 0 / .06); }
 .pth-tg button { width: 30px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 7px; background: none; color: var(--text-2); cursor: pointer; padding: 0; }
 .pth-tg button:hover { color: var(--text); }
-.pth-tg button[aria-pressed="true"] { background: #272727; color: #FAFAFA; }
+.pth-tg button[aria-pressed="true"] { background: #111111; color: #FAFAFA; }
 .pth-tg button[data-dark="0"][aria-pressed="true"] { background: var(--fill); color: var(--text); box-shadow: 0 0 0 1px var(--line); }
 `;
   style.textContent += `
@@ -433,7 +434,7 @@
       'Separación de las líneas': 'Entre líneas', 'Tamaño mínimo': 'Tamaño mín', 'Tamaño máximo': 'Tamaño máx', 'Subir imagen o modelo 3D': 'Subir',
       'Subir modelo 3D o imagen': 'Subir', 'Color de los cubos': 'Color', 'Sombras proyectadas': 'Sombras', 'Luz ambiente': 'Ambiente',
       'Orden de los píxeles': 'Orden', 'Seguir la forma': 'Seguir forma', 'Resolución al exportar': 'Resolución', 'Comportamiento': 'Modo',
-      'Comportamiento del color': 'Modo', 'Llevar a la paleta (luz y saturación)': 'A la paleta', 'Solo los 3 colores (sin blanco ni negro)': 'Solo 3 colores',
+      'Comportamiento del color': 'Modo', 'Llevar a la paleta (luz y saturación)': 'A la paleta', 'Solo la paleta (sin blanco ni negro)': 'Solo paleta', 'Bloom solo en amarillo, blanco y lavanda': 'Bloom selectivo', 'Solo los 3 colores (sin blanco ni negro)': 'Solo 3 colores',
       'Cantidad de manzanas': 'Manzanas', 'Tipo de edificio': 'Tipo', 'Retiros (escalonado)': 'Retiros', 'Torsión (torcido)': 'Torsión',
       'Coronamiento y aguja': 'Aguja', 'Afinado arriba': 'Afinado', 'Losas salientes': 'Losas', 'Altura de las manzanas': 'Altura' };
     const short = t => { t = (t || '').replace(/\s+/g, ' ').trim(); return SHORT[t] || t.replace(/\s*\([^)]*\)$/, ''); };
