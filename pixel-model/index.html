@@ -151,8 +151,8 @@ main.kf-open .kf-tab { display: none; }
 main.kf-open .pth { bottom: calc(14px + var(--kfh)); }
 main.kf-open { padding-bottom: calc(120px + var(--kfh)); }
 main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
-.kf-head select#kf-fmt { width: 96px; }
-.kf-head select#kf-res { width: 74px; }
+.kf-head select#kf-fmt { width: 80px; }
+.kf-head select#kf-res { width: 64px; }
 .kf-head { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px; border-bottom: 1px solid var(--line); flex: none; }
 .kf-head button { height: 28px; border: 0; border-radius: 7px; background: var(--fill); color: var(--text); font: 500 12px var(--font); cursor: pointer; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; }
 .kf-head button.ic { width: 28px; padding: 0; justify-content: center; }
@@ -165,7 +165,9 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 .kf-head .kf-morph[hidden] { display: none; }
 .kf-head > * { white-space: nowrap; flex: none; }
 .kf-head .sp { flex: 1; min-width: 0; }
-.kf-head .kf-morph input { width: 52px; }
+.kf-head .kf-morph input { width: 54px; }
+.kf-head { gap: 6px !important; }
+.kf-head input#kf-dur { width: 44px; }
 .kf-head .sp { flex: 1; }
 .kf-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 92px 1fr; }
 .kf-names { display: grid; grid-template-rows: 22px repeat(4, 1fr); border-right: 1px solid var(--line); color: var(--text-2); }
@@ -214,13 +216,14 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         <span class="tm" id="kf-tm">0.00 / 5.00 s</span>
         <button id="kf-ins" title="Insertar keyframe (I)">◆ Keyframe</button>
         <label>Duración <input id="kf-dur" type="number" min="0.5" max="120" step="0.5" value="5" aria-label="Duración en segundos"> s</label>
-        <label class="kf-morph" title="Morph de Forma: cuánto gira todo en el cambio, de una forma a la otra (90: un cuarto de vuelta, 180: media vuelta, 360: una vuelta; negativo: al otro lado)">Giro <input id="kf-mrot" type="number" min="-720" max="720" step="15" aria-label="Giro del morph en grados"> °</label>
+        <label class="kf-morph" title="Morph de Forma: cuánto gira todo en el cambio, de una forma a la otra (180: media vuelta, 90: un cuarto, 360: una vuelta; negativo: al otro lado)">Giro <input id="kf-mrot" type="number" min="-720" max="720" step="15" aria-label="Giro del morph en grados"> °</label>
+        <label class="kf-morph" title="Morph de Forma: cuánto se dispersan los píxeles a mitad de camino (se abren y se vuelven a cerrar), en %">Dispersión <input id="kf-mspread" type="number" min="0" max="300" step="10" aria-label="Dispersión del morph"></label>
         <label class="kf-morph" title="Morph de Forma: cuánto los revuelve un ruido fractal a mitad de camino (en px)">Ruido <input id="kf-mnoise" type="number" min="0" max="400" step="5" aria-label="Ruido del morph"></label>
         <span class="sp"></span>
         <label>Cuadros <select id="kf-fps" aria-label="Cuadros por segundo"><option>12</option><option>15</option><option>24</option><option>30</option><option>60</option></select></label>
         <select id="kf-res" aria-label="Resolución del video" title="Lado largo del video: 4K 3840 px, 2K 2560 px, Full HD 1920 px"><option value="4k">4K</option><option value="2k">2K</option><option value="hd">Full HD</option></select>
         <select id="kf-fmt" aria-label="Formato del video" title="MP4, o cada cuadro como PNG sin pérdida en un .zip"><option value="mp4">MP4</option><option value="png">PNG (.zip)</option></select>
-        <button class="primary" id="kf-video" title="Exporta la animación de los keyframes">Exportar video</button>
+        <button class="primary" id="kf-video" title="Exporta la animación de los keyframes como video">Exportar</button>
         <button class="ic" id="kf-clear" title="Borrar todos los keyframes" aria-label="Borrar todos los keyframes"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4h9M5.5 4V2.5h3V4M3.8 4l.6 8h5.2l.6-8"/></svg></button>
         <button class="ic" id="kf-fold" title="Plegar la línea de tiempo" aria-label="Plegar la línea de tiempo"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3"/></svg></button>
       </div>
@@ -1882,7 +1885,7 @@ function syncModeBar() {
 // a track of keys. Between two keys the value eases along the curve chosen for that stretch (its button in the
 // middle). I opens the menu to insert a key of any of the three at the playhead, with the view as it is now.
 // Playing (or scrubbing) sets the view at that moment; Píxeles fijos keeps the pixels on the model while it moves.
-const KF = { dur: 5, t: 0, rot: [], pos: [], zoom: [], shape: [], mRot: 90, mNoise: 50, sel: null, playing: false, open: false };
+const KF = { dur: 5, t: 0, rot: [], pos: [], zoom: [], shape: [], mRot: 180, mNoise: 50, mSpread: 60, sel: null, playing: false, open: false };
 const KF_TRACKS = { rot: 'rotación', pos: 'posición', zoom: 'zoom', shape: 'forma' };
 // Curves: Lineal, Suave (in and out), Entrada (slow start), Salida (slow end), Constante (holds, then jumps).
 const EASES = [['inout', 'Suave', u => u * u * (3 - 2 * u)], ['linear', 'Lineal', u => u], ['in', 'Entrada suave', u => u * u * u], ['out', 'Salida suave', u => 1 - (1 - u) ** 3], ['hold', 'Constante', u => u < 1 ? 0 : 1]];
@@ -1990,10 +1993,11 @@ function kfPair(A, B) {
   for (let r = 0; r < N; r++) { if (seenA[oa[r]]) extra[r] = 1; else seenA[oa[r]] = 1; if (seenB[ib[r]]) extra[r] = 2; else seenB[ib[r]] = 1; }
   return { ia: oa, ib, extra };
 }
-// On the way, the whole turns by Giro, always the same way, easing in and out: the first model leaves turning from where it is,
-// the second arrives turning into where it is (each about its middle), and the pixels go from the one to the other.
-// And a fractal noise stirs them (curl of an fBm: it swirls without bunching them up), most at the middle of the
-// stretch. Both are nothing at the keys, so each model is reached exactly.
+// On the way, the whole turns by Giro, always the same way, easing in and out: the first model leaves turning from
+// where it is, the second arrives turning into where it is (each about its middle), and the pixels go from the one to
+// the other. Dispersión opens the cloud out and closes it again, and a fractal noise stirs it (curl of an fBm: it
+// swirls without bunching the pixels up), both most at the middle of the stretch and nothing at the keys, so each model
+// is reached exactly.
 const nHash = (x, y, z) => { let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(z, 2147483647) ^ Math.imul(S.seed + 1, 1274126177); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 function vnoise(x, y, z) {
   const X = Math.floor(x), Y = Math.floor(y), Z = Math.floor(z), fx = x - X, fy = y - Y, fz = z - Z, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy), sz = fz * fz * (3 - 2 * fz);
@@ -2007,13 +2011,16 @@ function kfMorph(A, B, u, P) {
   const out = [], mix = (a, b) => a + (b - a) * u, bump = Math.sin(Math.PI * u), [ax, ay] = P.ca, [bx, by] = P.cb;
   const g = u * u * u * (u * (u * 6 - 15) + 10); // the turn starts and ends softly (smootherstep)
   const cx = mix(ax, bx), cy = mix(ay, by), T = P.T, cr = Math.cos(T * g), sr = Math.sin(T * g), amp = KF.mNoise * bump;
+  const sp = KF.mSpread / 100 * Math.sin(Math.PI * g) ** 1.5; // how open the cloud is now: nothing at the keys, most halfway
   const f = 2.2 / Math.max(AW, AH), zt = u * 1.6, e = .02, sm = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
   const mixC = (p, q) => p === undefined || q === undefined ? (u < .5 ? p : q) : (Math.round(mix(p >> 16 & 255, q >> 16 & 255)) << 16 | Math.round(mix(p >> 8 & 255, q >> 8 & 255)) << 8 | Math.round(mix(p & 255, q & 255)));
   for (let i = 0; i < P.ia.length; i++) {
     const j = P.ib[i], a = A[P.ia[i]], b = B[j];
     // in the turning frame: the first model as it is, the second turned back by Giro (so at the end it is in place)
     const dx = mix(a.x - ax, P.bx[j] - bx), dy = mix(a.y - ay, P.by[j] - by);
-    let x = cx + dx * cr - dy * sr, y = cy + dx * sr + dy * cr;
+    // Dispersión: on the way the cloud opens out from the middle, each pixel also flung its own way, and closes again
+    const open = 1 + sp * .55, h = nHash(i, 11, 5) * Math.PI * 2, fl = sp * P.r * .45 * (.4 + nHash(i, 13, 2));
+    let x = cx + (dx * cr - dy * sr) * open + Math.cos(h) * fl, y = cy + (dx * sr + dy * cr) * open + Math.sin(h) * fl;
     if (amp) { const nx = x * f, ny = y * f; x += amp * (fbm(nx, ny + e, zt) - fbm(nx, ny - e, zt)) / (2 * e) * .35; y -= amp * (fbm(nx + e, ny, zt) - fbm(nx - e, ny, zt)) / (2 * e) * .35; }
     let sc = mix(a.sc ?? 1, b.sc ?? 1);
     if (P.extra[i]) { const d = nHash(i, 7, 3) * .55, k = sm((u - d) / .45); sc *= P.extra[i] === 2 ? 1 - k : k; } // 2: merging (fades out), 1: splitting (fades in)
@@ -2037,7 +2044,9 @@ function kfShapeFrame(t, fast) {
     const ca = mid(A), cb = mid(B), c = Math.cos(-T), s = Math.sin(-T), bx = new Float32Array(B.length), by = new Float32Array(B.length);
     B.forEach((p, i) => { const dx = p.x - cb[0], dy = p.y - cb[1]; bx[i] = cb[0] + dx * c - dy * s; by[i] = cb[1] + dx * s + dy * c; });
     const Bt = B.map((p, i) => ({ x: bx[i], y: by[i] }));
-    a.cache.pair = { B, T, ca, cb, bx, by, ...(A.length && B.length ? kfPair(A, Bt) : {}) };
+    const reach = (L, c) => { let r = 0; for (const p of L) r += Math.hypot(p.x - c[0], p.y - c[1]); return L.length ? r / L.length : 1; };
+    const rr = (reach(A, ca) + reach(B, cb)) / 2;
+    a.cache.pair = { B, T, ca, cb, bx, by, r: rr, ...(A.length && B.length ? kfPair(A, Bt) : {}) };
   }
   return kfMorph(A, B, u, a.cache.pair);
 }
@@ -2160,7 +2169,7 @@ $('#kf-ins').addEventListener('click', e => { const r = e.currentTarget.getBound
 $('#kf-clear').addEventListener('click', () => { if (!kfCount()) return; if (KF.playing) kfToggle(); KF.rot = []; KF.pos = []; KF.zoom = []; KF.shape = []; KF.sel = null; kfDraw(); toast('Keyframes borrados.'); });
 $('#kf-dur').addEventListener('change', e => { KF.dur = clamp(+e.target.value || 5, .5, 120); e.target.value = KF.dur; KF.t = Math.min(KF.t, KF.dur); kfDraw(); });
 $('#kf-fps').value = '30';
-for (const [id, k, lo, hi] of [['#kf-mrot', 'mRot', -720, 720], ['#kf-mnoise', 'mNoise', 0, 400]]) {
+for (const [id, k, lo, hi] of [['#kf-mrot', 'mRot', -720, 720], ['#kf-mspread', 'mSpread', 0, 300], ['#kf-mnoise', 'mNoise', 0, 400]]) {
   const el = $(id); el.value = KF[k];
   el.addEventListener('input', () => { if (el.value === '' || isNaN(+el.value)) return; KF[k] = clamp(+el.value, lo, hi); if (!KF.playing) kfSeek(KF.t, true); });
   el.addEventListener('change', () => { el.value = KF[k]; if (!KF.playing) kfSeek(KF.t); });
