@@ -288,7 +288,6 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
           <div id="sl-rlCut"></div>
           <button class="btn" id="relief-upload" title="Una imagen (JPG, PNG…): se convierte en un modelo 3D con su profundidad">Subir imagen</button>
           <p class="hint" id="relief-status" hidden></p>
-          <p class="hint">La imagen se convierte en un modelo 3D: su profundidad la levanta, y gira como cualquier modelo.</p>
         </div>
         <div id="block-controls">
           <div class="seg" data-key="mzCount" aria-label="Cantidad de manzanas"><button data-v="1">1</button><button data-v="2">2</button><button data-v="4">4</button><button data-v="6">6</button><button data-v="8">8</button></div>
@@ -318,7 +317,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         <div id="sl-yaw"></div>
         <div id="sl-pitch"></div>
         <div id="sl-zoom"></div>
-        <div class="slider kf-posrow" title="Dónde está el modelo en el cuadro (Shift + arrastrar lo mueve; doble clic lo centra)"><label>Posición</label><output id="out-pos"></output></div>
+        <div class="slider kf-posrow gone" title="Dónde está el modelo en el cuadro (Shift + arrastrar lo mueve; doble clic lo centra)"><label>Posición</label><output id="out-pos"></output></div>
       </section>
 
       <section>
@@ -369,7 +368,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         </div>
         <div class="gone"><label class="check" title="Cada partícula dibujada con su contorno en vez de rellena; la línea queda adentro, así no cambia el tamaño"><input type="checkbox" data-check="stroke"> Contorno (sin relleno)</label></div>
         <div class="gone"><div id="sl-strokeW"></div></div>
-        <div id="palsets"></div>
+        <div id="palsets" class="gone"></div>
         <div id="sl-bloom"></div>
         <div class="levels" id="inks" aria-label="Color"></div>
         <div class="gone">
@@ -1143,6 +1142,7 @@ function sync(fast) {
   // the largest is the size everything spaces by and draws at (a pixel's share of it, sc, goes down to the smallest)
   S.size = S.sizeMax; if (S.sizeMin > S.sizeMax) S.sizeMin = S.sizeMax;
   S.colorHow = 'random'; // Comportamiento: always Al azar (not offered)
+  S.chaos = 0; S.blend = false; // Caos and Pasaje: not offered
   S.colorMode = S.colorSrc === 'pal' ? S.colorHow : S.colorSrc; // Color: its source, and for the palette its behaviour
   window.kfHook?.(); // keyframes: a change made with the playhead on a key rewrites that key; the diamonds follow
   for (const k of Object.keys(SLIDERS)) {
@@ -1859,6 +1859,7 @@ $('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.s
 
 // The mode bar (top middle): the circles' Caos and Pasaje (from Caos to the clean lines across the picture).
 const modeBar = PerceptaModeBar(stage, `  <label class="pm-chaos" id="pm-1b" title="Desorden de los círculos, sin perder la forma ni superponerse">Caos <input type="range" id="pm-chaos" min="0" max="1" step="0.01" aria-label="Caos"><output id="pm-chaos-out"></output></label>`);
+modeBar.classList.add('gone'); // Caos and Pasaje: not offered (always off)
 const ordOf = () => S.blend ? 'blend' : S.snap ? 'grid' : 'chaos';
 // the same choice in the sidebar (Píxeles → Orden)
 $('#ord-seg').addEventListener('click', e => {
@@ -1993,7 +1994,7 @@ function kfPair(A, B) {
   for (let r = 0; r < N; r++) { if (seenA[oa[r]]) extra[r] = 1; else seenA[oa[r]] = 1; if (seenB[ib[r]]) extra[r] = 2; else seenB[ib[r]] = 1; }
   return { ia: oa, ib, extra };
 }
-// On the way, the whole turns by Giro, always the same way, easing in and out: the first model leaves turning from
+// On the way, the whole turns by Giro, always the same way, on the stretch's curve: the first model leaves turning from
 // where it is, the second arrives turning into where it is (each about its middle), and the pixels go from the one to
 // the other. Dispersión opens the cloud out and closes it again, and a fractal noise stirs it (curl of an fBm: it
 // swirls without bunching the pixels up), both most at the middle of the stretch and nothing at the keys, so each model
@@ -2009,7 +2010,7 @@ function kfMorph(A, B, u, P) {
   const NA = A.length, NB = B.length;
   if (!NA || !NB) return (NA ? A : B).map(p => ({ ...p, sc: (p.sc ?? 1) * (NA ? 1 - u : u) }));
   const out = [], mix = (a, b) => a + (b - a) * u, bump = Math.sin(Math.PI * u), [ax, ay] = P.ca, [bx, by] = P.cb;
-  const g = u * u * u * (u * (u * 6 - 15) + 10); // the turn starts and ends softly (smootherstep)
+  const g = u; // the turn follows the stretch's curve, and nothing else
   const cx = mix(ax, bx), cy = mix(ay, by), T = P.T, cr = Math.cos(T * g), sr = Math.sin(T * g), amp = KF.mNoise * bump;
   const sp = KF.mSpread / 100 * Math.sin(Math.PI * g) ** 1.5; // how open the cloud is now: nothing at the keys, most halfway
   const f = 2.2 / Math.max(AW, AH), zt = u * 1.6, e = .02, sm = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
