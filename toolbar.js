@@ -2,9 +2,10 @@
 // add it to the list below and it shows up on every page (and on Home, as D1); general tools (GENERAL) are on
 // Home only. The Percepta mark links to Home.
 (() => {
+  // Pixel is one tool with two ways of working, chosen by what goes in: an image (or Olas, Refracción, Flor) at the
+  // root, a 3D model at pixel-model/. Both are the same tab.
   const EXPLORATIONS = [
-    { name: 'Imagen', path: '' },
-    { name: 'Model', path: 'pixel-model/' },
+    { name: 'Pixel', path: '', also: ['pixel-model/'] },
   ];
   // Tools that belong to no direction: only on Home, not in the bar.
   const GENERAL = [{ name: 'Photo Preset', path: 'photo-preset/' }];
@@ -42,7 +43,7 @@
   const links = EXPLORATIONS.map(e => {
     const child = (e.children || []).find(c => isHere(c.path));
     if (child) crumb = `<span class="tb-crumb">/ ${child.name}</span>`;
-    const current = isHere(e.path) || child ? ' aria-current="page"' : '';
+    const current = isHere(e.path) || child || (e.also || []).some(isHere) ? ' aria-current="page"' : '';
     return `<a href="${link(e.path)}"${current}>${e.name}</a>`;
   }).join('');
   nav.innerHTML = `<a class="tb-brand" href="${link('home/')}"${isHere('home/') ? ' aria-current="page"' : ''}>Percepta</a><div class="tb-tabs">${links}${crumb}</div>`;
@@ -283,32 +284,29 @@
       pending: () => new URLSearchParams(location.search).get('from'),
     };
   })();
-  window.PerceptaDirection = o => {
-    if (!document.getElementById('pdir-style')) {
-      const st = document.createElement('style'); st.id = 'pdir-style';
-      st.textContent = `.pdir { position: fixed; left: 14px; top: 50%; transform: translateY(-50%); z-index: 30; display: flex; flex-direction: column; gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface, #fbfaf8); box-shadow: 0 0 0 1px var(--line, #dcd7cf), 0 4px 16px rgb(0 0 0 / .06); font: 500 12px var(--font, Inter, system-ui, sans-serif); }
-.pdir button { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 64px; padding: 8px 4px 7px; border: 0; border-radius: 9px; background: transparent; color: var(--text-2, #5e5850); cursor: pointer; font: inherit; }
-.pdir button:hover { background: var(--fill, #efece7); }
-.pdir button[aria-pressed="true"] { background: var(--accent, #1a1714); color: var(--accent-text, #fbfaf8); }
-.pdir button:focus-visible { outline: 2px solid var(--accent, #1a1714); outline-offset: 1px; }
-.pdir b { font-size: 13px; font-weight: 600; }
-.pdir small { font-size: 10px; line-height: 1.15; opacity: .8; text-align: center; }
-.pdir i { display: block; width: 14px; height: 14px; background: currentColor; }
-.pdir [data-dir="1b"] i { border-radius: 50%; }
-@media (max-width: 767px) { .pdir { top: auto; bottom: 14px; transform: none; flex-direction: row; } }`;
-      document.head.appendChild(st);
-    }
-    const el = document.createElement('div'); el.className = 'pdir'; el.setAttribute('role', 'group'); el.setAttribute('aria-label', 'Dirección');
-    el.innerHTML = `<button type="button" data-dir="1a" title="Dirección 1A: píxeles cuadrados del mismo tamaño, que se superponen y se juntan según la luz"><i></i><b>1A</b><small>${o.labelA || 'Cuadrados'}</small></button>` +
-      `<button type="button" data-dir="1b" title="Dirección 1B: píxeles redondos que nunca se superponen, ubicados según la profundidad o la forma"><i></i><b>1B</b><small>${o.labelB || 'Círculos'}</small></button>`;
-    document.body.appendChild(el);
-    const key = 'percepta-dir:' + location.pathname, mark = () => el.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.dir === o.get()));
-    el.addEventListener('click', e => { const b = e.target.closest('[data-dir]'); if (!b) return; o.set(b.dataset.dir); try { localStorage.setItem(key, b.dataset.dir); } catch {} mark(); });
-    let saved = null; try { saved = localStorage.getItem(key); } catch {}
-    if (saved === '1a' || saved === '1b') o.set(saved);
-    mark();
-    return { mark };
-  };
+  // Pixel's two halves (image, model) share what they have in common when you go from one to the other: the colour
+  // (palette, source, behaviour, only the palette), the background, Caos and Pasaje, the outline. go(path, query)
+  // keeps them and goes; take(S) puts them back (called before the first draw).
+  window.PerceptaShared = (() => {
+    const KEY = 'percepta-shared', keys = ['palette', 'onlyPal', 'bg', 'bgFlip', 'colorHow', 'chaos', 'blend', 'blendA', 'blendB', 'stroke', 'strokeW', 'aspect', 'orient'];
+    // the two halves name the colour sources differently
+    const toCommon = { single: 'one', ink: 'one', pal: 'pal', image: 'orig', orig: 'orig' };
+    return {
+      go(S, path, query = '') {
+        const o = {}; for (const k of keys) if (k in S) o[k] = S[k];
+        if (S.colorSrc) o.colorSrc = toCommon[S.colorSrc] || 'one'; if (S.ink) o.ink = S.ink;
+        try { sessionStorage.setItem(KEY, JSON.stringify(o)); } catch {}
+        location.href = new URL(path + (query ? '?' + query : ''), root).href;
+      },
+      take(S, srcNames) {
+        let o = null; try { o = JSON.parse(sessionStorage.getItem(KEY)); sessionStorage.removeItem(KEY); } catch {}
+        if (!o) return;
+        for (const k of keys) if (k in o && k in S) S[k] = o[k];
+        if (o.colorSrc && srcNames[o.colorSrc]) S.colorSrc = srcNames[o.colorSrc];
+        if (o.ink && 'ink' in S) S.ink = o.ink;
+      },
+    };
+  })();
 
   // Timeline: a bar along the top of the picture (inside #frame, clear of the tools' own bottom bars) for every tool with an animation: play / pause,
   // a scrubber over the loop and the time. A tool hands it how to read and drive its own clock:
@@ -363,6 +361,108 @@
     return { paint };
   };
 
+
+  // DialKit (vendor/dialkit, dialkit.dev) is the right panel: inline at the top of the sidebar, a folder per section,
+  // every control of the sidebar as a dial (sliders, toggles, choices, lists, colours, the buttons as actions). The
+  // sidebar's own controls it mirrors are hidden (they still work underneath: a dial moves them, as a hand would);
+  // what it can't show (the palette's swatches) stays below. When the tool shows or hides controls (another source,
+  // another preset) the panel is rebuilt to match, and moving a control elsewhere (a key, a preset) moves its dial.
+  function dialkit() {
+    if (!document.querySelector('aside') || document.querySelector('script[data-dialkit]')) return;
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = new URL('vendor/dialkit/styles.css', root).href; document.head.appendChild(css);
+    const st = document.createElement('style');
+    st.textContent = `.pdk-m { display: none !important; } .pdk { margin: -4px -6px 0; } .pdk .dialkit-root, .pdk .dialkit-panel { width: 100% !important; max-width: none !important; box-shadow: none !important; } .pdk .dialkit-panel-toolbar, .pdk .dialkit-panel-section-toolbar, .pdk .dialkit-panel-section-toolbar-clip, .pdk .dialkit-folder-copy, .pdk [class*=dialkit-version] { display: none !important; }`;
+    document.head.appendChild(st);
+    const js = document.createElement('script'); js.src = new URL('vendor/dialkit/browser.global.js', root).href; js.dataset.dialkit = '';
+    js.onload = () => { try { dialPanel(); } catch (e) { console.warn('DialKit:', e); } };
+    document.head.appendChild(js);
+  }
+  function dialPanel() {
+    const DK = window.DialKit, aside = document.querySelector('aside'); if (!DK || !aside) return;
+    const host = aside.querySelector('.controls') || aside, mount = document.createElement('div'); mount.className = 'pdk'; host.prepend(mount);
+    DK.createDialRoot({ mode: 'inline', target: mount, theme: 'system' });
+    const shown = el => !el.closest('[hidden]');
+    const clean = t => (t || '').replace(/\s+/g, ' ').replace(/[.]/g, '\u2024').trim(); // a dot would split the dial's path: a look-alike
+    const labelOf = el => clean(el.closest('.slider, label, .row')?.querySelector('label, span')?.textContent || el.getAttribute('aria-label') || el.title || el.id);
+    let links = [], kit = null, sig = '';
+    function collect() {
+      const out = [], scopes = [...host.querySelectorAll(':scope > section')], foot = aside.querySelector('footer');
+      if (foot) scopes.push(foot);
+      for (const sc of scopes) {
+        const g = clean(sc.querySelector('h2')?.textContent) || (sc === foot ? 'Exportar' : 'General');
+        const add = (el, row, k, def, link) => { if (!shown(el)) return; out.push({ g, k: k || 'Control', def, row, el, ...link }); };
+        for (const el of sc.querySelectorAll('input[type=range], input[type=checkbox], input[type=color], input.text, select, .seg, .presets, .inks, .levels, button')) {
+          if (el.closest('.pdk')) continue;
+          if (el.matches('input[type=range]')) {
+            const min = +el.min || 0, max = el.max === '' ? 100 : +el.max, step = el.step === 'any' || !el.step ? (max - min) / 100 : +el.step;
+            add(el, el.closest('.slider') || el, labelOf(el), [+el.value, min, max, step], { get: () => +el.value, set: v => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); } });
+          } else if (el.matches('input[type=checkbox]')) {
+            add(el, el.closest('label') || el, clean(el.closest('label')?.textContent || el.getAttribute('aria-label')), el.checked, { get: () => el.checked, set: v => { el.checked = v; el.dispatchEvent(new Event('change', { bubbles: true })); } });
+          } else if (el.matches('input[type=color]')) {
+            add(el, el.closest('label, .swatch') || el, labelOf(el), { type: 'color', default: el.value }, { get: () => el.value, set: v => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); } });
+          } else if (el.matches('input.text')) {
+            add(el, el.closest('.row') || el, labelOf(el), { type: 'text', default: el.value }, { get: () => el.value, set: v => { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); } });
+          } else if (el.matches('select')) {
+            const opts = [...el.options].map(o => ({ value: o.value, label: clean(o.textContent) }));
+            add(el, el.closest('.row') || el, labelOf(el), { type: 'select', options: opts, default: el.value }, { get: () => el.value, set: v => { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); } });
+          } else if (el.matches('.seg, .presets, .inks, .levels')) {
+            const btns = [...el.querySelectorAll(':scope > button')].filter(b => !b.hidden && (b.dataset.v ?? b.dataset.p ?? b.dataset.ink ?? b.dataset.ord) !== undefined);
+            if (btns.length < 2) continue;
+            const val = b => b.dataset.v ?? b.dataset.p ?? b.dataset.ink ?? b.dataset.ord;
+            const cur = () => btns.find(b => b.getAttribute('aria-pressed') === 'true') || btns[0];
+            const opts = btns.map(b => ({ value: val(b), label: clean(b.textContent) || clean(b.title) || val(b) }));
+            add(el, el.closest('.row') && !el.closest('.row').querySelector('input, select:not(.seg *)') ? el.closest('.row') : el, clean(el.getAttribute('aria-label') || el.dataset.key) || g, { type: 'select', options: opts, default: val(cur()) }, { get: () => val(cur()), set: v => btns.find(b => val(b) === v)?.click() });
+          } else if (el.matches('button') && !el.closest('.seg, .presets, .inks, .levels, .palette, #palsets, .pal-sets, .swatch') && !el.matches('.kf-dia, .icon') && clean(el.textContent)) {
+            add(el, el, clean(el.textContent) || clean(el.title), { type: 'action', label: clean(el.textContent) || clean(el.title) }, { action: true, get: () => null, set: () => el.click() });
+          }
+        }
+      }
+      // unique keys inside each folder
+      const seen = new Set();
+      for (const l of out) { let k = l.k, n = 2; while (seen.has(l.g + '/' + k)) k = `${l.k} ${n++}`; seen.add(l.g + '/' + k); l.k = k; }
+      return out;
+    }
+    function build() {
+      const next = collect(), s = next.map(l => l.g + '/' + l.k + '/' + (l.def?.options ? l.def.options.map(o => o.value).join(',') : '')).join('|');
+      for (const el of host.querySelectorAll('.pdk-m')) el.classList.remove('pdk-m');
+      for (const l of next) l.row.classList.add('pdk-m');
+      // a section with nothing of its own left (only its title and hints) goes too: its folder is in the panel
+      for (const sc of host.querySelectorAll(':scope > section')) sc.classList.toggle('pdk-m', ![...sc.querySelectorAll('input, select, button, canvas, .palette, .pal-sets')].some(e => !e.closest('.pdk-m') && shown(e)));
+      const foot = aside.querySelector('footer'); if (foot) foot.classList.toggle('pdk-m', ![...foot.querySelectorAll('button, input')].some(e => !e.closest('.pdk-m')));
+      // the dials start from the tool as it is now (never the other way round: a rebuild must not move the tool)
+      for (const l of next) if (!l.action) l.last = l.get();
+      links = next;
+      if (s === sig && kit) return;
+      sig = s;
+      const config = {};
+      for (const l of links) { config[l.g] = config[l.g] || {}; config[l.g][l.k] = l.def; }
+      quiet = true;
+      if (!kit) {
+        kit = window.PerceptaDial = DK.createDialKit(document.title || 'Percepta', config, { onAction: path => { const l = links.find(x => x.action && (x.g + '.' + x.k === path || path.endsWith('.' + x.k))); l?.set(); } });
+        kit.subscribe(values => {
+          if (quiet) return;
+          for (const l of links) { if (l.action) continue; const v = values[l.g]?.[l.k]; if (v === undefined || v === l.last) continue; l.last = v; if (v !== l.get()) l.set(v); }
+        });
+      } else kit.updateConfig(config);
+      quiet = false;
+      // and show it: every dial set to its control
+      const all = {}; for (const l of links) if (!l.action) (all[l.g] = all[l.g] || {})[l.k] = l.last;
+      quiet = true; try { kit.setValues(all); } finally { quiet = false; }
+    }
+    let quiet = false, pending = 0;
+    function pull() {
+      pending = 0; const upd = {};
+      for (const l of links) { if (l.action) continue; const v = l.get(); if (v !== l.last) { l.last = v; (upd[l.g] = upd[l.g] || {})[l.k] = v; } }
+      if (Object.keys(upd).length && kit) { quiet = true; try { kit.setValues(upd); } finally { quiet = false; } }
+    }
+    build();
+    // the tool showed or hid something, or redrew a list: rebuild; a control moved: the dial follows
+    let again = 0;
+    new MutationObserver(() => { if (!again) again = requestAnimationFrame(() => { again = 0; build(); }); }).observe(host, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden'] });
+    const soon = e => { if (e.target.closest?.('.pdk')) return; if (!pending) pending = requestAnimationFrame(pull); };
+    for (const t of ['input', 'change', 'click', 'keyup', 'pointerup']) addEventListener(t, soon, true);
+  }
+  addEventListener('load', dialkit);
 
   // Every image a tool downloads (PNG, JPG, SVG) is cropped to its pixels: whatever around them holds nothing is
   // cut away. Without a background that is what is transparent; with one, what is the background's colour (the
@@ -442,41 +542,3 @@ window.PerceptaPastel = (() => {
     if (memo.size > 40000) memo.clear(); memo.set(c, v); return v;
   };
 })();
-
-// Copiar / Pegar parámetros: every setting of a tool as one line of JSON (its state, plus what the tool adds: model,
-// keyframes, recorte…), to keep, share or paste back. { tool, get() → object, set(object) }. Pasted state only fills
-// keys the tool knows (its DEFAULTS), so an older or newer copy still loads.
-window.PerceptaParams = o => {
-  const foot = document.querySelector('aside footer'); if (!foot) return;
-  const st = document.createElement('style');
-  st.textContent = '.pparams { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; } .pparams .btn { width: 100%; font-size: 12px; }';
-  document.head.appendChild(st);
-  const row = document.createElement('div'); row.className = 'pparams';
-  row.innerHTML = '<button class="btn" data-pp="copy" title="Copia todos los parámetros (también modelo, keyframes y recorte) como texto">Copiar parámetros</button><button class="btn" data-pp="paste" title="Pega parámetros copiados antes y los aplica">Pegar parámetros</button>';
-  foot.appendChild(row);
-  const say = m => (typeof toast === 'function' ? toast(m) : console.log(m));
-  const apply = text => {
-    // the white used to be #F6F6F6: older copies come in with today's #FAFAFA
-    let d; try { d = JSON.parse(text.trim().replace(/#F6F6F6/gi, '#FAFAFA')); } catch { return say('Eso no son parámetros de Percepta.'); }
-    if (!d || !d.percepta) return say('Eso no son parámetros de Percepta.');
-    if (d.percepta !== o.tool) say(`Son parámetros de ${d.percepta}: se aplica lo que coincide.`);
-    o.set(d);
-    if (d.S && d.S.dir) { try { localStorage.setItem('percepta-dir:' + location.pathname, d.S.dir); } catch {} document.querySelectorAll('.pdir button').forEach(b => b.setAttribute('aria-pressed', b.dataset.dir === d.S.dir)); }
-    if (d.percepta === o.tool) say('Parámetros aplicados.');
-  };
-  row.addEventListener('click', async e => {
-    const b = e.target.closest('[data-pp]'); if (!b) return;
-    if (b.dataset.pp === 'copy') {
-      const text = JSON.stringify({ percepta: o.tool, v: 1, ...o.get() });
-      try { await navigator.clipboard.writeText(text); say('Parámetros copiados.'); }
-      catch { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); say(ok ? 'Parámetros copiados.' : 'No se pudo copiar.'); }
-    } else {
-      let text = null; try { text = await navigator.clipboard.readText(); } catch {}
-      if (!text || !text.includes('percepta')) text = prompt('Pegá los parámetros:');
-      if (text) apply(text);
-    }
-  });
-  return { apply };
-};
-// Fills S from a pasted state: only keys the tool has, arrays and objects copied.
-window.PerceptaParams.assign = (S, D, src) => { for (const k of Object.keys(D)) if (src && k in src && typeof src[k] === typeof D[k]) S[k] = structuredClone(src[k]); };

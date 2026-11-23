@@ -1,0 +1,12 @@
+{
+  "name": "percepta-explorations",
+  "private": true,
+  "description": "Static tools; the browser builds of dependencies are copied into vendor/ (see vendor/dialkit).",
+  "scripts": {
+    "vendor": "mkdir -p vendor/dialkit && cp node_modules/dialkit/dist/vanilla/browser.global.js node_modules/dialkit/dist/vanilla/styles.css node_modules/dialkit/LICENSE vendor/dialkit/"
+  },
+  "dependencies": {
+    "dialkit": "^2.1.0",
+    "motion": "^14.10.0"
+  }
+}

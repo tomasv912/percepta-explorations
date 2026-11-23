@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Imagen</title>
+<title>Pixel</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
 :root {
@@ -148,14 +148,14 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
     <div class="controls">
       <section>
         <h2>Fuente</h2>
-        <div class="seg" data-key="source" aria-label="Fuente">
-          <button data-v="waves">Olas</button><button data-v="refract">Refracción</button><button data-v="bloom">Flor</button><button data-v="image">Imagen</button>
+        <div class="seg" data-key="source" aria-label="Fuente" style="flex-wrap: wrap">
+          <button data-v="image" title="Una foto: se dibuja con su profundidad (mapa de profundidad)">Imagen</button><button data-v="waves">Olas</button><button data-v="refract">Refracción</button><button data-v="bloom">Flor</button><button data-v="m:rascacielos" title="Un modelo 3D: gira">Rascacielos</button><button data-v="m:building" title="Un modelo 3D: gira">Building</button><button data-v="m:blocks" title="Un modelo 3D: gira">Manzanas</button><button data-v="m:shapes" title="Un modelo 3D: gira">Formas</button>
         </div>
         <button class="btn" id="upload">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10.5V2.5M4.5 6 8 2.5 11.5 6"/><path d="M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2"/></svg>
-          Subir imagen
+          Subir imagen o modelo 3D
         </button>
-        <input type="file" id="file" accept="image/*" hidden>
+        <input type="file" id="file" accept="image/*,.obj,.fbx,.glb,.gltf" hidden>
         <p class="hint" id="source-hint"></p>
         <div id="wave-controls">
           <div id="sl-layers"></div>
@@ -1148,6 +1148,7 @@ for (const [key, d] of Object.entries(SLIDERS)) {
 document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   if (seg.dataset.key === 'source' && b.dataset.v === 'image' && !img) return $('#file').click();
+  if (seg.dataset.key === 'source' && b.dataset.v.startsWith('m:')) return PerceptaShared.go(S, 'pixel-model/', 'preset=' + b.dataset.v.slice(2)); // a 3D model: the model half
   S[seg.dataset.key] = b.dataset.v; sync();
 }));
 document.querySelectorAll('[data-color]').forEach(inp => inp.addEventListener('input', () => { S[inp.dataset.color] = inp.value; sync(); }));
@@ -1214,7 +1215,7 @@ function sync() {
     : 'Los cubos corren en la dirección elegida por dentro de la forma (lo que generaste, la imagen o lo que dibujaste con el pincel): salen por un extremo y vuelven a entrar por el otro, así la imagen se mantiene, en loop; A mano les suma un saltito en cada dibujo.';
   if (!$('#motion-export').disabled) $('#motion-export').textContent = S.vidFmt === 'png' ? 'Exportar PNG (.zip)' : 'Exportar video';
   $('#image-controls').hidden = !image; $('#refract-controls').hidden = S.source !== 'refract'; $('#bloom-controls').hidden = S.source !== 'bloom';
-  $('#source-hint').textContent = image ? 'Más cubos en las zonas oscuras, menos en las claras.' : 'También podés arrastrar o pegar una imagen: más cubos en lo oscuro, menos en lo claro.';
+  $('#source-hint').textContent = image ? 'Más cubos en las zonas oscuras, menos en las claras.' : 'También podés arrastrar o pegar una imagen (o un modelo 3D, que gira): más cubos en lo oscuro, menos en lo claro.';
   $('#cm-image').hidden = !image;
   $('#sl-mod').hidden = $('#sl-variation').hidden = $('#sl-grain').hidden = mono;
   $('#inks').hidden = S.colorSrc !== 'single'; $('#how-row').hidden = S.colorSrc === 'single'; $('#colorHow').value = S.colorHow; $('#onlypal-row').hidden = S.colorSrc !== 'pal'; $('#pastel-row').hidden = S.colorSrc !== 'image'; $('#palsets').hidden = S.colorSrc === 'image'; $('#sl-strokeW').hidden = !S.stroke;
@@ -1458,8 +1459,11 @@ const tools = RetouchTools({
 });
 
 // ---------- Image input ----------
+// A 3D file goes to the model half (it turns); an image stays here and is drawn with its depth.
+const is3D = f => /\.(obj|fbx|glb|gltf)$/i.test(f?.name || '');
 function openFile(file) {
-  if (!file || !file.type.startsWith('image/')) return toast('Eso no parece una imagen.');
+  if (is3D(file)) { toast('Abriendo el modelo…'); return PerceptaHandoff.send('pixel-model/', 'model-file', file); }
+  if (!file || !file.type.startsWith('image/')) return toast('Eso no parece una imagen ni un modelo 3D.');
   const el = new Image(), url = URL.createObjectURL(file);
   el.onload = () => { URL.revokeObjectURL(url); loadImage(el); S.source = 'image'; sync(); toast('Imagen cargada.'); };
   el.onerror = () => { URL.revokeObjectURL(url); toast('No se pudo leer la imagen.'); };
@@ -1473,6 +1477,7 @@ stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 
 stage.addEventListener('dragover', e => e.preventDefault());
 stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; openFile(e.dataTransfer.files[0]); });
 addEventListener('paste', e => {
+  const f3 = [...(e.clipboardData?.files || [])].find(is3D); if (f3) return openFile(f3);
   const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
   if (item) openFile(item.getAsFile());
 });
@@ -1873,19 +1878,10 @@ if (PerceptaHandoff.pending() === 'model-image') PerceptaHandoff.take('model-ima
   };
   el.src = url;
 });
-// Copiar / Pegar parámetros: the state, the retouch strokes, where the picture sits and the recorte (a photo can't
-// travel: with Imagen, upload it again).
-PerceptaParams({
-  tool: 'pixel-waves',
-  get: () => ({ S, ops, pan: [panX, panY], crop }),
-  set: d => {
-    PerceptaParams.assign(S, DEFAULTS, d.S);
-    if (S.source === 'image' && !img) toast('La imagen no viaja con los parámetros: subila de nuevo.');
-    ops = Array.isArray(d.ops) ? structuredClone(d.ops) : []; sync(); rebuild(false);
-    if (d.pan) { panX = +d.pan[0] || 0; panY = +d.pan[1] || 0; }
-    crop = d.crop || null; cropStack = []; cropUI(); sync();
-  },
-});
+// Arriving from the model half: what the two share, the source asked for, an image it was given.
+PerceptaShared.take(S, { one: 'single', pal: 'pal', orig: 'image' });
+{ const q = new URLSearchParams(location.search).get('source'); if (q && ['waves', 'refract', 'bloom'].includes(q)) S.source = q; }
+if (PerceptaHandoff.pending() === 'image-file') PerceptaHandoff.take('image-file').then(f => { if (f) openFile(f); history.replaceState(null, '', location.pathname); });
 sync();
 </script>
 </body>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Model</title>
+<title>Pixel</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
 :root {
@@ -204,7 +204,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
     <div class="drop" id="drop" hidden>Soltá el modelo (.obj, .fbx, .glb, .gltf)</div>
     <div class="hud" id="stats">—</div>
     <div class="crop-hud" id="crop-hud"><button id="crop-tool" aria-pressed="false" title="Recortar (C): arrastrá un recuadro sobre el modelo, o clic para acercar ×2. Las flechas lo desplazan">Recortar</button><b id="crop-label" hidden>Recorte</b><button id="crop-back" hidden title="Vuelve al recorte anterior">Vista anterior</button><button id="crop-clear" hidden title="Muestra el cuadro entero">Quitar recorte</button></div>
-    <div class="send" role="group" aria-label="Enviar a otra tool"><button class="btn primary" id="to-waves" title="Renderiza la vista actual (luz, sombras y profundidad) y la abre en Imagen">Enviar a Imagen</button></div>
+    <div class="send" role="group" aria-label="Enviar a otra tool"><button class="btn primary" id="to-waves" title="Renderiza la vista actual (luz, sombras y profundidad) y la abre como imagen, con su profundidad">Convertir en imagen</button></div>
     <button class="kf-tab" id="kf-tab" title="Línea de tiempo con keyframes de rotación, posición y zoom (I inserta un keyframe)"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 7h12" stroke="currentColor" stroke-width="1.2"/><rect x="3.2" y="4.7" width="4.6" height="4.6" transform="rotate(45 5.5 7)" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/></svg>Timeline <b id="kf-count" hidden></b></button>
     <div class="kf" id="kf" hidden role="region" aria-label="Línea de tiempo de keyframes">
       <div class="kf-head">
@@ -287,8 +287,8 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
   <aside>
     <div class="controls">
       <section>
-        <h2>Modelo</h2>
-        <div class="presets" id="presets" aria-label="Modelos"></div>
+        <h2>Fuente</h2>
+        <div class="presets" id="presets" aria-label="Fuente"></div>
         <div id="block-controls">
           <div class="seg" data-key="mzCount" aria-label="Cantidad de manzanas"><button data-v="1">1</button><button data-v="2">2</button><button data-v="4">4</button><button data-v="6">6</button><button data-v="8">8</button></div>
           <div id="sl-mzHeight"></div>
@@ -312,8 +312,8 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
           <div id="sl-bSlab"></div>
           <label class="check"><input type="checkbox" data-check="bCrown"> Coronamiento y aguja</label>
         </div>
-        <button class="btn" id="upload">Subir .obj, .fbx, .glb o .gltf</button>
-        <input type="file" id="file" accept=".obj,.fbx,.glb,.gltf" hidden>
+        <button class="btn" id="upload">Subir modelo 3D o imagen</button>
+        <input type="file" id="file" accept=".obj,.fbx,.glb,.gltf,image/*" hidden>
         <div id="sl-yaw"></div>
         <div id="sl-pitch"></div>
         <div id="sl-zoom"></div>
@@ -1007,8 +1007,15 @@ for (const [key, d] of Object.entries(SLIDERS)) {
   input.addEventListener('change', () => sync());
   input.addEventListener('dblclick', () => { S[key] = DEFAULTS[key]; sync(); });
 }
-$('#presets').innerHTML = PRESETS.map(([k, n]) => `<button data-p="${k}">${n}</button>`).join('');
-$('#presets').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (b) { preset = b.dataset.p; loadPreset(); key = ''; sync(); } });
+// The same Fuente as the image half: an image or Olas, Refracción, Flor go there (drawn with depth); models turn here.
+const SOURCES_2D = [['2d:image', 'Imagen'], ['2d:waves', 'Olas'], ['2d:refract', 'Refracción'], ['2d:bloom', 'Flor']];
+$('#presets').innerHTML = [...SOURCES_2D, ...PRESETS].map(([k, n]) => `<button data-p="${k}">${n}</button>`).join('');
+$('#presets').addEventListener('click', e => {
+  const b = e.target.closest('[data-p]'); if (!b) return;
+  if (b.dataset.p === '2d:image') return $('#file').click();
+  if (b.dataset.p.startsWith('2d:')) return PerceptaShared.go(S, '', 'source=' + b.dataset.p.slice(3));
+  preset = b.dataset.p; loadPreset(); key = ''; sync();
+});
 const renderInks = () => { $('#inks').innerHTML = [...S.palette, ...(S.onlyPal ? [] : [INK, WHITE])].map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join(''); };
 renderInks();
 const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.palette = colors; renderInks(); sync(); });
@@ -1489,6 +1496,8 @@ frame.addEventListener('pointerleave', () => { hover = null; animate(); });
 // ---------- Input ----------
 async function openFile(file) {
   if (!file) return;
+  // an image goes to the image half, drawn with its depth
+  if (file.type?.startsWith('image/')) { toast('Abriendo la imagen…'); return PerceptaHandoff.send('', 'image-file', file); }
   try {
     const name = file.name.toLowerCase();
     const pos = name.endsWith('.obj') ? Stipple3D.parseOBJ(await file.text()) : name.endsWith('.fbx') ? await Stipple3D.parseFBX(await file.arrayBuffer()) : Stipple3D.parseGLB(await file.arrayBuffer());
@@ -1503,11 +1512,11 @@ stage.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; $('#
 stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#drop').hidden = true; } });
 stage.addEventListener('dragover', e => e.preventDefault());
 stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; openFile(e.dataTransfer.files[0]); });
-// Ctrl+V: a copied .obj, .glb or .gltf file.
+// Ctrl+V: a copied .obj, .glb or .gltf file (or an image, for the image half).
 addEventListener('paste', e => {
   if (e.target.closest?.('textarea, input:not([type=range]):not([type=checkbox])')) return; // typing, not a slider
-  const f = [...(e.clipboardData?.files || [])].find(f => /\.(obj|fbx|glb|gltf)$/i.test(f.name));
-  if (f) { e.preventDefault(); openFile(f); } else if (e.clipboardData?.files?.length) toast('Pegá un modelo .obj, .fbx, .glb o .gltf.');
+  const f = [...(e.clipboardData?.files || [])].find(f => /\.(obj|fbx|glb|gltf)$/i.test(f.name) || f.type.startsWith('image/'));
+  if (f) { e.preventDefault(); openFile(f); } else if (e.clipboardData?.files?.length) toast('Pegá un modelo (.obj, .fbx, .glb, .gltf) o una imagen.');
 });
 
 // ---------- Export ----------
@@ -2013,19 +2022,10 @@ function kfDiamonds() {
 }
 window.kfHook = () => { if (kfAutoKey() && KF.open) kfDraw(); kfDiamonds(); };
 
-// Copiar / Pegar parámetros: the state, the model (a preset; an uploaded file can't travel), the keyframes, the recorte.
-const params = PerceptaParams({
-  tool: 'pixel-model',
-  get: () => ({ S, preset, model: modelName, crop, keys: { dur: KF.dur, fps: $('#kf-fps').value, fmt: $('#kf-fmt').value, res: $('#kf-res').value, rot: KF.rot, pos: KF.pos, zoom: KF.zoom } }),
-  set: d => {
-    PerceptaParams.assign(S, DEFAULTS, d.S);
-    if (d.preset && PRESETS.some(p => p[0] === d.preset)) { preset = d.preset; if (d.model && d.model.includes('.')) toast(`El modelo subido (${d.model}) no viaja: subilo de nuevo.`); loadPreset(); }
-    if (d.keys) { KF.dur = d.keys.dur || 5; $('#kf-dur').value = KF.dur; if (d.keys.fps) $('#kf-fps').value = d.keys.fps; if (d.keys.fmt) $('#kf-fmt').value = d.keys.fmt; if (d.keys.res) $('#kf-res').value = d.keys.res; for (const k of ['rot', 'pos', 'zoom']) KF[k] = (d.keys[k] || []).map(x => ({ t: +x.t, v: x.v.map(Number), ease: x.ease || 'inout' })); KF.sel = null; KF.t = 0; kfDraw(); if (kfCount()) kfOpen(true); }
-    // a new format resets the pan and recorte (sync), so they are put back after it
-    const pan = [S.panX, S.panY]; key = ''; shown = null; sync();
-    S.panX = pan[0]; S.panY = pan[1]; crop = d.crop || null; cropStack = []; cropUI(); key = ''; sync();
-  },
-});
+// Arriving from the image half: what the two share, the model asked for, a file it was given.
+PerceptaShared.take(S, { one: 'ink', pal: 'pal', orig: 'orig' });
+{ const q = new URLSearchParams(location.search).get('preset'); if (q && PRESETS.some(p => p[0] === q)) preset = q; }
+if (PerceptaHandoff.pending() === 'model-file') PerceptaHandoff.take('model-file').then(f => { if (f) openFile(f); history.replaceState(null, '', location.pathname); });
 loadPreset();
 sync();
 </script>
