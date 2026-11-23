@@ -403,6 +403,15 @@
     DK.createDialRoot({ mode: 'inline', target: mount, theme: 'system' });
     const shown = el => !el.closest('[hidden], .gone');
     const clean = t => (t || '').replace(/\s+/g, ' ').replace(/[.]/g, '\u2024').trim(); // a dot would split the dial's path: a look-alike
+    // short names, so name and value fit in a dial's pill; anything else loses a trailing (…)
+    const SHORT = { 'Invertir luces y sombras': 'Invertir', 'Espacio entre líneas': 'Entre líneas', 'Espacio entre píxeles': 'Entre píxeles',
+      'Separación de las líneas': 'Entre líneas', 'Tamaño mínimo': 'Tamaño mín', 'Tamaño máximo': 'Tamaño máx', 'Subir imagen o modelo 3D': 'Subir',
+      'Subir modelo 3D o imagen': 'Subir', 'Color de los cubos': 'Color', 'Sombras proyectadas': 'Sombras', 'Luz ambiente': 'Ambiente',
+      'Orden de los píxeles': 'Orden', 'Seguir la forma': 'Seguir forma', 'Resolución al exportar': 'Resolución', 'Comportamiento': 'Modo',
+      'Comportamiento del color': 'Modo', 'Llevar a la paleta (luz y saturación)': 'A la paleta', 'Solo los 3 colores (sin blanco ni negro)': 'Solo 3 colores',
+      'Cantidad de manzanas': 'Manzanas', 'Tipo de edificio': 'Tipo', 'Retiros (escalonado)': 'Retiros', 'Torsión (torcido)': 'Torsión',
+      'Coronamiento y aguja': 'Aguja', 'Afinado arriba': 'Afinado', 'Losas salientes': 'Losas', 'Altura de las manzanas': 'Altura' };
+    const short = t => { t = (t || '').replace(/\s+/g, ' ').trim(); return SHORT[t] || t.replace(/\s*\([^)]*\)$/, ''); };
     const labelOf = el => clean(el.closest('.slider, label, .row')?.querySelector('label, span')?.textContent || el.getAttribute('aria-label') || el.title || el.id);
     let links = [], kit = null, sig = '';
     function collect() {
@@ -410,7 +419,7 @@
       if (foot) scopes.push(foot);
       for (const sc of scopes) {
         const g = clean(sc.querySelector('h2')?.textContent) || (sc === foot ? 'Exportar' : 'General');
-        const add = (el, row, k, def, link) => { if (!shown(el)) return; out.push({ g, k: k || 'Control', def, row, el, ...link }); };
+        const add = (el, row, k, def, link) => { if (!shown(el)) return; k = clean(short(k)) || 'Control'; if (def?.type === 'action') def.label = k; out.push({ g, k, def, row, el, ...link }); };
         for (const el of sc.querySelectorAll('input[type=range], input[type=checkbox], input[type=color], input.text, select, .seg, .presets, .inks, .levels, button')) {
           if (el.closest('.pdk')) continue;
           if (el.matches('input[type=range]')) {
@@ -418,11 +427,11 @@
             const def = (window.PERCEPTA_SLIDERS || {})[el.id.replace(/^in-/, '')], vals = def && def.values;
             const fire = () => { el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
             if (vals) {
-              const near = v => vals.reduce((b, x, i) => Math.abs(x - v) < Math.abs(vals[b] - v) ? i : b, 0), small = vals.slice(1).reduce((m, x, i) => Math.min(m, x - vals[i]), Infinity);
-              add(el, el.closest('.slider') || el, labelOf(el), [vals[+el.value], vals[0], vals[vals.length - 1], small], { get: () => vals[+el.value], set: v => { el.value = near(v); fire(); } });
+              const near = v => vals.reduce((b, x, i) => Math.abs(x - v) < Math.abs(vals[b] - v) ? i : b, 0), r3 = v => Math.round(v * 1000) / 1000, small = r3(vals.slice(1).reduce((m, x, i) => Math.min(m, x - vals[i]), Infinity));
+              add(el, el.closest('.slider') || el, labelOf(el), [r3(vals[+el.value]), r3(vals[0]), r3(vals[vals.length - 1]), small], { get: () => r3(vals[+el.value]), set: v => { el.value = near(v); fire(); } });
               continue;
             }
-            const min = +el.min || 0, max = el.max === '' ? 100 : +el.max, step = el.step === 'any' || !el.step ? (max - min) / 100 : +el.step;
+            const min = +el.min || 0, max = el.max === '' ? 100 : +el.max, step = el.step === 'any' || !el.step ? Math.round((max - min) / 100 * 1000) / 1000 : +el.step;
             add(el, el.closest('.slider') || el, labelOf(el), [+el.value, min, max, step], { get: () => +el.value, set: v => { el.value = v; fire(); } });
           } else if (el.matches('input[type=checkbox]')) {
             add(el, el.closest('label') || el, clean(el.closest('label')?.textContent || el.getAttribute('aria-label')), el.checked, { get: () => el.checked, set: v => { el.checked = v; el.dispatchEvent(new Event('change', { bubbles: true })); } });
@@ -439,7 +448,7 @@
             const val = b => b.dataset.v ?? b.dataset.p ?? b.dataset.ink ?? b.dataset.ord;
             const cur = () => btns.find(b => b.getAttribute('aria-pressed') === 'true') || btns[0];
             const opts = btns.map(b => ({ value: val(b), label: clean(b.textContent) || clean(b.title) || val(b) }));
-            add(el, el.closest('.row') && !el.closest('.row').querySelector('input, select:not(.seg *)') ? el.closest('.row') : el, clean(el.getAttribute('aria-label') || el.dataset.key) || g, { type: 'select', options: opts, default: val(cur()) }, { get: () => val(cur()), set: v => btns.find(b => val(b) === v)?.click() });
+            add(el, el.closest('.row') && !el.closest('.row').querySelector('input, select:not(.seg *)') ? el.closest('.row') : el, el.matches('.inks, .levels') ? 'Tinta' : clean(el.getAttribute('aria-label') || el.dataset.key) || g, { type: 'select', options: opts, default: val(cur()) }, { get: () => val(cur()), set: v => btns.find(b => val(b) === v)?.click() });
           } else if (el.matches('button') && !el.closest('.seg, .presets, .inks, .levels, .palette, #palsets, .pal-sets, .swatch') && !el.matches('.kf-dia, .icon') && clean(el.textContent)) {
             add(el, el, clean(el.textContent) || clean(el.title), { type: 'action', label: clean(el.textContent) || clean(el.title) }, { action: true, get: () => null, set: () => el.click() });
           }
