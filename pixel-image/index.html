@@ -126,7 +126,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .inks button { appearance: none; border: 0; height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); cursor: pointer; }
 .inks button[aria-pressed="true"] { box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12), 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text); }
 .inks button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.gone { display: none !important; } /* Olas, Refracción, Flor: no longer offered (only an image or a model goes in) */
+.gone, .hud { display: none !important; } /* .hud: the pixel count over the picture, not shown */ /* Olas, Refracción, Flor: no longer offered (only an image or a model goes in) */
 </style>
 </head>
 <body>

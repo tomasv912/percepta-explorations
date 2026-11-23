@@ -49,7 +49,7 @@
   nav.innerHTML = `<a class="tb-brand" href="${link('home/')}"${isHere('home/') ? ' aria-current="page"' : ''}>Percepta</a><div class="tb-tabs">${links}${crumb}</div>`;
   // Inside Pixel (one half of it, in its frame) the page holding both has the bar
   window.PERCEPTA_EMBED = window !== window.top && !!window.parent.PixelShell;
-  if (window.PERCEPTA_EMBED) script.remove(); else script.replaceWith(nav);
+  script.remove(); // no bar on top (the nav is built but not shown)
   window.PERCEPTA_EXPLORATIONS = EXPLORATIONS; window.PERCEPTA_GENERAL = GENERAL;
 
   // The palette every tool with colour uses (more can be listed to offer a choice). White and black stay as they are (#FAFAFA, #272727): they are the two
@@ -208,7 +208,10 @@
 .pmode output { font: 12px var(--mono, ui-monospace, monospace); color: var(--text, #1a1714); min-width: 36px; text-align: right; }`;
       document.head.appendChild(st);
     }
-    const el = document.createElement('div'); el.className = 'pmode'; el.innerHTML = html; stage.appendChild(el);
+    const el = document.createElement('div'); el.innerHTML = html;
+    // in the right panel, at the top of Píxeles (the panel's dials show them); floating over the picture only without it
+    const sec = [...document.querySelectorAll('aside section')].find(x => x.querySelector('h2')?.textContent.trim() === 'Píxeles');
+    if (sec) { el.className = 'pmode-in'; sec.querySelector('h2').after(el); } else { el.className = 'pmode'; stage.appendChild(el); }
     for (const t of ['pointerdown', 'pointermove', 'pointerup', 'click', 'dblclick', 'wheel', 'mousedown']) el.addEventListener(t, e => e.stopPropagation());
     return el;
   };

@@ -192,7 +192,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 .kf-menu button kbd { margin-left: auto; font: 11px var(--mono); color: var(--text-3); }
 .kf-menu button[aria-checked="true"] { background: #E4DEFC; color: #272727; }
 .kf-menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 4px; }
-.gone { display: none !important; } /* taken out of the tool (still read by the code, at its fixed value) */
+.gone, .hud { display: none !important; } /* .hud: the pixel count over the picture, not shown */ /* taken out of the tool (still read by the code, at its fixed value) */
 </style>
 </head>
 <body>
@@ -318,10 +318,10 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 
       <section>
         <h2>Píxeles</h2>
-        <div class="row ord-row" style="grid-template-columns:56px 1fr" title="Caótico: los círculos con su Caos. Pasaje: de Caos a líneas limpias a lo largo del lienzo, con manejadores">
+        <div class="gone"><div class="row ord-row" style="grid-template-columns:56px 1fr" title="Caótico: los círculos con su Caos. Pasaje: de Caos a líneas limpias a lo largo del lienzo, con manejadores">
           <span>Orden</span>
           <div class="seg" id="ord-seg" aria-label="Orden de los píxeles"><button data-ord="chaos">Caótico</button><button data-ord="blend">Pasaje</button></div>
-        </div>
+        </div></div>
         <div id="blend-controls">
 <p class="hint">Arrastrá los manejadores sobre el lienzo: <b>Caos</b> marca dónde empieza el orden y <b>Orden</b> dónde se completa; el punto del medio mueve los dos. Con Shift, la línea va en ángulos de 15°.</p>
           <div class="btns"><button class="btn" id="blend-swap" type="button">Invertir</button><button class="btn" id="blend-reset" type="button">Restablecer</button></div>
