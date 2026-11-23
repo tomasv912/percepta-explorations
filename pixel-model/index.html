@@ -695,7 +695,7 @@ function reliefMesh(R) {
     D[k] = d; Lm[k] = at(R.lum, u, v); Al[k] = R.alpha ? at(R.alpha, u, v) : 1;
     P[k * 3] = (u - .5) * R.ar; P[k * 3 + 1] = .5 - v; P[k * 3 + 2] = (d - .5) * H;
   }
-  const I = [], col = [], alb = [], jump = .02 + (1 - S.rlCut) * .3;
+  const I = [], col = [], alb = [], dep = [], jump = .02 + (1 - S.rlCut) * .3;
   const tri = (a, b, c) => {
     if (Al[a] < .5 || Al[b] < .5 || Al[c] < .5) return;
     if (Lm[a] > .93 && Lm[b] > .93 && Lm[c] > .93) return; // the paper
@@ -703,10 +703,10 @@ function reliefMesh(R) {
     if (Math.max(D[a], D[b], D[c]) - Math.min(D[a], D[b], D[c]) > jump) return; // torn where the depth jumps
     I.push(a, b, c);
     const u = ((a % cols) + (b % cols) + (c % cols)) / 3 / (cols - 1), v = (Math.floor(a / cols) + Math.floor(b / cols) + Math.floor(c / cols)) / 3 / (rows - 1);
-    col.push(near(R.rgb, u, v)); alb.push(at(R.lum, u, v));
+    col.push(near(R.rgb, u, v)); alb.push(at(R.lum, u, v)); dep.push((D[a] + D[b] + D[c]) / 3);
   };
   for (let j = 0; j + 1 < rows; j++) for (let i = 0; i + 1 < cols; i++) { const a = j * cols + i, b = a + 1, c = a + cols, d = c + 1; tri(a, c, b); tri(b, c, d); }
-  return { P, I: Uint32Array.from(I), col, alb: Float32Array.from(alb) };
+  return { P, I: Uint32Array.from(I), col, alb: Float32Array.from(alb), dep: Float32Array.from(dep) };
 }
 const reliefStatus = t => { const el = $('#relief-status'); if (el) { el.textContent = t; el.hidden = !t; } };
 function loadRelief() {
@@ -719,7 +719,7 @@ function loadRelief() {
     if (!m.I.length) return toast('La imagen no tiene nada para levantar.');
     // a picture given (or Imagen chosen) is shown straight on: no turn, no tilt
     S.yaw = 0; S.pitch = 0;
-    setModelTris(indexedTris(m.P, m.I), 'Imagen', m.col, m.alb); presetSeed = presetSig(); key = ''; sync();
+    setModelTris(indexedTris(m.P, m.I), 'Imagen', m.col, m.alb, m.dep); presetSeed = presetSig(); key = ''; sync();
   }, e => { clearTimeout(slow); reliefStatus(''); reliefLoading = null; console.error(e); toast('No se pudo hacer el modelo de la imagen.'); });
 }
 // The picture's light on the relief: each triangle as light as the picture there (with a little of the scene's light
@@ -728,6 +728,9 @@ function loadRelief() {
 function withAlbedo(buf) {
   if (!modelAlb) return buf;
   const { lit, tid } = buf, hist = new Uint32Array(256); let n = 0;
+  // and the picture's own depth for the lines to follow (as in a photo laid out by its depth), whatever the Relieve:
+  // near rises by up to an eighth of the picture's height
+  if (modelDep && fitAt) { const h = .125 / fitAt[3], L = buf.ldep = new Float32Array(lit.length); for (let i = 0; i < L.length; i++) { const t = tid[i]; if (t >= 0) L[i] = modelDep[t] * h; } }
   for (let i = 0; i < lit.length; i++) { const t = tid[i]; if (t < 0) continue; const v = modelAlb[t] * (.8 + .2 * lit[i]); lit[i] = v; hist[Math.min(255, Math.floor(v * 255))]++; n++; }
   if (!n) return buf;
   const at = f => { let c = 0; for (let b = 0; b < 256; b++) { c += hist[b]; if (c >= f * n) return b / 255; } return 1; };
@@ -739,7 +742,7 @@ function loadPreset() {
   const sig = presetSig(), which = preset;
   if (which === 'relief') {
     // the picture as fetched: only the sheet again (Relieve, Cortar saltos); none yet (or chosen again): fetched first
-    if (reliefSrc) { const m = reliefMesh(reliefSrc); if (m.I.length) setModelTris(indexedTris(m.P, m.I), 'Imagen', m.col, m.alb); presetSeed = sig; return; }
+    if (reliefSrc) { const m = reliefMesh(reliefSrc); if (m.I.length) setModelTris(indexedTris(m.P, m.I), 'Imagen', m.col, m.alb, m.dep); presetSeed = sig; return; }
     return loadRelief();
   }
   if (which === 'blocks') { const m = blocks(S.seed); setModelTris(indexedTris(m.P, m.I), 'Manzanas'); presetSeed = sig; return; }
@@ -755,7 +758,7 @@ function loadPreset() {
 }
 // Triangles with normals (18 per triangle): centred and scaled like setModel, normals kept.
 // Color original: the model's own colour per triangle (modelCol, from its materials), read under each pixel.
-let modelCol = null, modelAlb = null;
+let modelCol = null, modelAlb = null, modelDep = null;
 function colAt(buf, x, y) {
   if (!modelCol || !buf.tid) return undefined;
   const ix = Math.min(buf.W - 1, Math.max(0, Math.floor((x - buf.box.x0) * buf.k))), iy = Math.min(buf.H - 1, Math.max(0, Math.floor((y - buf.box.y0) * buf.k))), t = buf.tid[iy * buf.W + ix];
@@ -766,8 +769,8 @@ function colAt(buf, x, y) {
 // zooms out. Another model (another source, another picture, another Forma, a file) is fitted afresh.
 let fitKey = '', fitAt = null;
 const fitKeyNow = () => preset === 'relief' ? 'relief:' + (reliefSrc?.id ?? '') : preset === 'shapes' ? 'shapes:' + S.shape : preset;
-function setModelTris(tris, name, col = null, alb = null) {
-  modelCol = col; modelAlb = alb;
+function setModelTris(tris, name, col = null, alb = null, dep = null) {
+  modelCol = col; modelAlb = alb; modelDep = dep;
   const fk = fitKeyNow();
   if (fk !== fitKey || !fitAt) {
     let cx = 0, cy = 0, cz = 0, n = 0;
@@ -781,7 +784,7 @@ function setModelTris(tris, name, col = null, alb = null) {
   model = tris; modelName = name;
 }
 function setModel(pos, name) {
-  modelCol = pos.col || null; modelAlb = null; fitKey = ''; // a file: fitted on its own (and whatever comes next, afresh)
+  modelCol = pos.col || null; modelAlb = null; modelDep = null; fitKey = ''; // a file: fitted on its own (and whatever comes next, afresh)
   let cx = 0, cy = 0, cz = 0, n = pos.length / 3;
   for (let i = 0; i < pos.length; i += 3) { cx += pos[i]; cy += pos[i + 1]; cz += pos[i + 2]; }
   cx /= n; cy /= n; cz /= n;
@@ -830,9 +833,10 @@ function contour(buf, cp, spn, fo, gap, pitch) {
   // Sampled in columns pitch apart across the picture (Tamaño + Espacio entre píxeles): in each, the line crosses
   // between two rows of the same surface (not across a jump in depth); so along a line the pixels sit evenly, and
   // they line up in columns.
-  const { W, H, k, box, depth, mask, lit } = buf, out = [], jump = 6 / k;
+  const { W, H, k, box, depth, mask, lit, ldep } = buf, out = [], jump = 6 / k;
   const lev = new Float32Array(W * H);
-  for (let i = 0; i < W * H; i++) if (mask[i]) { const Y = box.y0 + (Math.floor(i / W) + .5) / k; lev[i] = (Y * (1 - fo) + (Y * cp - depth[i] * spn) * fo) / gap; }
+  // the lines follow the surface's depth (a picture's: its depth map too, so they follow its form even laid flat)
+  for (let i = 0; i < W * H; i++) if (mask[i]) { const Y = box.y0 + (Math.floor(i / W) + .5) / k, d = depth[i] * spn + (ldep ? ldep[i] : 0); lev[i] = (Y * (1 - fo) + (Y * cp - d) * fo) / gap; }
   for (let X = box.x0 + pitch / 2; X < box.x1; X += pitch) {
     const gx = (X - box.x0) * k - .5, i0 = Math.max(0, Math.min(W - 2, Math.floor(gx))), fx = Math.min(1, Math.max(0, gx - i0));
     const ok = y => mask[y * W + i0] && mask[y * W + i0 + 1] && Math.abs(depth[y * W + i0] - depth[y * W + i0 + 1]) <= jump;
@@ -2011,9 +2015,9 @@ const kfLook = fast => JSON.stringify([S.yaw, S.pitch, S.panX, S.panY, zS(), AW,
 function kfShapeOf(k, fast) {
   const sig = kfLook(fast);
   if (k.cache?.sig === sig) return k.cache.list;
-  const keep = [model, modelCol, modelAlb, modelName, S.anim, stb, scene];
-  model = k.v.model; modelCol = k.v.col; modelAlb = k.v.alb || null; modelName = k.v.name; if (S.anim === 'stable') S.anim = 'none';
-  let list; try { list = build(fast, S.yaw); } finally { [model, modelCol, modelAlb, modelName, S.anim, stb, scene] = keep; }
+  const keep = [model, modelCol, modelAlb, modelDep, modelName, S.anim, stb, scene];
+  model = k.v.model; modelCol = k.v.col; modelAlb = k.v.alb || null; modelDep = k.v.dep || null; modelName = k.v.name; if (S.anim === 'stable') S.anim = 'none';
+  let list; try { list = build(fast, S.yaw); } finally { [model, modelCol, modelAlb, modelDep, modelName, S.anim, stb, scene] = keep; }
   k.cache = { sig, list, pair: null };
   return list;
 }
@@ -2156,7 +2160,7 @@ function kfHoldFrame(fast) {
 }
 function kfInsert(track) {
   const t = KF.t, K = KF[track];
-  let v = track === 'rot' ? [S.yaw, S.pitch] : track === 'pos' ? [S.panX, S.panY] : track === 'shape' ? { model, col: modelCol, alb: modelAlb, name: modelName } : [S.zoom];
+  let v = track === 'rot' ? [S.yaw, S.pitch] : track === 'pos' ? [S.panX, S.panY] : track === 'shape' ? { model, col: modelCol, alb: modelAlb, dep: modelDep, name: modelName } : [S.zoom];
   if (track === 'shape' && !model) return toast('El modelo todavía se está cargando.');
   if (track === 'rot' && K.length) {
     // the turn goes the short way from the key before it (yaw is kept unwrapped, so turns past 180° add up)
@@ -2278,7 +2282,7 @@ function kfAutoKey() {
   if (z && Math.abs(z.v[0] - S.zoom) > 1e-9) { z.v = [S.zoom]; changed = true; }
   // Forma: only when another model was chosen (going to a key never changes the model, so it never rewrites one)
   const f = kfNow('shape');
-  if (model && model !== kfSeen) { if (f && f.v.model !== model) { f.v = { model, col: modelCol, alb: modelAlb, name: modelName }; f.cache = null; changed = true; } kfSeen = model; }
+  if (model && model !== kfSeen) { if (f && f.v.model !== model) { f.v = { model, col: modelCol, alb: modelAlb, dep: modelDep, name: modelName }; f.cache = null; changed = true; } kfSeen = model; }
   return changed;
 }
 // the diamonds in the panel: Giro and Inclinación (Rotación), Escala (Zoom), Posición
