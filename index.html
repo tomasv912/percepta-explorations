@@ -62,6 +62,9 @@ window.PixelShell = (() => {
     // a file or a render handed over: the half it is for takes it and shows
     deliver(path, key, o) { const f = half(path); if (o) f.contentWindow.PerceptaShared?.receive(o, ''); show(f); return f.contentWindow.PerceptaHandoff?.deliver(key); },
     hasImage: () => { try { return !!frames.image.contentWindow.PixelImage?.hasImage(); } catch { return false; } },
+    // Imagen experimental (model half): the image half's picture and depth; a picture given there, kept by the image half
+    imageRelief: () => frames.image.contentWindow.PixelImage?.relief(),
+    loadImage: file => frames.image.contentWindow.PixelImage?.load(file),
   };
 })();
 </script>

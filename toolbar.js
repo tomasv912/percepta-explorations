@@ -117,6 +117,28 @@
       return update;
     },
   };
+  // Claro / Oscuro: a toggle at the bottom right of the picture. Oscuro puts the picture on the black, and what was
+  // black turns white (the pixels of the background's colour take its opposite); Claro back on the white.
+  window.PerceptaTheme = (stage, isDark, setDark) => {
+    const sun = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"/></svg>';
+    const moon = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><path d="M13.2 10.1A5.6 5.6 0 0 1 5.9 2.8a5.6 5.6 0 1 0 7.3 7.3z"/></svg>';
+    const box = document.createElement('div'); box.className = 'pth';
+    box.innerHTML = `<div class="pth-tg" role="group" aria-label="Modo"><button data-dark="0" title="Modo claro: píxeles oscuros sobre blanco" aria-label="Modo claro">${sun}</button><button data-dark="1" title="Modo oscuro: píxeles claros sobre negro" aria-label="Modo oscuro">${moon}</button></div>`;
+    stage.appendChild(box);
+    const tab = stage.querySelector('.kf-tab'); if (tab) box.appendChild(tab); // the timeline's tab beside it
+    box.querySelector('.pth-tg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setDark(b.dataset.dark === '1'); });
+    for (const t of ['pointerdown', 'pointerup', 'click', 'dblclick', 'wheel']) box.addEventListener(t, e => e.stopPropagation());
+    return () => { const d = isDark(); box.querySelectorAll('.pth-tg button').forEach(b => b.setAttribute('aria-pressed', (b.dataset.dark === '1') === d)); };
+  };
+  style.textContent += `
+.pth { position: absolute; right: 14px; bottom: 14px; z-index: 4; display: flex; align-items: center; gap: 8px; }
+.pth .kf-tab { position: static; }
+.pth-tg { display: flex; padding: 3px; gap: 2px; border-radius: 10px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 4px 14px rgb(0 0 0 / .06); }
+.pth-tg button { width: 30px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 7px; background: none; color: var(--text-2); cursor: pointer; padding: 0; }
+.pth-tg button:hover { color: var(--text); }
+.pth-tg button[aria-pressed="true"] { background: #272727; color: #FAFAFA; }
+.pth-tg button[data-dark="0"][aria-pressed="true"] { background: var(--fill); color: var(--text); box-shadow: 0 0 0 1px var(--line); }
+`;
   style.textContent += `
 .bg-flip { gap: 4px; }
 .bg-flip i { width: 14px; height: 14px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .25); display: block; }

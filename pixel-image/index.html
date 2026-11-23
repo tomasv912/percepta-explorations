@@ -150,7 +150,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
       <section>
         <h2>Fuente</h2>
         <div class="seg" data-key="source" aria-label="Fuente" style="flex-wrap: wrap">
-          <button data-v="image" title="Una foto: se dibuja con su profundidad (mapa de profundidad)">Imagen</button><button data-v="m:rascacielos" title="Un modelo 3D: gira">Rascacielos</button><button data-v="m:building" title="Un modelo 3D: gira">Building</button><button data-v="m:blocks" title="Un modelo 3D: gira">Manzanas</button><button data-v="m:shapes" title="Un modelo 3D: gira">Formas</button>
+          <button data-v="image" title="Una foto: se dibuja con su profundidad (mapa de profundidad)">Imagen</button><button data-v="m:relief" title="Experimental: la foto hecha un relieve 3D (su profundidad la levanta) que gira como un modelo">Imagen experimental</button><button data-v="m:rascacielos" title="Un modelo 3D: gira">Rascacielos</button><button data-v="m:building" title="Un modelo 3D: gira">Building</button><button data-v="m:blocks" title="Un modelo 3D: gira">Manzanas</button><button data-v="m:shapes" title="Un modelo 3D: gira">Formas</button>
         </div>
         <button class="btn" id="upload">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10.5V2.5M4.5 6 8 2.5 11.5 6"/><path d="M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2"/></svg>
@@ -280,9 +280,11 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
           </div>
           <p class="hint">Cada color en la misma proporción, también en lo que pintás con el pincel.</p>
         </div>
+        <div class="gone">
         <div class="row" style="grid-template-columns:56px 1fr auto">
           <span>Fondo</span>
           <label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label><button class="btn icon bg-flip" id="bg-flip" hidden aria-label="Blanco o negro para el color del fondo"><i></i></button>
+        </div>
         </div>
         <label class="check" id="onlypal-row" title="Los cubos usan solamente los 3 colores de la paleta: nunca blanco ni negro (tampoco el color del fondo)"><input type="checkbox" data-check="onlyPal"> Solo los 3 colores (sin blanco ni negro)</label>
         <div class="gone"><label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label></div>
@@ -327,7 +329,10 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 
 <script>
 // ---------- State ----------
-const SIZES = { '3:2': [3000, 2000], '4:3': [3000, 2250], '1:1': [3000, 3000], '4:5': [2400, 3000], '16:9': [3200, 1800] };
+// The frame: long side 1600, as the model half's, so a pixel of a given Tamaño is the same size in both (exports
+// are made at twice that).
+const SIZES = { '3:2': [1600, 1067], '4:3': [1600, 1200], '1:1': [1600, 1600], '4:5': [1280, 1600], '16:9': [1600, 900] };
+const EXP = 2;
 // Background: white or one of the palette colours. Cubes of the background's colour would vanish into it,
 // so they turn white instead (white cubes on white turn ink).
 const BACKGROUNDS = window.PERCEPTA_BACKGROUNDS;
@@ -340,12 +345,12 @@ const DEFAULTS = {
   rfChannels: 3, rfFocus: .42, rfChaos: .7, rfSpread: .6, rfAmp: .5, rfFreq: 1, rfOrder: .7, rfWaist: 0,
   blModel: 'hortensia', blYaw: 0, blPitch: 0, blTravel: .5, blStem: .3, blLength: 1, blChannel: .45, blFlowers: 1, blSize: .5, blFlorets: 32, blShare: .5, orient: 'h',
   contrast: 1.2, threshold: .1, invert: false, grid: false, gridCols: 140, rotX: 0, rotY: 0, rotZ: 0,
-  style: 'mono', count: 45000, size: 3.5, sizeMin: .8, sizeMax: 3.5, mod: .6, variation: .35, grain: .12,
+  style: 'mono', count: 45000, size: 3, sizeMin: .6, sizeMax: 3, mod: .6, variation: .35, grain: .12,
   colorMode: 'single', colorSrc: 'single', colorHow: 'tone', pastel: true, ink: '#272727', palette: ['#E4DEFC', '#A8A5EC', '#A0C2FF'],
   trail: 0, trailAngle: 180, trailJitter: .3,
   radius: 220, soft: .6, force: .9, drift: .5,
   bg: '#FAFAFA', bgExport: false,
-  dof: 0, focus: 0, focusBand: .2, imgLines: true, dGap: 18, dPx: 1, circle: true, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: 1, onlyPal: false, cseed: 1, square: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0,
+  dof: 0, focus: 0, focusBand: .2, imgLines: true, dGap: 10, dPx: .5, circle: true, dRelief: .5, dAM: true, snap: false, cell: 8, cellGap: 1, onlyPal: false, cseed: 1, square: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0,
   motion: 'still', flowStyle: 'smooth', flowDir: 'r', wThresh: 0, loopDur: 6, vidFps: '60', vidFmt: 'mp4', expScale: '1', handJit: true, jitter: 3,
 };
 const S = structuredClone(DEFAULTS);
@@ -382,33 +387,63 @@ function perlin(rand) {
 // An uploaded image is read once into a darkness grid; dark areas get more cubes, white areas none.
 const GRID = 480;
 let img = null, imgId = 0, depthId = 0;
-// The depth of the picture, by Depth Anything V2 (small, 8-bit) run in the browser with transformers.js
-// (loaded from jsDelivr): the library and the model (from Hugging Face, about 27 MB) are fetched the first time and
-// stay in the browser's cache. Near is high (1), far is low (0), one value per cell of the tone grid.
-let depthPipe = null;
-async function ensureDepth() {
-  if (!img || img.depth || img.depthBusy) return;
-  const me = img; me.depthBusy = true;
+// The depth of the picture, by Depth Anything V2 (small) run in the browser with transformers.js (loaded from
+// jsDelivr): the library and the model (from Hugging Face) are fetched the first time and stay in the browser's cache.
+// Near is high (1), far is low (0), one value per cell of the tone grid. To keep it quick: the picture Pixel opens with
+// brings its depth already worked out (default-depth.png); a depth once worked out is kept (IndexedDB, by the
+// picture), so the same picture never waits twice; the model is fetched and readied in the background as soon as the
+// page is idle; and it runs on the graphics card (WebGPU) where there is one, on the processor otherwise.
+let depthPipe = null, depthPipeP = null;
+function depthModel() {
+  return depthPipeP ||= (async () => {
+    const T = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2/dist/transformers.min.js');
+    T.env.allowLocalModels = false;
+    if (navigator.gpu) try { if (await navigator.gpu.requestAdapter()) { depthPipe = await T.pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', { dtype: 'fp16', device: 'webgpu' }); depthPipe.gpu = true; return depthPipe; } } catch (e) { console.warn('WebGPU no disponible para la profundidad', e); }
+    depthPipe = await T.pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', { dtype: 'q8', device: 'wasm' });
+    return depthPipe;
+  })().catch(e => { depthPipeP = null; throw e; });
+}
+const depthStore = (() => {
+  let dbP = null;
+  const db = () => dbP ||= new Promise((ok, no) => { const r = indexedDB.open('pixel-depth', 1); r.onupgradeneeded = () => r.result.createObjectStore('d'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); });
+  const tx = async (mode, f) => { const d = await db(); return new Promise((ok, no) => { const t = d.transaction('d', mode), q = f(t.objectStore('d')); t.oncomplete = () => ok(q?.result); t.onerror = () => no(t.error); }); };
+  return { get: k => tx('readonly', s => s.get(k)).catch(() => null), put: (k, v) => tx('readwrite', s => s.put(v, k)).catch(() => {}) };
+})();
+async function picKey(pic) { const h = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(pic)); return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join(''); }
+// a depth map (an image: grey, near light) read into the picture's grid
+const depthFromImage = (el, me) => new Promise(ok => {
+  const c = document.createElement('canvas'); c.width = me.gw; c.height = me.gh; const x = c.getContext('2d', { willReadFrequently: true });
+  x.imageSmoothingQuality = 'high'; x.drawImage(el, 0, 0, me.gw, me.gh); const d = x.getImageData(0, 0, me.gw, me.gh).data, D = new Float32Array(me.gw * me.gh);
+  for (let k = 0; k < D.length; k++) D[k] = d[k * 4] / 255; ok(D);
+});
+function ensureDepth() {
+  if (!img || img.depth) return Promise.resolve(img?.depth);
+  return img.depthP ||= depthFor(img);
+}
+async function depthFor(me) {
   const status = t => { const el = document.getElementById('depth-status'); if (el) el.textContent = t; };
-  status('Calculando la profundidad… (la primera vez descarga el modelo, unos 27 MB)');
+  const done = D => { me.depth = D; depthId++; status(''); if (img === me) sync(); return D; };
   try {
-    if (!depthPipe) {
-      const T = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2/dist/transformers.min.js');
-      T.env.allowLocalModels = false;
-      depthPipe = await T.pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', { dtype: 'q8', device: 'wasm' });
-    }
-    const out = await depthPipe(me.pic), dm = out.depth, ch = dm.channels || 1, D = new Float32Array(me.gw * me.gh);
+    if (me.preDepth) { const el = new Image(); el.src = me.preDepth; await el.decode(); return done(await depthFromImage(el, me)); }
+    const key = await picKey(me.pic), kept = await depthStore.get(key);
+    if (kept && kept.w === me.gw && kept.h === me.gh) return done(new Float32Array(kept.d));
+    status(depthPipe ? 'Calculando la profundidad…' : 'Calculando la profundidad… (la primera vez descarga el modelo)');
+    let out;
+    try { out = await (await depthModel())(me.pic); }
+    catch (e) { if (!depthPipe?.gpu) throw e; console.warn(e); depthPipe = null; depthPipeP = null; out = await (await depthModel())(me.pic); }
+    const dm = out.depth, ch = dm.channels || 1, D = new Float32Array(me.gw * me.gh);
     let lo = Infinity, hi = -Infinity;
     for (let j = 0; j < me.gh; j++) for (let i = 0; i < me.gw; i++) {
       const x = Math.min(dm.width - 1, Math.floor((i + .5) / me.gw * dm.width)), y = Math.min(dm.height - 1, Math.floor((j + .5) / me.gh * dm.height)), v = dm.data[(y * dm.width + x) * ch];
       D[j * me.gw + i] = v; lo = Math.min(lo, v); hi = Math.max(hi, v);
     }
     for (let k = 0; k < D.length; k++) D[k] = (D[k] - lo) / ((hi - lo) || 1);
-    me.depth = D; depthId++; status('');
-    if (img === me) sync();
-  } catch (err) { console.error(err); status('No se pudo calcular la profundidad (hace falta conexión la primera vez).'); }
-  finally { me.depthBusy = false; }
+    depthStore.put(key, { w: me.gw, h: me.gh, d: D.buffer.slice(0) });
+    return done(D);
+  } catch (err) { console.error(err); me.depthP = null; status('No se pudo calcular la profundidad (hace falta conexión la primera vez).'); throw err; }
 }
+// the depth model, readied while nothing else is going on (so a picture given later doesn't wait for the download)
+(window.requestIdleCallback || (f => setTimeout(f, 1500)))(() => depthModel().catch(() => {}), { timeout: 4000 });
 function loadImage(el) {
   const iw = el.naturalWidth || el.width, ih = el.naturalHeight || el.height;
   const gw = Math.max(2, Math.round(iw >= ih ? GRID : GRID * iw / ih)), gh = Math.max(2, Math.round(iw >= ih ? GRID * ih / iw : GRID));
@@ -1173,6 +1208,7 @@ $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-in
 $('#blModel').innerHTML = Flora3D.NAMES.map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
 $('#blModel').addEventListener('change', e => { S.blModel = e.target.value; sync(); });
 const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => S.palette, () => S.bg, v => { S.bg = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
+const syncTheme = PerceptaTheme(stage, () => S.bg.toLowerCase() === '#272727', d => { S.bg = d ? '#272727' : '#FAFAFA'; S.bgFlip = false; sync(); });
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
 const reseed = () => { S.seed = Math.floor(Math.random() * 1e6); sync(); };
 $('#cseed').addEventListener('input', e => { S.cseed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); wake(); });
@@ -1229,9 +1265,9 @@ function sync() {
   $('#inks').hidden = S.colorSrc !== 'single'; $('#how-row').hidden = S.colorSrc === 'single'; $('#colorHow').value = S.colorHow; $('#onlypal-row').hidden = S.colorSrc !== 'pal'; $('#pastel-row').hidden = S.colorSrc !== 'image'; $('#palsets').hidden = S.colorSrc === 'image'; $('#sl-strokeW').hidden = !S.stroke;
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase())); $('#palette-box').hidden = S.colorSrc !== 'pal';
   $('#blModel').value = S.blModel; $('#sl-blFlorets').hidden = S.blModel !== 'hortensia';
-  updateBg(S.bgFlip);
+  updateBg(S.bgFlip); syncTheme();
   const b1 = S.dir === '1b';
-  $('#depth-controls').hidden = !S.imgLines; if (image && S.imgLines) ensureDepth();
+  $('#depth-controls').hidden = !S.imgLines; if (image && S.imgLines) ensureDepth().catch(() => {});
   const gridOnly = S.snap && !S.blend && S.dir !== '1b', cells = (S.snap || S.blend) && S.dir !== '1b';
   $('#sl-count').hidden = (image && S.grid) || gridOnly; $('#sl-size').hidden = false; if (typeof syncModeBar === 'function') syncModeBar();
   document.querySelectorAll('[data-color]').forEach(inp => paintSwatch(inp.closest('.swatch'), S[inp.dataset.color]));
@@ -1730,7 +1766,7 @@ function zipStored(files) {
 let filming = false;
 $('#motion-export').addEventListener('click', async () => {
   if (filming || !animMode()) return;
-  const png = S.vidFmt === 'png', btn = $('#motion-export'), label = btn.textContent, fps = +S.vidFps, N = drawings(), sc = +S.expScale;
+  const png = S.vidFmt === 'png', btn = $('#motion-export'), label = btn.textContent, fps = +S.vidFps, N = drawings(), sc = EXP * +S.expScale;
   const W = gen.W * sc, H = gen.H * sc, v = viewBox(), k = W / v.w;
   if (!png && (!('VideoEncoder' in window) || !window.Mp4Muxer)) return toast('Este navegador no puede exportar video: probá con Chrome, Edge o Safari, o elegí PNG (.zip).');
   filming = true; btn.disabled = true;
@@ -1794,18 +1830,18 @@ function download(name, blob) {
   toast(name + ' descargado');
 }
 $('#png').addEventListener('click', () => {
-  const c = document.createElement('canvas'); c.width = gen.W; c.height = gen.H;
+  const c = document.createElement('canvas'); c.width = gen.W * EXP; c.height = gen.H * EXP;
   const ctx = c.getContext('2d');
-  const v = viewBox(), k = gen.W / v.w;
+  const v = viewBox(), k = gen.W * EXP / v.w;
   ctx.setTransform(k, 0, 0, k, (panX - v.x) * k, (panY - v.y) * k);
   draw(ctx, S);
   c.toBlob(b => b ? download(`pixel-${S.seed}.png`, b) : toast('No se pudo generar el PNG.'), 'image/png');
 });
 // PNG: the pixels alone (transparent around); JPG: on the background
 $('#jpg').addEventListener('click', () => {
-  const c = document.createElement('canvas'); c.width = gen.W; c.height = gen.H;
-  const ctx = c.getContext('2d'); ctx.fillStyle = S.bg; ctx.fillRect(0, 0, gen.W, gen.H);
-  const v = viewBox(), k = gen.W / v.w;
+  const c = document.createElement('canvas'); c.width = gen.W * EXP; c.height = gen.H * EXP;
+  const ctx = c.getContext('2d'); ctx.fillStyle = S.bg; ctx.fillRect(0, 0, c.width, c.height);
+  const v = viewBox(), k = gen.W * EXP / v.w;
   ctx.setTransform(k, 0, 0, k, (panX - v.x) * k, (panY - v.y) * k);
   draw(ctx, S);
   c.toBlob(b => b ? download(`pixel-${S.seed}.jpg`, b) : toast('No se pudo generar el JPG.'), 'image/jpeg', .95);
@@ -1833,25 +1869,18 @@ function syncModeBar() {
   modeBar.querySelector('#pm-blend1b').checked = !!S.blend;
 }
 
-// From the model half (Convertir en imagen): its render as the image, and its depth map as the picture's depth.
-PerceptaHandoff.on('model-image', h => {
-  const el = new Image(), url = URL.createObjectURL(h.blob);
-  el.onload = () => {
-    URL.revokeObjectURL(url); loadImage(el);
-    const { gw, gh } = img, D = new Float32Array(gw * gh);
-    for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) D[j * gw + i] = h.depth.data[Math.min(h.depth.h - 1, Math.floor((j + .5) / gh * h.depth.h)) * h.depth.w + Math.min(h.depth.w - 1, Math.floor((i + .5) / gw * h.depth.w))];
-    // the model's render: its white around the model is no picture (so Invertir doesn't fill it)
-    img.alpha = Float32Array.from(D, v => v > 0 ? 1 : 0); imgId++;
-    img.depth = D; depthId++; S.source = 'image'; if (h.colored) S.colorSrc = 'image'; sync(); toast(`${h.name || 'Modelo'} como imagen`);
-  };
-  el.src = url;
-});
 // The image half of Pixel: what it shares with the model half (taken when coming from it), and an image given to it.
 PerceptaShared.init({ S, names: { one: 'single', pal: 'pal', orig: 'image' }, after: () => sync() });
 PerceptaHandoff.on('image-file', f => openFile(f));
-window.PixelImage = { hasImage: () => !!img }; // for the page holding both halves
+// for the page holding both halves: whether there is a picture; the picture and its depth (Imagen experimental, in the
+// model half, makes a relief of them); and a picture given there, taken here without showing this half
+window.PixelImage = {
+  hasImage: () => !!img,
+  relief: async () => { if (!img) return null; const me = img, id = imgId; await ensureDepth(); return { id, gw: me.gw, gh: me.gh, lum: me.lum, rgb: me.rgb, alpha: me.alpha, depth: me.depth, ar: me.ar }; },
+  load: file => new Promise((ok, no) => { const el = new Image(), url = URL.createObjectURL(file); el.onload = () => { URL.revokeObjectURL(url); loadImage(el); S.source = 'image'; sync(); ok(); }; el.onerror = () => { URL.revokeObjectURL(url); no(new Error('imagen')); }; el.src = url; }),
+};
 // The picture Pixel opens with (a building, from below), until another is given.
-{ const el = new Image(); el.onload = () => { if (img) return; loadImage(el); S.source = 'image'; sync(); }; el.src = 'default.jpg'; }
+{ const el = new Image(); el.onload = () => { if (img) return; loadImage(el); img.preDepth = 'default-depth.png'; S.source = 'image'; sync(); }; el.src = 'default.jpg'; }
 window.PERCEPTA_SLIDERS = SLIDERS; // for the panel (DialKit): the sliders with uneven stops
 sync();
 </script>

@@ -51,8 +51,6 @@ main { position: relative; display: grid; place-items: center; overflow: hidden;
 .frame.moving, .frame.moving:active { cursor: move; }
 .busy { position: absolute; top: 12px; right: 14px; font: 11px var(--mono); color: var(--text-3); }
 .hud { position: absolute; top: 54px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
-.send { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 5; }
-.send .btn { height: 32px; padding: 0 14px; }
 .tt { position: absolute; bottom: 58px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 4px 16px rgb(0 0 0 / .06); white-space: nowrap; z-index: 5; }
 .tt { flex-wrap: wrap; justify-content: center; width: max-content; max-width: calc(100% - 24px); }
 .tt-sep { width: 1px; height: 28px; background: var(--line); flex: none; }
@@ -134,7 +132,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 #building-controls .seg { flex-wrap: wrap; }
 #building-controls .seg button, #shape-controls .seg button { flex: 1 0 30%; }
 #shape-controls .seg { flex-wrap: wrap; }
-#block-controls { display: flex; flex-direction: column; gap: 10px; }
+#block-controls, #relief-controls { display: flex; flex-direction: column; gap: 10px; }
 .crop-hud { position: absolute; bottom: 72px; left: 14px; flex-direction: column; align-items: stretch; display: flex; gap: 4px; align-items: center; white-space: nowrap; z-index: 4; padding: 4px; border-radius: 10px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); font-size: 12px; color: var(--text-2); }
 .crop-hud b { color: var(--text); font-weight: 500; margin: 4px 6px; }
 .crop-hud button { height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: var(--fill); color: var(--text); font: 500 12px var(--font); cursor: pointer; }
@@ -149,8 +147,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .kf { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: var(--kfh); display: flex; flex-direction: column; background: var(--surface); border-top: 1px solid var(--line); font: 12px var(--font); color: var(--text); user-select: none; }
 main.kf-open { --kfh: 200px; }
 main.kf-open .tt { bottom: calc(58px + var(--kfh)); }
-main.kf-open .send { bottom: calc(14px + var(--kfh)); }
 main.kf-open .kf-tab { display: none; }
+main.kf-open .pth { bottom: calc(14px + var(--kfh)); }
 main.kf-open { padding-bottom: calc(120px + var(--kfh)); }
 main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 .kf-head select#kf-fmt { width: 96px; }
@@ -209,7 +207,6 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
     <div class="drop" id="drop" hidden>Soltá el modelo (.obj, .fbx, .glb, .gltf)</div>
     <div class="hud" id="stats">—</div>
     <div class="crop-hud gone" id="crop-hud"><button id="crop-tool" aria-pressed="false" title="Recortar (C): arrastrá un recuadro sobre el modelo, o clic para acercar ×2. Las flechas lo desplazan">Recortar</button><b id="crop-label" hidden>Recorte</b><button id="crop-back" hidden title="Vuelve al recorte anterior">Vista anterior</button><button id="crop-clear" hidden title="Muestra el cuadro entero">Quitar recorte</button></div>
-    <div class="send" role="group" aria-label="Enviar a otra tool"><button class="btn primary" id="to-waves" title="Renderiza la vista actual (luz, sombras y profundidad) y la abre como imagen, con su profundidad">Convertir en imagen</button></div>
     <button class="kf-tab" id="kf-tab" title="Línea de tiempo con keyframes de rotación, posición, zoom y forma (I inserta un keyframe)"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 7h12" stroke="currentColor" stroke-width="1.2"/><rect x="3.2" y="4.7" width="4.6" height="4.6" transform="rotate(45 5.5 7)" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/></svg>Timeline <b id="kf-count" hidden></b></button>
     <div class="kf" id="kf" hidden role="region" aria-label="Línea de tiempo de keyframes">
       <div class="kf-head">
@@ -283,6 +280,11 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
       <section>
         <h2>Fuente</h2>
         <div class="presets" id="presets" aria-label="Fuente"></div>
+        <div id="relief-controls">
+          <div id="sl-rlDepth"></div>
+          <div id="sl-rlCut"></div>
+          <p class="hint">Experimental: la imagen (la de Imagen) hecha relieve con su profundidad. Subí otra para cambiarla.</p>
+        </div>
         <div id="block-controls">
           <div class="seg" data-key="mzCount" aria-label="Cantidad de manzanas"><button data-v="1">1</button><button data-v="2">2</button><button data-v="4">4</button><button data-v="6">6</button><button data-v="8">8</button></div>
           <div id="sl-mzHeight"></div>
@@ -364,9 +366,11 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         <div class="gone"><div id="sl-strokeW"></div></div>
         <div id="palsets"></div>
         <div class="levels" id="inks" aria-label="Color"></div>
+        <div class="gone">
         <div class="row" style="grid-template-columns:56px 1fr auto">
           <span>Fondo</span>
           <label class="swatch bg-pick"><i id="bg-chip"></i><select id="bg" aria-label="Fondo"></select></label><button class="btn icon bg-flip" id="bg-flip" hidden aria-label="Blanco o negro para el color del fondo"><i></i></button>
+        </div>
         </div>
         <label class="check" id="onlypal-row" title="Los cubos usan solamente los 3 colores de la paleta: nunca blanco ni negro (tampoco el color del fondo)"><input type="checkbox" data-check="onlyPal"> Solo los 3 colores (sin blanco ni negro)</label>
         <div class="gone"><label class="check"><input type="checkbox" data-check="bgExport"> Incluir el fondo al exportar</label></div>
@@ -422,7 +426,7 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'ink', colorSrc: 'ink', colorHow: 'tone', ink: '#272727', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
-  mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
+  rlDepth: .8, rlCut: .75, mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -439,7 +443,7 @@ function rng(seed) {
 // Built-in models, each with variations from the seed (R): a skyscraper (a scan, simplified, in models/), and
 // Building, Manzanas and Formas, generated here and shaped by its own settings; or an uploaded file. Positions are centred and scaled
 // to fit a unit sphere.
-const PRESETS = [['rascacielos', 'Rascacielos'], ['building', 'Building'], ['blocks', 'Manzanas'], ['shapes', 'Formas']];
+const PRESETS = [['relief', 'Imagen experimental'], ['rascacielos', 'Rascacielos'], ['building', 'Building'], ['blocks', 'Manzanas'], ['shapes', 'Formas']];
 let model = null, modelName = '', preset = 'rascacielos', presetSeed = -1, loadingPreset = null;
 // An indexed mesh into 18-float triangles, with smooth normals (each vertex the area-weighted sum of its faces).
 function indexedTris(P, I) {
@@ -638,9 +642,72 @@ function shapeMesh(kind, seed) {
   return { P: Float32Array.from(P), I: Uint32Array.from(I) };
 }
 // What the current preset is made from: its seed, and Building's settings or the shape.
-const presetSig = () => preset + ':' + (preset === 'blocks' ? [S.seed, S.mzCount, S.mzHeight].join() : preset === 'shapes' ? S.shape + ':' + S.seed : preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
+const presetSig = () => preset + ':' + (preset === 'relief' ? [reliefSrc?.id, S.rlDepth, S.rlCut].join() : preset === 'blocks' ? [S.seed, S.mzCount, S.mzHeight].join() : preset === 'shapes' ? S.shape + ':' + S.seed : preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
+// ---------- Imagen experimental ----------
+// A picture made a 3D relief: a sheet the size of the picture, each point pushed towards the viewer by its depth (the
+// image half's depth map, near = high), so it turns like a model. Where the depth jumps (an edge in front of what is
+// behind) the sheet is torn instead of stretched, and the picture's empty paper (white, or transparent) is left out.
+// Each triangle keeps the picture's tone (it sets how dark it is drawn, with the light on top) and its colour.
+let reliefSrc = null, reliefLoading = null;
+async function reliefImage() {
+  if (window.PERCEPTA_EMBED) { try { const r = await window.parent.PixelShell.imageRelief(); if (r) return r; } catch (e) { console.warn(e); } }
+  // alone (or no picture there yet): the picture Pixel opens with, and its depth
+  const load = src => new Promise((ok, no) => { const el = new Image(); el.onload = () => ok(el); el.onerror = no; el.src = src; });
+  const [pic, dep] = await Promise.all([load('../pixel-image/default.jpg'), load('../pixel-image/default-depth.png')]);
+  const gw = dep.naturalWidth, gh = dep.naturalHeight, c = document.createElement('canvas'); c.width = gw; c.height = gh;
+  const x = c.getContext('2d', { willReadFrequently: true }), n = gw * gh, lum = new Float32Array(n), rgb = new Uint32Array(n), depth = new Float32Array(n);
+  x.drawImage(pic, 0, 0, gw, gh); let d = x.getImageData(0, 0, gw, gh).data;
+  for (let k = 0; k < n; k++) { const r = d[k * 4], g = d[k * 4 + 1], b = d[k * 4 + 2]; lum[k] = (.2126 * r + .7152 * g + .0722 * b) / 255; rgb[k] = r << 16 | g << 8 | b; }
+  x.drawImage(dep, 0, 0, gw, gh); d = x.getImageData(0, 0, gw, gh).data; for (let k = 0; k < n; k++) depth[k] = d[k * 4] / 255;
+  return { id: 'default', gw, gh, lum, rgb, alpha: null, depth, ar: pic.naturalWidth / pic.naturalHeight };
+}
+function reliefMesh(R) {
+  const L = 240, cols = R.ar >= 1 ? L : Math.max(8, Math.round(L * R.ar)), rows = R.ar >= 1 ? Math.max(8, Math.round(L / R.ar)) : L;
+  const at = (A, u, v) => { const gx = u * (R.gw - 1), gy = v * (R.gh - 1), i = Math.floor(gx), j = Math.floor(gy), fx = gx - i, fy = gy - j, i1 = Math.min(R.gw - 1, i + 1), j1 = Math.min(R.gh - 1, j + 1);
+    return (A[j * R.gw + i] * (1 - fx) + A[j * R.gw + i1] * fx) * (1 - fy) + (A[j1 * R.gw + i] * (1 - fx) + A[j1 * R.gw + i1] * fx) * fy; };
+  const near = (A, u, v) => A[Math.round(v * (R.gh - 1)) * R.gw + Math.round(u * (R.gw - 1))];
+  const P = new Float32Array(cols * rows * 3), D = new Float32Array(cols * rows), Lm = new Float32Array(cols * rows), Al = new Float32Array(cols * rows), H = S.rlDepth * .45;
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const u = i / (cols - 1), v = j / (rows - 1), k = j * cols + i, d = at(R.depth, u, v);
+    D[k] = d; Lm[k] = at(R.lum, u, v); Al[k] = R.alpha ? at(R.alpha, u, v) : 1;
+    P[k * 3] = (u - .5) * R.ar; P[k * 3 + 1] = .5 - v; P[k * 3 + 2] = (d - .5) * H;
+  }
+  const I = [], col = [], alb = [], jump = .02 + (1 - S.rlCut) * .3;
+  const tri = (a, b, c) => {
+    if (Al[a] < .5 || Al[b] < .5 || Al[c] < .5) return;
+    if (Lm[a] > .93 && Lm[b] > .93 && Lm[c] > .93) return; // the paper
+    if (D[a] < .05 && D[b] < .05 && D[c] < .05) return; // the farthest: the sky, the wall at the back
+    if (Math.max(D[a], D[b], D[c]) - Math.min(D[a], D[b], D[c]) > jump) return; // torn where the depth jumps
+    I.push(a, b, c);
+    const u = ((a % cols) + (b % cols) + (c % cols)) / 3 / (cols - 1), v = (Math.floor(a / cols) + Math.floor(b / cols) + Math.floor(c / cols)) / 3 / (rows - 1);
+    col.push(near(R.rgb, u, v)); alb.push(at(R.lum, u, v));
+  };
+  for (let j = 0; j + 1 < rows; j++) for (let i = 0; i + 1 < cols; i++) { const a = j * cols + i, b = a + 1, c = a + cols, d = c + 1; tri(a, c, b); tri(b, c, d); }
+  return { P, I: Uint32Array.from(I), col, alb: Float32Array.from(alb) };
+}
+function loadRelief() {
+  if (reliefLoading) return;
+  reliefLoading = reliefImage().then(R => {
+    reliefLoading = null; if (preset !== 'relief' || modelName.includes('.')) return;
+    reliefSrc = R; const m = reliefMesh(R);
+    if (!m.I.length) return toast('La imagen no tiene nada para levantar.');
+    setModelTris(indexedTris(m.P, m.I), 'Imagen experimental', m.col, m.alb); presetSeed = presetSig(); key = ''; sync();
+  }, e => { reliefLoading = null; console.error(e); toast('No se pudo hacer el relieve de la imagen.'); });
+}
+// the picture's tone on the relief: each triangle as dark as the picture there, the light on top
+function withAlbedo(buf) {
+  if (!modelAlb) return buf;
+  const { lit, tid } = buf;
+  for (let i = 0; i < lit.length; i++) { const t = tid[i]; if (t >= 0) lit[i] = modelAlb[t] * (.35 + .65 * lit[i]); }
+  return buf;
+}
 function loadPreset() {
   const sig = presetSig(), which = preset;
+  if (which === 'relief') {
+    // the picture as fetched: only the sheet again (Relieve, Cortar saltos); none yet (or chosen again): fetched first
+    if (reliefSrc) { const m = reliefMesh(reliefSrc); if (m.I.length) setModelTris(indexedTris(m.P, m.I), 'Imagen experimental', m.col, m.alb); presetSeed = sig; return; }
+    return loadRelief();
+  }
   if (which === 'blocks') { const m = blocks(S.seed); setModelTris(indexedTris(m.P, m.I), 'Manzanas'); presetSeed = sig; return; }
   if (which === 'shapes') { const m = shapeMesh(S.shape, S.seed); setModelTris(indexedTris(m.P, m.I), SHAPES.find(x => x[0] === S.shape)[1]); presetSeed = sig; return; }
   if (which === 'building') { const m = building(S.seed); setModelTris(indexedTris(m.P, m.I), 'Building'); presetSeed = sig; return; }
@@ -653,14 +720,14 @@ function loadPreset() {
 }
 // Triangles with normals (18 per triangle): centred and scaled like setModel, normals kept.
 // Color original: the model's own colour per triangle (modelCol, from its materials), read under each pixel.
-let modelCol = null;
+let modelCol = null, modelAlb = null;
 function colAt(buf, x, y) {
   if (!modelCol || !buf.tid) return undefined;
   const ix = Math.min(buf.W - 1, Math.max(0, Math.floor((x - buf.box.x0) * buf.k))), iy = Math.min(buf.H - 1, Math.max(0, Math.floor((y - buf.box.y0) * buf.k))), t = buf.tid[iy * buf.W + ix];
   return t >= 0 ? modelCol[t] : undefined;
 }
-function setModelTris(tris, name, col = null) {
-  modelCol = col;
+function setModelTris(tris, name, col = null, alb = null) {
+  modelCol = col; modelAlb = alb;
   let cx = 0, cy = 0, cz = 0, n = 0;
   for (let i = 0; i < tris.length; i += 18) for (let j = 0; j < 9; j += 3) { cx += tris[i + j]; cy += tris[i + j + 1]; cz += tris[i + j + 2]; n++; }
   cx /= n; cy /= n; cz /= n;
@@ -669,7 +736,7 @@ function setModelTris(tris, name, col = null) {
   model = tris; modelName = name;
 }
 function setModel(pos, name) {
-  modelCol = pos.col || null;
+  modelCol = pos.col || null; modelAlb = null;
   let cx = 0, cy = 0, cz = 0, n = pos.length / 3;
   for (let i = 0; i < pos.length; i += 3) { cx += pos[i]; cy += pos[i + 1]; cz += pos[i + 2]; }
   cx /= n; cy /= n; cz /= n;
@@ -694,7 +761,7 @@ function build(fast, yaw) {
   const tris = viewTris(yaw), box = viewBoxNow();
   const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180;
   const light = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.cos(el) * Math.sin(az) * -1 + .0001];
-  const buf = Stipple3D.render(tris, box, fast ? 420 : 900, [light[0], light[1], Math.abs(light[2]) + .35], { ambient: S.ambient, shadowDim: 1 - S.shadow });
+  const buf = withAlbedo(Stipple3D.render(tris, box, fast ? 420 : 900, [light[0], light[1], Math.abs(light[2]) + .35], { ambient: S.ambient, shadowDim: 1 - S.shadow }));
   const e = Stipple3D.edges(buf, .02 / zS()), r = rng(S.seed);
   // Cantidad is a density: the count for a model that would fill a third of the frame, scaled by the area it
   // actually covers, so a slender model is not crammed darker than a broad one.
@@ -792,7 +859,7 @@ function stbView(v) {
   const keep = [S.pitch, S.zoom, S.panX, S.panY]; [S.pitch, S.zoom] = [stb.pitch, stb.zoom]; S.panX = S.panY = 0;
   const yaw = stb.yaw0 + v * 360 / STB_K, tris = viewTris(yaw), box = viewBoxNow(), k = AW / (box.x1 - box.x0);
   const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180, light = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.cos(el) * Math.sin(az) * -1 + .0001];
-  const buf = Stipple3D.render(tris, box, 900, [light[0], light[1], Math.abs(light[2]) + .35], { ambient: S.ambient, shadowDim: 1 - S.shadow });
+  const buf = withAlbedo(Stipple3D.render(tris, box, 900, [light[0], light[1], Math.abs(light[2]) + .35], { ambient: S.ambient, shadowDim: 1 - S.shadow }));
   const e = Stipple3D.edges(buf, .02 / zS()); let area = 0; for (let i = 0; i < buf.mask.length; i++) area += buf.mask[i];
   const list = stipple(Math.round(count() * Math.min(2, area / buf.mask.length * 3)), rng(S.seed + v * 977), { buf, e, box });
   const y = yaw * Math.PI / 180, p = S.pitch * Math.PI / 180, cy = Math.cos(y), sy = Math.sin(y), cp = Math.cos(p), sp = Math.sin(p);
@@ -972,6 +1039,8 @@ const SLIDERS = {
   paintRate: { label: 'Ritmo', min: 200, max: 30000, step: 100, fmt: v => v.toLocaleString('es') + '/s' },
   paintDur: { label: 'Vuelo', min: .1, max: 3, step: .05, fmt: v => v.toFixed(2).replace('.', ',') + ' s' },
   revHold: { label: 'Quieto al final', min: 0, max: .8, step: .01, fmt: pct },
+  rlDepth: { label: 'Relieve', min: 0, max: 2, step: .05, fmt: v => v.toFixed(2), emph: true },
+  rlCut: { label: 'Cortar saltos', min: 0, max: 1, step: .01, fmt: pct },
   mzHeight: { label: 'Alturas', min: .5, max: 8, step: .1, fmt: v => '×' + v.toFixed(1).replace('.', ','), emph: true },
   bH: { label: 'Altura', min: 1, max: 20, step: .1, fmt: v => v.toFixed(1), emph: true },
   bW: { label: 'Ancho', min: .3, max: 3, step: .01, fmt: v => v.toFixed(2) },
@@ -1004,7 +1073,7 @@ $('#presets').addEventListener('click', e => {
   const b = e.target.closest('[data-p]'); if (!b) return;
   // Imagen: the image half, if it has a picture already; otherwise pick one
   if (b.dataset.p === '2d:image') return window.PERCEPTA_EMBED && window.parent.PixelShell.hasImage() ? PerceptaShared.go(S, 'pixel-image/') : $('#file').click();
-  preset = b.dataset.p; loadPreset(); key = ''; sync();
+  preset = b.dataset.p; if (preset === 'relief') reliefSrc = null; loadPreset(); key = ''; sync();
 });
 const renderInks = () => { $('#inks').innerHTML = [...S.palette, ...(S.onlyPal ? [] : [INK, WHITE])].map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join(''); };
 renderInks();
@@ -1012,6 +1081,7 @@ const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
 $('#colorHow').addEventListener('change', e => { S.colorHow = e.target.value; sync(); });
 const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => S.palette, () => S.bg, v => { S.bg = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
+const syncTheme = PerceptaTheme(stage, () => S.bg.toLowerCase() === '#272727', d => { S.bg = d ? '#272727' : '#FAFAFA'; S.bgFlip = false; sync(); });
 document.querySelectorAll('.seg[data-key]').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = b.dataset.v; sync(); } }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; if (inp.dataset.check === 'onlyPal') renderInks(); sync(); }));
 $('#seed').addEventListener('input', e => { S.seed = Math.min(999999999, parseInt(e.target.value.replace(/\D/g, '') || '0', 10)); sync(); });
@@ -1048,9 +1118,10 @@ function sync(fast) {
   $('#building-controls').hidden = preset !== 'building' || modelName.includes('.');
   $('#shape-controls').hidden = preset !== 'shapes' || modelName.includes('.');
   $('#block-controls').hidden = preset !== 'blocks' || modelName.includes('.');
+  $('#relief-controls').hidden = preset !== 'relief' || modelName.includes('.');
   if (preset && !modelName.includes('.') && presetSeed !== presetSig()) loadPreset();
   if (!model) { $('#stats').textContent = 'Cargando el modelo…'; return; }
-  updateBg(S.bgFlip);
+  updateBg(S.bgFlip); syncTheme();
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   if (S.aspect + S.orient !== artKey) { artKey = S.aspect + S.orient; setArtboard(); S.panX = S.panY = 0; if (typeof crop !== 'undefined') { crop = null; cropStack = []; cropUI(); } }
   const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, zS(), S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.sizeMin, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow, S.lineAM, S.lineDot, S.chaos, S.square, S.anim === 'stable', S.lines && S.blend && [S.blendA, S.blendB]]);
@@ -1223,7 +1294,7 @@ function buildRing() {
   const az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180, L = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.abs(-Math.cos(el) * Math.sin(az)) + .35];
   for (let v = 0; v < K; v++) {
     const yaw = v * 360 / K, y = yaw * Math.PI / 180, cy = Math.cos(y), sy = Math.sin(y), r = rng(S.seed * 977 + v);
-    const buf = Stipple3D.render(viewTris(yaw), box, 700, L, { ambient: S.ambient, shadowDim: 1 - S.shadow }), e = Stipple3D.edges(buf, .02 / zS());
+    const buf = withAlbedo(Stipple3D.render(viewTris(yaw), box, 700, L, { ambient: S.ambient, shadowDim: 1 - S.shadow })), e = Stipple3D.edges(buf, .02 / zS());
     let area = 0; for (let i = 0; i < buf.mask.length; i++) area += buf.mask[i];
     // view → model: undo the pitch, then the yaw (x right, y down in view; y up in the model)
     const back = (X, Y, Z) => { const y1 = -Y, yy = y1 * cp + Z * sp, z1 = -y1 * sp + Z * cp; return [X * cy - z1 * sy, yy, X * sy + z1 * cy]; };
@@ -1488,7 +1559,10 @@ frame.addEventListener('pointerleave', () => { hover = null; animate(); });
 async function openFile(file) {
   if (!file) return;
   // an image goes to the image half, drawn with its depth
-  if (file.type?.startsWith('image/')) return PerceptaHandoff.send('pixel-image/', 'image-file', file);
+  if (file.type?.startsWith('image/')) {
+    if (preset === 'relief' && !modelName.includes('.') && window.PERCEPTA_EMBED) { toast('Haciendo el relieve…'); return window.parent.PixelShell.loadImage(file).then(() => { reliefSrc = null; loadRelief(); }, () => toast('No se pudo leer la imagen.')); }
+    return PerceptaHandoff.send('pixel-image/', 'image-file', file);
+  }
   try {
     const name = file.name.toLowerCase();
     const pos = name.endsWith('.obj') ? Stipple3D.parseOBJ(await file.text()) : name.endsWith('.fbx') ? await Stipple3D.parseFBX(await file.arrayBuffer()) : Stipple3D.parseGLB(await file.arrayBuffer());
@@ -1757,34 +1831,6 @@ function syncModeBar() {
   $('#blend-controls').hidden = !S.blend;
 }
 
-// ---------- Enviar a otra tool ----------
-// Pixel Waves: the view as it is now, rendered (the light, the cast shadows: grey on white) with its depth map (near
-// light), cropped to the model; Waves takes it as its Imagen and, in 1B, lays its lines over that depth. Pixel Depth:
-// the model's triangles (y up, as they are here, variations included), placed on its plane alone.
-$('#to-waves').addEventListener('click', async () => {
-  if (!model) return;
-  const tris = viewTris(), box = viewBoxNow(), az = S.lightAz * Math.PI / 180, el = S.lightEl * Math.PI / 180;
-  const light = [Math.cos(el) * Math.cos(az), -Math.sin(el), Math.abs(Math.cos(el) * Math.sin(az)) + .35];
-  const buf = Stipple3D.render(tris, box, 1400, light, { ambient: S.ambient, shadowDim: 1 - S.shadow }), { W, H, mask, lit, depth, tid } = buf;
-  let x0 = W, y0 = H, x1 = 0, y1 = 0, lo = Infinity, hi = -Infinity;
-  for (let i = 0; i < W * H; i++) if (mask[i]) { const x = i % W, y = (i - x) / W; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); lo = Math.min(lo, depth[i]); hi = Math.max(hi, depth[i]); }
-  if (x1 < x0) return toast('No hay modelo en la vista.');
-  const m = Math.round(Math.max(x1 - x0, y1 - y0) * .04); x0 = Math.max(0, x0 - m); y0 = Math.max(0, y0 - m); x1 = Math.min(W - 1, x1 + m); y1 = Math.min(H - 1, y1 + m);
-  const w = x1 - x0 + 1, h = y1 - y0 + 1, c = document.createElement('canvas'); c.width = w; c.height = h;
-  const ctx = c.getContext('2d'), im = ctx.createImageData(w, h), D = new Float32Array(w * h);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const i = (y + y0) * W + x + x0, o = y * w + x, l = Math.min(1, Math.max(0, lit[i])), v = mask[i] ? Math.round(255 * l) : 255;
-    // with the model's own colours, each pixel its triangle's colour in that light (Waves' Original reads it back)
-    if (mask[i] && modelCol && tid[i] >= 0) { const c = modelCol[tid[i]]; im.data[o * 4] = (c >> 16 & 255) * l; im.data[o * 4 + 1] = (c >> 8 & 255) * l; im.data[o * 4 + 2] = (c & 255) * l; }
-    else im.data[o * 4] = im.data[o * 4 + 1] = im.data[o * 4 + 2] = v;
-    im.data[o * 4 + 3] = 255;
-    D[o] = mask[i] ? (depth[i] - lo) / ((hi - lo) || 1) * .85 + .15 : 0;
-  }
-  ctx.putImageData(im, 0, 0);
-  const blob = await new Promise(r => c.toBlob(r, 'image/png'));
-  PerceptaHandoff.send('pixel-image/', 'model-image', { name: modelName, blob, depth: { w, h, data: D }, colored: !!modelCol && S.colorMode === 'orig' });
-});
-
 
 // ---------- Keyframes ----------
 // A timeline of the view: Rotación (giro and inclinación), Posición (the model moved in the frame) and Zoom, each
@@ -1858,9 +1904,9 @@ const kfLook = fast => JSON.stringify([S.yaw, S.pitch, S.panX, S.panY, zS(), AW,
 function kfShapeOf(k, fast) {
   const sig = kfLook(fast);
   if (k.cache?.sig === sig) return k.cache.list;
-  const keep = [model, modelCol, modelName, S.anim, stb, scene];
-  model = k.v.model; modelCol = k.v.col; modelName = k.v.name; if (S.anim === 'stable') S.anim = 'none';
-  let list; try { list = build(fast, S.yaw); } finally { [model, modelCol, modelName, S.anim, stb, scene] = keep; }
+  const keep = [model, modelCol, modelAlb, modelName, S.anim, stb, scene];
+  model = k.v.model; modelCol = k.v.col; modelAlb = k.v.alb || null; modelName = k.v.name; if (S.anim === 'stable') S.anim = 'none';
+  let list; try { list = build(fast, S.yaw); } finally { [model, modelCol, modelAlb, modelName, S.anim, stb, scene] = keep; }
   k.cache = { sig, list, pair: null };
   return list;
 }
@@ -1984,7 +2030,7 @@ function kfHoldFrame(fast) {
 }
 function kfInsert(track) {
   const t = KF.t, K = KF[track];
-  let v = track === 'rot' ? [S.yaw, S.pitch] : track === 'pos' ? [S.panX, S.panY] : track === 'shape' ? { model, col: modelCol, name: modelName } : [S.zoom];
+  let v = track === 'rot' ? [S.yaw, S.pitch] : track === 'pos' ? [S.panX, S.panY] : track === 'shape' ? { model, col: modelCol, alb: modelAlb, name: modelName } : [S.zoom];
   if (track === 'shape' && !model) return toast('El modelo todavía se está cargando.');
   if (track === 'rot' && K.length) {
     // the turn goes the short way from the key before it (yaw is kept unwrapped, so turns past 180° add up)
@@ -2106,7 +2152,7 @@ function kfAutoKey() {
   if (z && Math.abs(z.v[0] - S.zoom) > 1e-9) { z.v = [S.zoom]; changed = true; }
   // Forma: only when another model was chosen (going to a key never changes the model, so it never rewrites one)
   const f = kfNow('shape');
-  if (model && model !== kfSeen) { if (f && f.v.model !== model) { f.v = { model, col: modelCol, name: modelName }; f.cache = null; changed = true; } kfSeen = model; }
+  if (model && model !== kfSeen) { if (f && f.v.model !== model) { f.v = { model, col: modelCol, alb: modelAlb, name: modelName }; f.cache = null; changed = true; } kfSeen = model; }
   return changed;
 }
 // the diamonds in the panel: Giro and Inclinación (Rotación), Escala (Zoom), Posición
@@ -2135,7 +2181,7 @@ window.kfHook = () => { if (kfAutoKey() && KF.open) kfDraw(); kfDiamonds(); };
 // 3D file given to it.
 PerceptaShared.init({ S, names: { one: 'ink', pal: 'pal', orig: 'orig' },
   apply: q => { const p = q.get('preset'); if (p && PRESETS.some(x => x[0] === p) && (p !== preset || modelName.includes('.'))) { preset = p; modelName = ''; } },
-  after: () => { if (!modelName.includes('.')) loadPreset(); key = ''; sync(); } });
+  after: () => { if (preset === 'relief') reliefSrc = null; if (!modelName.includes('.')) loadPreset(); key = ''; sync(); } });
 PerceptaHandoff.on('model-file', f => openFile(f));
 loadPreset();
 window.PERCEPTA_SLIDERS = SLIDERS; // for the panel (DialKit): the sliders with uneven stops
