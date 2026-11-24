@@ -2223,14 +2223,23 @@ function kfOpen(on) {
 }
 const kfX = t => t / KF.dur * 100 + '%';
 const kfAt = e => { const r = kfArea.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width) * KF.dur; };
-const kfSnap = (t, free) => free ? t : Math.round(t * +$('#kf-fps').value) / +$('#kf-fps').value;
+// Where a time dragged to lands: with Shift, on the ruler's marks (its subdivisions); otherwise on a key already set
+// when within 8 px of it (any track; not the key being dragged), else on a frame.
+const kfStep = () => KF.dur > 20 ? 1 : KF.dur > 8 ? .5 : .25; // the ruler's subdivision
+function kfSnap(t, ticks, not) {
+  if (ticks) { const st = kfStep(); return clamp(Math.round(t / st) * st, 0, KF.dur); }
+  const px = kfArea.getBoundingClientRect().width / KF.dur; let best = null, bd = 8;
+  for (const tr of ['rot', 'pos', 'zoom', 'shape']) for (const k of KF[tr]) { if (k === not) continue; const d = Math.abs(k.t - t) * px; if (d < bd) { bd = d; best = k.t; } }
+  if (best !== null) return best;
+  const f = +$('#kf-fps').value; return Math.round(t * f) / f;
+}
 function kfTime() { $('#kf-tm').textContent = `${KF.t.toFixed(2)} / ${KF.dur.toFixed(2)} s`; kfPlay.style.left = kfX(KF.t); if (window.kfHook && !KF.playing) kfDiamonds(); }
 function kfDraw() {
   const n = kfCount(); $('#kf-count').hidden = !n; $('#kf-count').textContent = n;
   document.querySelectorAll('.kf-morph').forEach(l => l.hidden = KF.shape.length < 2);
   if (!KF.open) return;
   // ruler: a tick every tenth (a longer one each second, numbered)
-  const step = KF.dur > 20 ? 1 : KF.dur > 8 ? .5 : .25; let h = '';
+  const step = kfStep(); let h = '';
   for (let t = 0; t <= KF.dur + 1e-6; t += step) { const s = Math.abs(t - Math.round(t)) < 1e-6; h += `<i class="${s ? 's' : ''}" style="left:${kfX(t)}"></i>${s ? `<em style="left:${kfX(t)}">${Math.round(t)}s</em>` : ''}`; }
   kfRuler.innerHTML = h;
   for (const row of document.querySelectorAll('.kf-row')) {
@@ -2353,7 +2362,7 @@ kfArea.addEventListener('pointerdown', e => {
 kfArea.addEventListener('pointermove', e => {
   if (!kfDrag) return;
   if (kfDrag.scrub) return kfSeek(kfSnap(kfAt(e), e.shiftKey), true);
-  const r = kfArea.getBoundingClientRect(), t = kfSnap(clamp(kfDrag.t + (e.clientX - kfDrag.x) / r.width * KF.dur, 0, KF.dur), e.shiftKey);
+  const r = kfArea.getBoundingClientRect(), t = kfSnap(clamp(kfDrag.t + (e.clientX - kfDrag.x) / r.width * KF.dur, 0, KF.dur), e.shiftKey, kfDrag.k);
   if (Math.abs(e.clientX - kfDrag.x) > 2) kfDrag.moved = true;
   if (kfDrag.moved) { const K = KF[kfDrag.tr]; if (!K.some(k => k !== kfDrag.k && Math.abs(k.t - t) < 1e-3)) { kfDrag.k.t = t; K.sort((a, b) => a.t - b.t); kfDraw(); } }
 });
