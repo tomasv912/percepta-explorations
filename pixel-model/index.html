@@ -39,7 +39,7 @@ body { display: flex; flex-direction: column; background: var(--page); color: va
 [hidden] { display: none !important; }
 
 .app { display: grid; flex: 1; min-height: 0; grid-template-columns: 1fr 280px; }
-main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding: 92px 24px 120px; }
+main { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--stage); min-width: 0; min-height: 0; padding: 16px; }
 .frame { position: relative; box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 0 0 1px var(--line); }
 /* the picture and everything on it (Pasaje's handles, overlays) form one layer under the bars around it: where a bar
    lies over the picture, the pointer is the bar's, always */
@@ -51,7 +51,7 @@ main { position: relative; display: grid; place-items: center; overflow: hidden;
 .frame.moving, .frame.moving:active { cursor: move; }
 .busy { position: absolute; top: 12px; right: 14px; font: 11px var(--mono); color: var(--text-3); }
 .hud { position: absolute; top: 54px; left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 12px; font-size: 12px; box-shadow: 0 0 0 1px var(--line); font-variant-numeric: tabular-nums; }
-.tt { position: absolute; bottom: 58px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 4px 16px rgb(0 0 0 / .06); white-space: nowrap; z-index: 5; }
+.tt { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 4px 16px rgb(0 0 0 / .06); white-space: nowrap; z-index: 5; }
 .tt { flex-wrap: wrap; justify-content: center; width: max-content; max-width: calc(100% - 24px); }
 .tt-sep { width: 1px; height: 28px; background: var(--line); flex: none; }
 .tt-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); cursor: pointer; }
@@ -132,7 +132,8 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 #building-controls .seg { flex-wrap: wrap; }
 #building-controls .seg button, #shape-controls .seg button { flex: 1 0 30%; }
 #shape-controls .seg { flex-wrap: wrap; }
-#block-controls, #relief-controls { display: flex; flex-direction: column; gap: 10px; }
+#block-controls, #relief-controls, #pbuild-controls { display: flex; flex-direction: column; gap: 10px; }
+#pbuild-controls .seg { flex-wrap: wrap; } #pbuild-controls .seg button { flex: 1 0 30%; }
 .crop-hud { position: absolute; bottom: 72px; left: 14px; flex-direction: column; align-items: stretch; display: flex; gap: 4px; align-items: center; white-space: nowrap; z-index: 4; padding: 4px; border-radius: 10px; background: var(--surface); box-shadow: 0 0 0 1px var(--line); font-size: 12px; color: var(--text-2); }
 .crop-hud b { color: var(--text); font-weight: 500; margin: 4px 6px; }
 .crop-hud button { height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: var(--fill); color: var(--text); font: 500 12px var(--font); cursor: pointer; }
@@ -146,10 +147,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .kf-tab b { font: 600 10px var(--mono); padding: 1px 5px; border-radius: 4px; background: var(--fill); color: var(--text-2); }
 .kf { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: var(--kfh); display: flex; flex-direction: column; background: var(--surface); border-top: 1px solid var(--line); font: 12px var(--font); color: var(--text); user-select: none; }
 main.kf-open { --kfh: 200px; }
-main.kf-open .tt { bottom: calc(58px + var(--kfh)); }
 main.kf-open .kf-tab { display: none; }
 main.kf-open .pth { bottom: calc(14px + var(--kfh)); }
-main.kf-open { padding-bottom: calc(120px + var(--kfh)); }
+main.kf-open { padding-bottom: calc(16px + var(--kfh)); }
 main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 .kf-head select#kf-fmt { width: 80px; }
 .kf-head select#kf-res { width: 64px; }
@@ -286,16 +286,6 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 
   <aside>
     <div class="controls">
-      <section>
-        <h2>Presets</h2>
-        <div class="row" style="grid-template-columns:56px 1fr">
-          <span>Preset</span>
-          <label class="swatch bg-pick"><select id="preset-list" aria-label="Preset"></select></label>
-        </div>
-        <button class="btn" id="preset-save" title="Guarda los parámetros de ahora como un preset con nombre (con npm run dev, en presets.json del repo)">Guardar preset</button>
-        <button class="btn" id="preset-del" hidden title="Borra el preset elegido">Borrar preset</button>
-        <button class="btn" id="preset-dl" hidden title="Descarga presets.json con los presets del repo y los de este navegador, para sumarlo al repo">Descargar presets.json</button>
-      </section>
 
       <section>
         <h2>Fuente</h2>
@@ -305,6 +295,10 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
           <div id="sl-rlDepth"></div>
           <div id="sl-rlCut"></div>
           <p class="hint" id="relief-status" hidden></p>
+        </div>
+        <div id="pbuild-controls">
+          <div class="seg" data-key="pbType" aria-label="Tipo"><button data-v="auto">Al azar</button><button data-v="tower">Torre</button><button data-v="twin">Dos torres</button><button data-v="stack">Apilado</button><button data-v="terrace">Terrazas</button><button data-v="slab">Losa</button><button data-v="court">Patio</button><button data-v="zig">Zigurat</button><button data-v="twist">Retorcido</button><button data-v="cant">Voladizo</button></div>
+          <button class="btn" id="pb-next" title="Otro edificio del mismo Tipo (otra semilla; también con R)">Otro edificio</button>
         </div>
         <div id="block-controls">
           <div class="seg" data-key="mzCount" aria-label="Cantidad de manzanas"><button data-v="1">1</button><button data-v="2">2</button><button data-v="4">4</button><button data-v="6">6</button><button data-v="8">8</button></div>
@@ -400,6 +394,17 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
       </section>
 
       <section>
+        <h2>Presets</h2>
+        <div class="row" style="grid-template-columns:56px 1fr">
+          <span>Preset</span>
+          <label class="swatch bg-pick"><select id="preset-list" aria-label="Preset"></select></label>
+        </div>
+        <button class="btn" id="preset-save" title="Guarda los parámetros de ahora como un preset con nombre (con npm run dev, en presets.json del repo)">Guardar preset</button>
+        <button class="btn" id="preset-del" hidden title="Borra el preset elegido">Borrar preset</button>
+        <button class="btn" id="preset-dl" hidden title="Descarga presets.json con los presets del repo y los de este navegador, para sumarlo al repo">Descargar presets.json</button>
+      </section>
+
+      <section>
         <h2>Formato</h2>
         <div class="seg" data-key="aspect" aria-label="Proporción">
           <button data-v="3:2">3:2</button><button data-v="4:3">4:3</button><button data-v="1:1">1:1</button><button data-v="4:5">4:5</button><button data-v="16:9">16:9</button>
@@ -449,7 +454,7 @@ const DEFAULTS = {
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
   colorMode: 'random', colorSrc: 'pal', colorHow: 'random', bloom: 0, bloomSel: false, dof: false, dofA: [.3, .25], dofB: [.7, .8], imgRot: false, ink: '#111111', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
-  rlDepth: 0, rlCut: 0, mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '4:3', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
+  rlDepth: 0, rlCut: 0, pbType: 'auto', mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '16:9', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
@@ -466,7 +471,7 @@ function rng(seed) {
 // Built-in models, each with variations from the seed (R): a skyscraper (a scan, simplified, in models/), and
 // Building, Manzanas and Formas, generated here and shaped by its own settings; or an uploaded file. Positions are centred and scaled
 // to fit a unit sphere.
-const PRESETS = [['relief', 'Imagen'], ['rascacielos', 'Rascacielos'], ['building', 'Building'], ['blocks', 'Manzanas'], ['shapes', 'Formas']];
+const PRESETS = [['relief', 'Imagen'], ['rascacielos', 'Rascacielos'], ['building', 'Building'], ['pbuild', 'Procedural Building'], ['blocks', 'Manzanas'], ['shapes', 'Formas']];
 let model = null, modelName = '', preset = 'relief', presetSeed = -1, loadingPreset = null;
 // An indexed mesh into 18-float triangles, with smooth normals (each vertex the area-weighted sum of its faces).
 function indexedTris(P, I) {
@@ -615,6 +620,120 @@ function building(seed) {
   T.forEach((v, i) => { P[i * 3] = v[0]; P[i * 3 + 1] = v[1]; P[i * 3 + 2] = v[2]; I[i] = i; });
   return { P, I };
 }
+// Procedural Building: a building made by rules, so that seeds give buildings that differ in kind, not only in size.
+// Tipo picks the structure (or the seed does, in Al azar); within it the seed picks every part from a catalogue: the
+// footprint (rectangle, L, round, octagon, triangle), the base (podium, pilotis), the facade (floor bands, ledges,
+// plain), the top (flat, stepped, slanted, spire) and the proportions. Every building comes out the same overall size
+// (its largest side 6), so changing seed or Tipo never moves the camera.
+const PB_TYPES = [['auto', 'Al azar'], ['tower', 'Torre'], ['twin', 'Dos torres'], ['stack', 'Apilado'], ['terrace', 'Terrazas'], ['slab', 'Losa'], ['court', 'Patio'], ['zig', 'Zigurat'], ['twist', 'Retorcido'], ['cant', 'Voladizo']];
+function pbuild(seed) {
+  const r = rng(seed * 7727 + 13), pick = (a, b) => a + r() * (b - a), int = (a, b) => Math.floor(pick(a, b + 1)), one = A => A[Math.floor(r() * A.length)];
+  const T = [], quad = (a, b, c, d) => T.push(a, b, c, a, c, d), PI = Math.PI;
+  const box = (x0, x1, y0, y1, z0, z1) => {
+    if (x1 - x0 <= 1e-4 || y1 - y0 <= 1e-4 || z1 - z0 <= 1e-4) return;
+    const p = (x, y, z) => [x, y, z];
+    quad(p(x0, y0, z0), p(x1, y0, z0), p(x1, y1, z0), p(x0, y1, z0)); quad(p(x1, y0, z1), p(x0, y0, z1), p(x0, y1, z1), p(x1, y1, z1));
+    quad(p(x0, y0, z1), p(x0, y0, z0), p(x0, y1, z0), p(x0, y1, z1)); quad(p(x1, y0, z0), p(x1, y0, z1), p(x1, y1, z1), p(x1, y1, z0));
+    quad(p(x0, y1, z0), p(x1, y1, z0), p(x1, y1, z1), p(x0, y1, z1)); quad(p(x0, y0, z1), p(x1, y0, z1), p(x1, y0, z0), p(x0, y0, z0));
+  };
+  const boxC = (cx, cz, w, d, y0, y1) => box(cx - w / 2, cx + w / 2, y0, y1, cz - d / 2, cz + d / 2);
+  // a prism of n sides about (cx, cz), turned by rot, its top k times its base, stretched by ax and az
+  const prism = (cx, cz, n, rad, y0, y1, rot = 0, k = 1, ax = 1, az = 1) => {
+    if (rad <= 1e-4 || y1 - y0 <= 1e-4) return;
+    const P = (i, y, rr) => { const a = rot + i / n * PI * 2; return [cx + Math.cos(a) * rr * ax, y, cz + Math.sin(a) * rr * az]; };
+    for (let i = 0; i < n; i++) { quad(P(i, y0, rad), P(i + 1, y0, rad), P(i + 1, y1, rad * k), P(i, y1, rad * k)); T.push([cx, y1, cz], P(i + 1, y1, rad * k), P(i, y1, rad * k)); T.push([cx, y0, cz], P(i, y0, rad), P(i + 1, y0, rad)); }
+  };
+  // a box with a sloped top (high at x0, low at x1)
+  const wedge = (x0, x1, y0, ya, yb, z0, z1) => {
+    const p = (x, y, z) => [x, y, z];
+    quad(p(x0, y0, z0), p(x1, y0, z0), p(x1, yb, z0), p(x0, ya, z0)); quad(p(x1, y0, z1), p(x0, y0, z1), p(x0, ya, z1), p(x1, yb, z1));
+    quad(p(x0, y0, z1), p(x0, y0, z0), p(x0, ya, z0), p(x0, ya, z1)); quad(p(x1, y0, z0), p(x1, y0, z1), p(x1, yb, z1), p(x1, yb, z0));
+    quad(p(x0, ya, z0), p(x1, yb, z0), p(x1, yb, z1), p(x0, ya, z1)); quad(p(x0, y0, z1), p(x1, y0, z1), p(x1, y0, z0), p(x0, y0, z0));
+  };
+  // footprints: draw(y0, y1, inset) a volume of that plan (a negative inset sticks out: ledges)
+  const plan = (kind, w, d, cx = 0, cz = 0) => {
+    if (kind === 'round') return (y0, y1, i = 0) => prism(cx, cz, 28, w / 2 - i, y0, y1, 0, 1, 1, d / w);
+    if (kind === 'octo') return (y0, y1, i = 0) => prism(cx, cz, 8, (w / 2 - i) / Math.cos(PI / 8), y0, y1, PI / 8, 1, 1, d / w);
+    if (kind === 'tri') return (y0, y1, i = 0) => prism(cx, cz, 3, w * .62 - i * 2, y0, y1, -PI / 2);
+    if (kind === 'L') return (y0, y1, i = 0) => { boxC(cx - w * .2, cz, w * .6 - 2 * i, d - 2 * i, y0, y1); boxC(cx + w * .3, cz - d * .25, w * .4, d * .5 - 2 * i, y0, y1); };
+    return (y0, y1, i = 0) => boxC(cx, cz, w - 2 * i, d - 2 * i, y0, y1);
+  };
+  // a mass with its facade: floor bands (a sill, then the glass set in), ledges (a thin slab out at each floor) or plain
+  const mass = (fp, y0, y1, fl, facade) => {
+    if (facade === 'bands') for (let f = y0; f < y1 - 1e-6; f += fl) { const t = Math.min(y1, f + fl); fp(f, f + (t - f) * .35, 0); fp(f + (t - f) * .35, t, .035); }
+    else if (facade === 'ledges') { fp(y0, y1, .02); for (let f = y0 + fl; f < y1 - fl * .5; f += fl) fp(f, f + fl * .12, -.05); }
+    else fp(y0, y1, 0);
+  };
+  const facade = () => one(['bands', 'bands', 'ledges', 'plain']);
+  const crown = (fp, w, d, y, cx = 0, cz = 0) => {
+    const c = one(['flat', 'step', 'spire', 'slant', 'step']);
+    if (c === 'step') { let yy = y, ww = w; for (let s = 0; s < int(2, 3); s++) { ww *= .72; const h = pick(.25, .5); boxC(cx, cz, ww, ww * d / w, yy, yy + h); yy += h; } return yy; }
+    if (c === 'spire') { boxC(cx, cz, w * .4, d * .4, y, y + .3); prism(cx, cz, 6, w * .06, y + .3, y + pick(1.2, 2.4), 0, .08); return y + 2; }
+    if (c === 'slant') { wedge(cx - w / 2, cx + w / 2, y, y + pick(.6, 1.2), y, cz - d / 2, cz + d / 2); return y + 1; }
+    boxC(cx, cz, w * .3, d * .3, y, y + .15); return y; // flat: a small plant room
+  };
+  const type = S.pbType === 'auto' ? one(PB_TYPES.slice(1)).at(0) : S.pbType;
+  if (type === 'tower') {
+    const w = pick(1, 1.6), d = w * pick(.7, 1), H = pick(5, 9), fl = pick(.22, .32), kind = one(['rect', 'round', 'octo', 'rect', 'L', 'tri']);
+    let y0 = 0;
+    if (r() < .6) { const ph = pick(.6, 1.3); mass(plan('rect', w * pick(1.6, 2.3), d * pick(1.5, 2.2)), 0, ph, ph / 2, 'bands'); y0 = ph; }
+    mass(plan(kind, w, d), y0, H, fl, facade());
+    crown(plan(kind, w, d), w, d, H);
+  } else if (type === 'twin') {
+    const w = pick(.8, 1.2), gap = pick(.5, 1.1), H = pick(5, 8), fl = pick(.22, .3), kind = one(['rect', 'round', 'octo']), fc = facade(), ph = pick(.5, 1);
+    mass(plan('rect', w * 2 + gap + pick(.4, 1), w * pick(1.4, 2)), 0, ph, ph / 2, 'bands');
+    const H2 = H * pick(.6, .9), xa = -(w + gap) / 2, xb = (w + gap) / 2;
+    mass(plan(kind, w, w, xa), ph, H, fl, fc); crown(plan(kind, w, w, xa), w, w, H, xa);
+    mass(plan(kind, w, w, xb), ph, H2, fl, fc); crown(plan(kind, w, w, xb), w, w, H2, xb);
+    if (r() < .6) { const yb = H2 * pick(.5, .8); boxC(0, 0, gap + w, w * .35, yb, yb + fl * 2); }
+  } else if (type === 'stack') {
+    let y = 0; const n = int(5, 9), fl = pick(.2, .28), fc = one(['bands', 'plain', 'ledges']);
+    for (let i = 0; i < n; i++) {
+      let w = pick(1.2, 2.6), d = pick(.8, 1.6); if (i % 2) [w, d] = [d, w];
+      const h = fl * int(2, 4), cx = pick(-.6, .6), cz = pick(-.5, .5);
+      mass(plan('rect', w, d, cx, cz), y, y + h, fl, fc); y += h;
+    }
+  } else if (type === 'terrace') {
+    const W = pick(2.5, 3.6), D = pick(1.6, 2.6), n = int(5, 9), fl = pick(.3, .42), both = r() < .4;
+    for (let i = 0; i < n; i++) {
+      const z0 = -D / 2 + D * i / n * (both ? .5 : .85), z1 = both ? D / 2 - D * i / n * .5 : D / 2, x0 = -W / 2 + (r() < .3 ? W * i / n * .3 : 0);
+      mass((y0, y1, ins = 0) => box(x0 + ins, W / 2 - ins, y0, y1, z0 + ins, z1 - ins), i * fl, (i + 1) * fl, fl, 'bands');
+      for (let x = x0 + .15; x < W / 2 - .1; x += pick(.25, .4)) boxC(x, z0 - .04, .1, .06, (i + 1) * fl, (i + 1) * fl + .06); // planters along each terrace
+    }
+  } else if (type === 'slab') {
+    const W = pick(4, 6), D = pick(.7, 1), H = pick(2.2, 3.6), fl = pick(.24, .3), pil = pick(.35, .6), bays = Math.round(W / pick(.35, .5));
+    for (let i = 0; i <= bays; i++) for (const z of [-D * .35, D * .35]) boxC(-W / 2 + W * i / bays, z, .07, .07, 0, pil); // pilotis
+    mass(plan('rect', W, D), pil, H, fl, r() < .5 ? 'ledges' : 'bands');
+    for (let f = pil + fl; f < H - fl * .5; f += fl) for (let i = 0; i < bays; i++) if (r() < .65) boxC(-W / 2 + W * (i + .5) / bays, D / 2 + .09, W / bays * .7, .18, f, f + .05); // balconies
+    for (let k = 0; k < int(1, 3); k++) boxC(pick(-W / 3, W / 3), 0, pick(.3, .6), D * .5, H, H + pick(.15, .3));
+  } else if (type === 'court') {
+    const W = pick(3, 4.5), D = pick(2.6, 4), t = pick(.6, .9), H = pick(1.5, 2.8), fl = pick(.24, .3), fc = facade(), open = r() < .4;
+    const wing = (x0, x1, z0, z1, h) => mass((y0, y1, i = 0) => box(x0 + i, x1 - i, y0, y1, z0 + i, z1 - i), 0, h, fl, fc);
+    wing(-W / 2, W / 2, -D / 2, -D / 2 + t, H); wing(-W / 2, -W / 2 + t, -D / 2 + t, D / 2, H); wing(W / 2 - t, W / 2, -D / 2 + t, D / 2, H);
+    if (!open) wing(-W / 2 + t, W / 2 - t, D / 2 - t, D / 2, H * pick(.7, 1));
+    if (r() < .55) { const hh = H * pick(1.6, 2.6); mass(plan('rect', t * 1.2, t * 1.2, W / 2 - t * .6, -D / 2 + t * .6), 0, hh, fl, fc); crown(plan('rect', t * 1.2, t * 1.2), t * 1.2, t * 1.2, hh, W / 2 - t * .6, -D / 2 + t * .6); }
+  } else if (type === 'zig') {
+    const tiers = int(3, 6), kind = one(['rect', 'octo', 'rect']), fl = pick(.22, .3); let w = pick(2, 2.8), d = w * pick(.75, 1), y = 0;
+    for (let i = 0; i < tiers; i++) { const h = pick(.9, 1.8) * (i ? .8 : 1); mass(plan(kind, w, d), y, y + h, fl, 'bands'); plan(kind, w, d)(y + h - .06, y + h, -.06); y += h; w *= pick(.65, .8); d *= pick(.65, .8); }
+    prism(0, 0, 8, w * .25, y, y + pick(1, 2.2), 0, .05);
+  } else if (type === 'twist') {
+    const plates = int(16, 34), turn = pick(.6, 1.8) * (r() < .5 ? -1 : 1), n = one([4, 4, 3, 6]), w = pick(1, 1.5), fl = pick(.2, .26), narrow = pick(0, .45);
+    for (let i = 0; i < plates; i++) { const k = 1 - narrow * i / plates; prism(0, 0, n, w / 2 * k / Math.cos(PI / n), i * fl, i * fl + fl * .78, turn * i / plates, 1); }
+  } else { // cant: a core, and big volumes thrown out to the sides
+    const H = pick(5, 8), w = pick(.9, 1.3), fl = pick(.22, .3), fc = facade();
+    mass(plan('rect', w, w), 0, H, fl, fc);
+    for (let k = 0; k < int(1, 3); k++) { const y = H * pick(.35, .85), h = pick(.7, 1.4), L = pick(1.6, 2.8), s = r() < .5 ? -1 : 1, alongX = r() < .5;
+      mass(alongX ? plan('rect', L, w * 1.1, s * (L / 2 - w * .2), 0) : plan('rect', w * 1.1, L, 0, s * (L / 2 - w * .2)), y, Math.min(H + .3, y + h), fl, fc); }
+    crown(plan('rect', w, w), w, w, H);
+  }
+  // the same overall size every time: base on the ground, centred, the largest side 6
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (const v of T) { x0 = Math.min(x0, v[0]); x1 = Math.max(x1, v[0]); y0 = Math.min(y0, v[1]); y1 = Math.max(y1, v[1]); z0 = Math.min(z0, v[2]); z1 = Math.max(z1, v[2]); }
+  const sc = 6 / Math.max(x1 - x0, y1 - y0, z1 - z0, 1e-6), mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+  const P = new Float32Array(T.length * 3), I = new Uint32Array(T.length);
+  T.forEach((v, i) => { P[i * 3] = (v[0] - mx) * sc; P[i * 3 + 1] = (v[1] - y0) * sc; P[i * 3 + 2] = (v[2] - mz) * sc; I[i] = i; });
+  return { P, I, type };
+}
 // Formas: Blender's primitives and a wave. Round ones share their vertices (smooth shading); cube, pyramid and
 // tetrahedron keep a corner per face (flat). The wave is a sheet of a few long sine waves, from the seed.
 const SHAPES = [['cube', 'Cubo'], ['sphere', 'Esfera'], ['ico', 'Icosfera'], ['cyl', 'Cilindro'], ['cone', 'Cono'], ['pyramid', 'Pirámide'], ['tetra', 'Tetraedro'], ['torus', 'Toro'], ['disc', 'Círculo'], ['wave', 'Ola']];
@@ -665,7 +784,7 @@ function shapeMesh(kind, seed) {
   return { P: Float32Array.from(P), I: Uint32Array.from(I) };
 }
 // What the current preset is made from: its seed, and Building's settings or the shape.
-const presetSig = () => preset + ':' + (preset === 'relief' ? [reliefSrc?.id, S.rlDepth, S.rlCut].join() : preset === 'blocks' ? [S.seed, S.mzCount, S.mzHeight].join() : preset === 'shapes' ? S.shape + ':' + S.seed : preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
+const presetSig = () => preset + ':' + (preset === 'relief' ? [reliefSrc?.id, S.rlDepth, S.rlCut].join() : preset === 'pbuild' ? [S.seed, S.pbType].join() : preset === 'blocks' ? [S.seed, S.mzCount, S.mzHeight].join() : preset === 'shapes' ? S.shape + ':' + S.seed : preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
 // ---------- Imagen ----------
 // Every picture becomes a 3D model, a relief: a sheet the size of the picture, each point pushed towards the viewer by its depth (the
 // image half's depth map, near = high), so it turns like a model. Where the depth jumps (an edge in front of what is
@@ -759,6 +878,7 @@ function loadPreset() {
   }
   if (which === 'blocks') { const m = blocks(S.seed); setModelTris(indexedTris(m.P, m.I), 'Manzanas'); presetSeed = sig; return; }
   if (which === 'shapes') { const m = shapeMesh(S.shape, S.seed); setModelTris(indexedTris(m.P, m.I), SHAPES.find(x => x[0] === S.shape)[1]); presetSeed = sig; return; }
+  if (which === 'pbuild') { const m = pbuild(S.seed); setModelTris(indexedTris(m.P, m.I), 'Procedural Building'); presetSeed = sig; return; }
   if (which === 'building') { const m = building(S.seed); setModelTris(indexedTris(m.P, m.I), 'Building'); presetSeed = sig; return; }
   if (loadingPreset) return;
   loadingPreset = skyMesh().then(base => {
@@ -780,7 +900,7 @@ function colAt(buf, x, y) {
 // (Relieve, Cortar saltos, Building's height, Alturas…) keeps that same centre and scale, so the view never jumps or
 // zooms out. Another model (another source, another picture, another Forma, a file) is fitted afresh.
 let fitKey = '', fitAt = null;
-const fitKeyNow = () => preset === 'relief' ? 'relief:' + (reliefSrc?.id ?? '') : preset === 'shapes' ? 'shapes:' + S.shape : preset;
+const fitKeyNow = () => preset === 'relief' ? 'relief:' + (reliefSrc?.id ?? '') : preset === 'shapes' ? 'shapes:' + S.shape : preset === 'pbuild' ? 'pbuild:' + S.seed + ':' + S.pbType : preset; // (each Procedural Building is a model of its own)
 function setModelTris(tris, name, col = null, alb = null, dep = null) {
   modelCol = col; modelAlb = alb; modelDep = dep;
   const fk = fitKeyNow();
@@ -1232,6 +1352,7 @@ function sync(fast) {
   $('#building-controls').hidden = preset !== 'building' || modelName.includes('.');
   $('#shape-controls').hidden = preset !== 'shapes' || modelName.includes('.');
   $('#block-controls').hidden = preset !== 'blocks' || modelName.includes('.');
+  $('#pbuild-controls').hidden = preset !== 'pbuild' || modelName.includes('.');
   $('#relief-controls').hidden = preset !== 'relief' || modelName.includes('.');
   { const lk = rotLocked(); for (const id of ['#sl-yaw', '#sl-pitch', '#turn']) if ($(id).hidden !== lk) $(id).hidden = lk; }
   $('#upload').hidden = preset === 'relief' && !modelName.includes('.'); // with Imagen: only Subir imagen
@@ -1250,10 +1371,19 @@ function sync(fast) {
   schedule();
 }
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
+// The animation bar sits on the picture: centred on it, a little above its bottom edge.
+let barAt = '';
+function placeBar() {
+  const tt = document.querySelector('.tt'); if (!tt) return;
+  const fr = frame.getBoundingClientRect(), sr = stage.getBoundingClientRect(), at = `${Math.round(fr.left + fr.width / 2 - sr.left)}px,${Math.round(sr.bottom - fr.bottom + 16)}px`;
+  if (at !== barAt) { barAt = at; const [x, y] = at.split(','); tt.style.left = x; tt.style.bottom = y; }
+}
 function render() {
-  const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 48) / AW, (r.height - 176 - (stage.classList.contains('kf-open') ? 200 : 0)) / AH));
+  // the picture as large as the stage allows, 16 px from its edges (and above the timeline when it is open)
+  const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 32) / AW, (r.height - 32 - (stage.classList.contains('kf-open') ? 200 : 0)) / AH));
   const w = Math.round(AW * k), h = Math.round(AH * k), dpr = devicePixelRatio || 1;
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
+  placeBar();
   const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
   if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
   const ctx = cv.getContext('2d'); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, pw, ph);
@@ -1689,6 +1819,7 @@ async function openFile(file) {
 }
 $('#upload').addEventListener('click', () => $('#file').click());
 $('#relief-upload').addEventListener('click', () => $('#file').click());
+$('#pb-next').addEventListener('click', () => { S.seed++; sync(); });
 $('#file').addEventListener('change', e => { openFile(e.target.files[0]); e.target.value = ''; });
 let dragDepth = 0;
 stage.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; $('#drop').hidden = false; });
