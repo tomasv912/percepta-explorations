@@ -202,6 +202,11 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 .ptools button:hover { background: var(--fill); color: var(--text); }
 .ptools button[aria-pressed="true"] { background: var(--text); color: var(--surface); }
 .dof-h .a, .dof-h .m { border-color: #7B52D4 !important; } .dof-h .b, .dof-h .lab { background: #7B52D4 !important; } .dof-h line { stroke: #7B52D4; }
+.guides { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.guides i { position: absolute; display: block; background: #7B52D4; opacity: .8; }
+.guides i[hidden] { display: none; }
+.guides .gx { left: 50%; top: 0; bottom: 0; width: 1px; margin-left: -.5px; } /* the vertical middle: x sticks */
+.guides .gy { top: 50%; left: 0; right: 0; height: 1px; margin-top: -.5px; } /* the horizontal middle: y sticks */
 .gone, .hud { display: none !important; } /* .hud: the pixel count over the picture, not shown */ /* taken out of the tool (still read by the code, at its fixed value) */
 </style>
 </head>
@@ -1461,12 +1466,21 @@ frame.addEventListener('pointermove', e => {
     const r = frame.getBoundingClientRect();
     const f = lens(), q = v => Math.round(v * f) / f; // through the lens the picture moves with the pointer: pan in finer steps
     S.panX = q(turn.px + (e.clientX - turn.x) * viewBox().w / r.width / f); S.panY = q(turn.py + (e.clientY - turn.y) * viewBox().h / r.height / f);
+    // the centre lines hold it: within 10 px of the frame's vertical (or horizontal) middle it sticks there, a guide
+    // showing; dragged further it moves freely again
+    const th = 10 * viewBox().w / r.width / f, sx = Math.abs(S.panX) < th, sy = Math.abs(S.panY) < th;
+    if (sx) S.panX = 0; if (sy) S.panY = 0;
+    guides(sx, sy);
     return sync();
   }
   S.yaw = ((turn.yaw + (e.clientX - turn.x) * .5 + 540) % 360) - 180; S.pitch = clamp(turn.pitch + (e.clientY - turn.y) * .4, -89, 89);
   sync(true);
 });
-const endTurn = () => { if (brush) brush.down = false;
+// the guides of the centre lines, over the picture while the model sticks to them
+const guideEl = document.createElement('div'); guideEl.className = 'guides'; guideEl.innerHTML = '<i class="gx"></i><i class="gy"></i>'; frame.appendChild(guideEl);
+function guides(x, y) { guideEl.querySelector('.gx').hidden = !x; guideEl.querySelector('.gy').hidden = !y; }
+guides(false, false);
+const endTurn = () => { if (brush) brush.down = false; guides(false, false);
   if (turn) { const moved = turn.move; turn = null; frame.classList.remove('moving'); if (!moved) sync(); } };
 frame.addEventListener('dblclick', () => { if (S.panX || S.panY) { S.panX = S.panY = 0; sync(); } });
 addEventListener('keydown', e => { if (e.key === 'Shift' && !turn) frame.classList.add('moving'); });
