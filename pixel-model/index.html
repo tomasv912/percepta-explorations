@@ -1030,7 +1030,9 @@ function jitterRaw(raw, amt, r, box, kA) {
 // come round (each surface kept from the view that faces it most), so a whole turn is covered. Showing is smooth: a
 // pixel shrinks away as its surface turns edge-on or something nearer passes in front, instead of popping.
 let stb = null;
-const stbKey = () => JSON.stringify([modelName, presetSeed, model && model.length, AW, AH, S.sizeMin, S.lines, S.lineGap, S.lineAM, S.lineDot, S.lineFollow, S.chaos, S.lines && S.blend && [S.blendA, S.blendB], S.square, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
+// (the zoom too: a capture holds only what its view shows, so one made zoomed in would leave the model cut once zoomed
+// out; a new zoom, a new capture)
+const stbKey = () => JSON.stringify([zS(), modelName, presetSeed, model && model.length, AW, AH, S.sizeMin, S.lines, S.lineGap, S.lineAM, S.lineDot, S.lineFollow, S.chaos, S.lines && S.blend && [S.blendA, S.blendB], S.square, S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.contrast, S.threshold, S.edge, S.jitter, S.seed]);
 const STB_K = 8;
 const sstep = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
 // the side (of STB_K, around the vertical) a model-space normal faces most, counted from the capture's own view
