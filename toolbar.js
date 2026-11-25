@@ -59,6 +59,26 @@
     // violeta, lila, celeste, amarillo (only on the dark background: the tools leave it out on a light one), verde, lavanda
     { name: 'Percepta', colors: ['#7B52D4', '#B386FF', '#84BFFF', '#F5B921', '#6BCDAE', '#E3DCFD'] },
   ];
+  // Figma brand palettes, dark → light (Section 3, 5869:1289).
+  window.PERCEPTA_MONO_PALETTES = [
+    { name: 'Violeta', colors: ['#3C1E7B', '#6333CC', '#7B52D4'] },
+    { name: 'Azul', colors: ['#0075F5', '#4CA2FF', '#84BFFF'] },
+    { name: 'Amarillo', colors: ['#976E07', '#E0A40A', '#F5B921'] },
+    { name: 'Verde', colors: ['#26735B', '#40BF97', '#6BCDAE'] },
+  ];
+  window.PerceptaMono = {
+    // Palettes are ordered shadow → midtone → highlight. Keep the exact brand shades.
+    shade(palette, lightness) {
+      const light = Number.isFinite(lightness) ? Math.max(0, Math.min(1, lightness)) : .5;
+      return palette[Math.min(palette.length - 1, Math.floor(light * palette.length))];
+    },
+    sync(st) {
+      const before = st.palette.join(), palettes = window.PERCEPTA_MONO_PALETTES;
+      if (st.colorSrc === 'mono') st.palette = (palettes[st.monoPalette] || palettes[0]).colors.slice();
+      else if (palettes.some(p => p.colors.join() === st.palette.join())) st.palette = PALETTES[0].colors.slice();
+      return before !== st.palette.join();
+    },
+  };
   window.PERCEPTA_PALETTES = PALETTES;
   window.PERCEPTA_BACKGROUNDS = [['#FAFAFA', 'Blanco'], ['#111111', 'Negro']];
   style.textContent += `
@@ -66,6 +86,7 @@
 .pal-sets button { display: flex; height: 22px; padding: 0; border: 0; border-radius: 5px; overflow: hidden; cursor: pointer; box-shadow: 0 0 0 1px var(--line); background: none; }
 .pal-sets button i { flex: 1; }
 .pal-sets button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text); }
+.pal-sets[hidden] { display: none; }
 .pal-sets button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 `;
   // Backgrounds: white, black or any colour of the palette in use. A colour that is the background's is never used
@@ -144,12 +165,12 @@
 .bg-flip { gap: 4px; }
 .bg-flip i { width: 14px; height: 14px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .25); display: block; }
 `;
-  window.palettePicker = (host, get, set) => {
-    host.classList.add('pal-sets'); host.setAttribute('aria-label', 'Paletas');
-    host.innerHTML = PALETTES.map((p, i) => `<button data-set="${i}" title="${p.name}" aria-label="Paleta ${p.name}">${p.colors.map(c => `<i style="background:${c}"></i>`).join('')}</button>`).join('');
-    host.addEventListener('click', e => { const b = e.target.closest('[data-set]'); if (b) set(PALETTES[+b.dataset.set].colors.slice()); });
-    const mark = () => { const cur = get().join().toLowerCase(); host.querySelectorAll('[data-set]').forEach(b => b.setAttribute('aria-pressed', PALETTES[+b.dataset.set].colors.join().toLowerCase() === cur)); };
-    if (PALETTES.length < 2) host.hidden = true; // one palette: nothing to choose
+  window.palettePicker = (host, get, set, palettes = PALETTES) => {
+    host.classList.add('pal-sets'); host.setAttribute('aria-label', host.getAttribute('aria-label') || 'Paletas');
+    host.innerHTML = palettes.map((p, i) => `<button data-set="${i}" title="${p.name}" aria-label="Paleta ${p.name}">${p.colors.map(c => `<i style="background:${c}"></i>`).join('')}</button>`).join('');
+    host.addEventListener('click', e => { const b = e.target.closest('[data-set]'); if (b) set(palettes[+b.dataset.set].colors.slice()); });
+    const mark = () => { const cur = get().join().toLowerCase(); host.querySelectorAll('[data-set]').forEach(b => b.setAttribute('aria-pressed', palettes[+b.dataset.set].colors.join().toLowerCase() === cur)); };
+    if (palettes.length < 2) host.hidden = true; // one palette: nothing to choose
     mark(); return mark;
   };
 
@@ -330,9 +351,9 @@
   // (palette, source, behaviour, only the palette), the background, Caos and Pasaje, the outline. go(path, query)
   // keeps them and goes; take(S) puts them back (called before the first draw).
   window.PerceptaShared = (() => {
-    const KEY = 'percepta-shared', keys = ['palette', 'onlyPal', 'bg', 'bgFlip', 'colorHow', 'chaos', 'blend', 'blendA', 'blendB', 'stroke', 'strokeW', 'aspect', 'orient'];
+    const KEY = 'percepta-shared', keys = ['palette', 'monoPalette', 'onlyPal', 'bg', 'bgFlip', 'colorHow', 'chaos', 'blend', 'blendA', 'blendB', 'stroke', 'strokeW', 'aspect', 'orient'];
     // the two halves name the colour sources differently
-    const toCommon = { single: 'one', ink: 'one', pal: 'pal', image: 'orig', orig: 'orig' };
+    const toCommon = { single: 'one', ink: 'one', pal: 'pal', mono: 'mono', image: 'orig', orig: 'orig' };
     let page = null; // { S, names, apply(query), after() }: this half
     const pack = S => { const o = {}; for (const k of keys) if (k in S) o[k] = structuredClone(S[k]); if (S.colorSrc) o.colorSrc = toCommon[S.colorSrc] || 'one'; if (S.ink) o.ink = S.ink; return o; };
     const put = (o, q) => {
@@ -450,7 +471,7 @@
       for (const sc of scopes) {
         const g = clean(sc.querySelector('h2')?.textContent) || (sc === foot ? 'Exportar' : 'General');
         const add = (el, row, k, def, link) => { if (!shown(el)) return; k = clean(short(k)) || 'Control'; if (def?.type === 'action') def.label = k; out.push({ g, k, def, row, el, ...link }); };
-        for (const el of sc.querySelectorAll('input[type=range], input[type=checkbox], input[type=color], input.text, select, .seg, .presets, .inks, .levels, button')) {
+        for (const el of sc.querySelectorAll('input[type=range], input[type=checkbox], input[type=color], input.text, select, .seg, .presets, .inks, .levels, #monosets, button')) {
           if (el.closest('.pdk')) continue;
           if (el.matches('input[type=range]')) {
             // a slider over uneven stops (the page's SLIDERS[key].values) moves an index: its dial shows the value itself
@@ -472,10 +493,10 @@
           } else if (el.matches('select')) {
             const opts = [...el.options].map(o => ({ value: o.value, label: clean(o.textContent) }));
             add(el, el.closest('.row') || el, labelOf(el), { type: 'select', options: opts, default: el.value }, { get: () => el.value, set: v => { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); } });
-          } else if (el.matches('.seg, .presets, .inks, .levels')) {
-            const btns = [...el.querySelectorAll(':scope > button')].filter(b => !b.hidden && (b.dataset.v ?? b.dataset.p ?? b.dataset.ink ?? b.dataset.ord) !== undefined);
+          } else if (el.matches('.seg, .presets, .inks, .levels, #monosets')) {
+            const btns = [...el.querySelectorAll(':scope > button')].filter(b => !b.hidden && (b.dataset.v ?? b.dataset.p ?? b.dataset.ink ?? b.dataset.ord ?? b.dataset.set) !== undefined);
             if (btns.length < 2) continue;
-            const val = b => b.dataset.v ?? b.dataset.p ?? b.dataset.ink ?? b.dataset.ord;
+            const val = b => b.dataset.v ?? b.dataset.p ?? b.dataset.ink ?? b.dataset.ord ?? b.dataset.set;
             const cur = () => btns.find(b => b.getAttribute('aria-pressed') === 'true') || btns[0];
             const opts = btns.map(b => ({ value: val(b), label: clean(b.textContent) || clean(b.title) || val(b) }));
             add(el, el.closest('.row') && !el.closest('.row').querySelector('input, select:not(.seg *)') ? el.closest('.row') : el, el.matches('.inks, .levels') ? 'Tinta' : clean(el.getAttribute('aria-label') || el.dataset.key) || g, { type: 'select', options: opts, default: val(cur()) }, { get: () => val(cur()), set: v => btns.find(b => val(b) === v)?.click() });

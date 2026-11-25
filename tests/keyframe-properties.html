@@ -1,0 +1,36 @@
+<!doctype html><meta charset="utf-8"><title>Keyframe property regression tests</title>
+<pre id="results">Running…</pre>
+<iframe id="tool" src="../pixel-model/" style="width:1200px;height:800px"></iframe>
+<script>
+window.testResults = (async () => {
+  const frame = document.querySelector('#tool');
+  await new Promise(resolve => frame.addEventListener('load', resolve, {once:true}));
+  const w = frame.contentWindow;
+  for (let i = 0; !w.eval('!!model && !!reliefSrc'); i++) {
+    if (i > 200) throw Error('Image relief did not load');
+    await new Promise(r => setTimeout(r, 100));
+  }
+  return w.eval(`(() => {
+    const results = [], assert = (ok, label) => { if (!ok) throw Error(label); results.push(label); };
+    const set = (key, value) => { const input = document.querySelector('#in-' + key); input.value = value; input.dispatchEvent(new Event('input', {bubbles:true})); };
+    kfOpen(true);
+    set('rlDepth', 0); set('sizeMax', 2); kfInsert('depth'); kfInsert('pixels');
+    kfSeek(2); set('rlDepth', 1.5); set('sizeMax', 8); kfInsert('depth'); kfInsert('pixels');
+    assert(kfAnimated() && kfCount() === 4, 'New tracks enable playback and count their keys');
+    kfSeek(1);
+    assert(S.rlDepth === .75 && S.sizeMax === 5 && S.size === 5, 'Scrubbing interpolates depth and rendered pixel size');
+    const previousModel = model, list = kfFrame(2, true);
+    assert(model !== previousModel && list.length > 0 && S.rlDepth === 1.5 && S.size === 8, 'Playback/export frame rebuilds geometry and applies pixel size');
+    kfSeek(2); set('rlDepth', 1.8); set('sizeMax', 10);
+    assert(KF.depth[1].v[0] === 1.8 && KF.pixels[1].v[1] === 10, 'Editing sliders on an existing key updates that key');
+    KF.depth[0].ease = 'hold';
+    assert(kfValue('depth', 1)[0] === 0 && kfValue('depth', 2)[0] === 1.8, 'Depth respects the selected easing curve');
+    assert(kfValue('pixels', -1)[1] === 2 && kfValue('pixels', 10)[1] === 10, 'Pixel size holds at timeline endpoints');
+    kfSeek(0);
+    assert(S.sizeMin <= S.sizeMax && S.size === S.sizeMax, 'Pixel size bounds stay consistent after seeking backwards');
+    document.querySelector('#kf-clear').click();
+    assert(kfCount() === 0 && !kfAnimated(), 'Clear removes keys from both new tracks');
+    return results;
+  })()`);
+})().then(results => { document.querySelector('#results').textContent = results.map(r => 'PASS ' + r).join('\n'); return results; }).catch(error => { document.querySelector('#results').textContent = 'FAIL ' + error.message; throw error; });
+</script>
