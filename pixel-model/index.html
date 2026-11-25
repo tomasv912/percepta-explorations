@@ -801,7 +801,7 @@ const presetSig = () => preset + ':' + (preset === 'relief' ? [reliefSrc?.id, re
 // behind) the sheet is torn instead of stretched, and the picture's empty paper (white, or transparent) is left out.
 // Each triangle keeps the picture's tone (it sets how dark it is drawn, with the light on top) and its colour.
 let reliefSrc = null, reliefLoading = null, videoSource = null, inputVersion = 0;
-function stopVideo() { videoSource?.dispose(); videoSource = null; $('#source-video').hidden = true; }
+function stopVideo() { videoSource?.dispose(); videoSource = null; $('#source-video').hidden = true; $('#kf-dur').disabled = false; }
 // The picture and its depth come from the image half (pixel-image/: it reads the picture and works out its depth), never
 // shown: in Pixel it is the page's other frame; alone, a hidden frame of its own.
 let svcP = null;
@@ -1738,6 +1738,7 @@ const animOn = () => S.turn || S.anim === 'boil' || S.anim === 'float' || isMoti
 const loopLen = () => S.anim === 'boil' && !S.turn ? boilCount() / S.fps : S.ttDur;
 const nowT = () => paused ? pausedT : (((performance.now() - t0) / 1000) % loopLen() + loopLen()) % loopLen();
 function play() {
+  if (videoSource && KF.open) { cancelAnimationFrame(player); player = 0; cancelAnimationFrame(brushRaf); brushRaf = 0; return; }
   if (S.anim === 'paint') { cancelAnimationFrame(player); player = 0; shown = brushFrame(performance.now()); brushLoop(); return; }
   const keep = t0 ? nowT() : 0;
   cancelAnimationFrame(player); player = 0; shown = null; lastIdx = -1; t0 = performance.now() - keep * 1000;
@@ -1795,15 +1796,16 @@ async function openFile(file) {
         const mesh = reliefMesh(R);
         setModelTris(indexedTris(mesh.P, mesh.I), source.kind, mesh.col, mesh.alb, mesh.dep);
         presetSeed = presetSig(); key = ''; shown = null;
-        if (!filming) sync();
+        if (!filming && !KF.open) sync();
       }, () => toast('No se pudo reproducir el video. Probá con MP4 o WebM.'));
       if (version !== inputVersion) { source.dispose(); return; }
       stopVideo(); videoSource = source; preset = 'relief'; modelName = ''; reliefSrc = null;
       $('#source-video').appendChild(source.element); $('#source-video').hidden = false;
       // Stable framing across frames, including clips that begin with a blank frame.
       fitKey = 'relief:' + source.id; fitAt = [0, 0, 0, Math.hypot(source.width / source.height, 1) / 2];
-      source.sample(); source.start();
-      source.play().catch(() => toast('Video cargado. Presioná reproducir para comenzar.'));
+      source.sample();
+      if (KF.open) kfOpen(true);
+      else { source.start(); source.play().catch(() => toast('Video cargado. Presioná reproducir para comenzar.')); }
     } catch (error) { if (version === inputVersion) toast(PixelGif.accepts(file) ? 'No se pudo leer el GIF. ' + error.message : 'No se pudo leer el video. Probá con MP4 o WebM compatible con tu navegador.'); }
     return;
   }
@@ -1950,7 +1952,7 @@ function zipStored(files) {
 let kfFilm = false; // Exportar video of the keyframe timeline: its length, frame rate and format, every frame its view
 $('#video').addEventListener('click', async () => {
   if (filming || (S.anim === 'none' && !S.turn && !kfFilm && !videoSource)) return;
-  const format = kfFilm ? $('#kf-fmt').value : S.vidFmt, png = format === 'png', gif = format === 'gif', view0 = [S.yaw, S.pitch, S.panX, S.panY, S.zoom, S.rlDepth, S.sizeMin, S.sizeMax];
+  const format = kfFilm ? $('#kf-fmt').value : S.vidFmt, png = format === 'png', gif = format === 'gif', view0 = [S.yaw, S.pitch, S.panX, S.panY, S.zoom, S.rlDepth, S.sizeMin, S.sizeMax, S.dof, S.dofA.slice(), S.dofB.slice()];
   if (!png && !gif && (!('VideoEncoder' in window) || !window.Mp4Muxer)) return toast('Este navegador no puede exportar video: probá con Chrome, Edge o Safari.');
   const btn = kfFilm ? $('#kf-video') : $('#video'), label = btn.textContent, fps = Math.min(gif ? 15 : Infinity, kfFilm ? +$('#kf-fps').value : +S.ttFps);
   const source = videoSource, sourceTime = source?.currentTime, sourcePlaying = source && !source.paused;
@@ -1979,6 +1981,7 @@ $('#video').addEventListener('click', async () => {
   filming = true; btn.disabled = true; cancelAnimationFrame(player);
   try {
     source?.suspend();
+    kfMediaPending = null; await kfMediaWork;
     // The crop: for a turn, everything the model sweeps; otherwise every frame's pixels.
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     const pad = S.size * (1 + S.jitter) + 4 + (S.anim === 'float' ? S.floatAmp * 2 : S.anim === 'hover' ? S.hoverRadius * .5 * S.hoverForce : 0);
@@ -2002,7 +2005,7 @@ $('#video').addEventListener('click', async () => {
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d');
     const paint = async i => {
-      if (source) { await source.seek((i / fps) % source.duration); pts = build(false); shown = null; }
+      if (source) { await source.seek(kfFilm ? Math.min(i / fps, source.duration) : (i / fps) % source.duration); pts = build(false); shown = null; }
       const list = frameAt(i);
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = S.bg; ctx.fillRect(0, 0, W, H);
       ctx.setTransform(sc, 0, 0, sc, 0, 0); drawB(ctx, list, b.x0, b.y0);
@@ -2067,10 +2070,10 @@ $('#video').addEventListener('click', async () => {
   } finally {
     if (source) {
       try { await source.seek(sourceTime); } catch {}
-      source.start(); if (sourcePlaying) source.play().catch(() => {});
+      if (!KF.open) { source.start(); if (sourcePlaying) source.play().catch(() => {}); }
     }
     for (const p of pts) p.dx = p.dy = p.vx = p.vy = 0;
-    if (kfFilm) [S.yaw, S.pitch, S.panX, S.panY, S.zoom, S.rlDepth, S.sizeMin, S.sizeMax] = view0;
+    if (kfFilm) [S.yaw, S.pitch, S.panX, S.panY, S.zoom, S.rlDepth, S.sizeMin, S.sizeMax, S.dof, S.dofA, S.dofB] = view0;
     filming = false; kfFilm = false; btn.disabled = false; btn.textContent = label; key = ''; shown = null; sync();
   }
 });
@@ -2090,7 +2093,7 @@ $('#video').addEventListener('click', async () => {
     const r = bar.querySelector('#tool-rot'), img = preset === 'relief' && !modelName.includes('.'); r.hidden = !img; r.setAttribute('aria-pressed', S.imgRot); // only for an image (models always turn)
   };
 }
-PerceptaBlendHandles({ frame, cls: 'dof-h', labels: ['Lejos', 'Cerca'], titles: ['Lejos: acá los píxeles son más chicos. Shift: ángulos de 15°', 'Cerca: acá los píxeles tienen su tamaño entero. Shift: ángulos de 15°', 'Mover los dos (Shift: en un eje)'], visible: () => S.dof, get: () => [S.dofA, S.dofB], set: (A, B) => { S.dofA = A; S.dofB = B; schedule(); }, view: () => { const v = viewBox(); return { x: v.x / AW, y: v.y / AH, w: v.w / AW, h: v.h / AH }; } });
+PerceptaBlendHandles({ frame, cls: 'dof-h', labels: ['Lejos', 'Cerca'], titles: ['Lejos: acá los píxeles son más chicos. Shift: ángulos de 15°', 'Cerca: acá los píxeles tienen su tamaño entero. Shift: ángulos de 15°', 'Mover los dos (Shift: en un eje)'], visible: () => S.dof, get: () => [S.dofA, S.dofB], set: (A, B) => { S.dofA = A; S.dofB = B; window.kfHook?.(); schedule(); }, view: () => { const v = viewBox(); return { x: v.x / AW, y: v.y / AH, w: v.w / AW, h: v.h / AH }; } });
 PerceptaBlendHandles({ frame, visible: () => S.blend, get: () => [S.blendA, S.blendB], set: (A, B) => { S.blendA = A; S.blendB = B; sync(); }, view: () => { const v = viewBox(); return { x: v.x / AW, y: v.y / AH, w: v.w / AW, h: v.h / AH }; } });
 $('#blend-swap').addEventListener('click', () => { [S.blendA, S.blendB] = [S.blendB, S.blendA]; sync(); });
 $('#blend-reset').addEventListener('click', () => { S.blendA = DEFAULTS.blendA.slice(); S.blendB = DEFAULTS.blendB.slice(); sync(); });
@@ -2125,6 +2128,7 @@ function syncModeBar() {
 // middle). I opens the menu to insert a key of any of the three at the playhead, with the view as it is now.
 // Playing (or scrubbing) sets the view at that moment; Píxeles fijos keeps the pixels on the model while it moves.
 const KF = { dur: 5, t: 0, rot: [], pos: [], zoom: [], shape: [], depth: [], pixels: [], mRot: 180, mNoise: 50, mSpread: 60, sel: null, playing: false, open: false };
+const kfDepthState = () => [S.rlDepth, ...S.dofA, ...S.dofB, Number(S.dof)];
 const KF_TRACKS = { rot: 'rotación', pos: 'posición', zoom: 'zoom', shape: 'forma', depth: 'profundidad', pixels: 'tamaño del píxel' };
 // Curves: Lineal, Suave (in and out), Entrada (slow start), Salida (slow end), Constante (holds, then jumps).
 const EASES = [['inout', 'Suave', u => u * u * (3 - 2 * u)], ['linear', 'Lineal', u => u], ['in', 'Entrada suave', u => u * u * u], ['out', 'Salida suave', u => 1 - (1 - u) ** 3], ['hold', 'Constante', u => u < 1 ? 0 : 1]];
@@ -2146,14 +2150,15 @@ function kfValue(track, t) {
   const a = K[i], b = K[i + 1], e = easeFn(a.ease)((t - a.t) / ((b.t - a.t) || 1));
   // zoom moves evenly in scale (×1 → ×10 passes ×3.2 halfway), the rest in a straight line
   if (track === 'zoom') return a.v.map((v, j) => Math.exp(Math.log(v) + (Math.log(b.v[j]) - Math.log(v)) * e));
-  return a.v.map((v, j) => v + (b.v[j] - v) * e);
+  return a.v.map((v, j) => track === 'depth' && j === 5 ? (t < b.t ? v : b.v[j]) : v + (b.v[j] - v) * e);
 }
 // the view at time t: what the tracks say, the rest as it is
 function kfView(t) {
   const r = kfValue('rot', t), p = kfValue('pos', t), z = kfValue('zoom', t), d = kfValue('depth', t), px = kfValue('pixels', t);
-  return { yaw: r ? r[0] : S.yaw, pitch: r ? r[1] : S.pitch, panX: p ? p[0] : S.panX, panY: p ? p[1] : S.panY, zoom: z ? z[0] : S.zoom, rlDepth: d ? d[0] : S.rlDepth, sizeMin: px ? px[0] : S.sizeMin, sizeMax: px ? px[1] : S.sizeMax };
+  return { yaw: r ? r[0] : S.yaw, pitch: r ? r[1] : S.pitch, panX: p ? p[0] : S.panX, panY: p ? p[1] : S.panY, zoom: z ? z[0] : S.zoom, rlDepth: d ? d[0] : S.rlDepth, dofA: d?.length >= 6 ? d.slice(1, 3) : S.dofA.slice(), dofB: d?.length >= 6 ? d.slice(3, 5) : S.dofB.slice(), dof: d?.length >= 6 ? !!d[5] : S.dof, sizeMin: px ? px[0] : S.sizeMin, sizeMax: px ? px[1] : S.sizeMax };
 }
 const kfApply = v => { S.yaw = wrapDeg(v.yaw); S.pitch = v.pitch; S.panX = v.panX; S.panY = v.panY; S.zoom = v.zoom;
+  S.dofA = v.dofA.slice(); S.dofB = v.dofB.slice(); S.dof = v.dof; window.syncTools?.();
   S.rlDepth = v.rlDepth; S.sizeMax = v.sizeMax; S.sizeMin = Math.min(v.sizeMin, v.sizeMax); S.size = S.sizeMax;
   // Playback and export do not call sync(): rebuild the image relief here as its depth changes.
   if (preset === 'relief' && reliefSrc && !modelName.includes('.') && presetSeed !== presetSig()) loadPreset();
@@ -2279,7 +2284,20 @@ const KF_PLAY = '<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="tr
 const KF_PAUSE = '<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="1.5" width="2.6" height="9" rx=".6" fill="currentColor"/><rect x="6.9" y="1.5" width="2.6" height="9" rx=".6" fill="currentColor"/></svg>';
 for (const t of ['pointerdown', 'pointermove', 'pointerup', 'click', 'dblclick', 'wheel']) kfEl.addEventListener(t, e => e.stopPropagation());
 function kfOpen(on) {
+  if (KF.playing) kfToggle();
   KF.open = on; stage.classList.toggle('kf-open', on); document.body.classList.toggle('kf-open', on); kfEl.hidden = !on;
+  if (videoSource) {
+    videoSource.suspend(); // Opening or closing the editor never starts the source playing.
+    videoSource.element.inert = on;
+    $('#source-video .hint').textContent = on
+      ? 'La línea de tiempo controla el video / GIF. Mové el cabezal para elegir un cuadro y agregar keyframes; usá Play para reproducir.'
+      : 'Video / GIF · relieve por luminosidad. Pausá o mové la posición para elegir un cuadro. La exportación no incluye audio.';
+    $('#kf-dur').disabled = on;
+    if (on) {
+      KF.dur = videoSource.duration; $('#kf-dur').value = KF.dur;
+      kfSeek(videoSource.currentTime);
+    } else { kfMediaPending = null; videoSource.start(); }
+  } else $('#kf-dur').disabled = false;
   if (on) kfDraw(); schedule();
 }
 const kfX = t => t / KF.dur * 100 + '%';
@@ -2316,8 +2334,27 @@ function kfDraw() {
   $('#kf-pp').innerHTML = KF.playing ? KF_PAUSE : KF_PLAY;
 }
 // go to time t: the view of that moment (a quick render while dragging, the full one after)
+// Decode one frame at a time; rapid scrubbing replaces the queued destination.
+let kfMediaPending = null, kfMediaWork = null;
+function kfSeekMedia(t, fast) {
+  const source = videoSource;
+  source.suspend();
+  kfMediaPending = { source, t, fast };
+  if (!kfMediaWork) kfMediaWork = (async () => {
+    while (kfMediaPending && !filming) {
+      const job = kfMediaPending; kfMediaPending = null;
+      await job.source.seek(job.t);
+      if (kfMediaPending || videoSource !== job.source || !KF.open || filming) continue;
+      kfApply(kfView(job.t)); sync(job.fast);
+      shown = kfFrame(job.t, job.fast); render();
+    }
+  })().catch(error => { console.error(error); toast('No se pudo mostrar el cuadro del video.'); })
+    .finally(() => { kfMediaWork = null; });
+  return kfMediaWork;
+}
 function kfSeek(t, fast) {
   KF.t = clamp(t, 0, KF.dur); kfTime();
+  if (videoSource && KF.open && !filming) return kfSeekMedia(KF.t, fast);
   if (!kfCount()) return;
   kfApply(kfView(KF.t)); shown = null; kfHold = KF.shape.length ? model : null; sync(fast);
 }
@@ -2328,8 +2365,9 @@ function kfHoldFrame(fast) {
   shown = kfShapeFrame(KF.t, fast);
 }
 function kfInsert(track) {
+  if (videoSource && !KF.open) kfOpen(true);
   const t = KF.t, K = KF[track];
-  let v = track === 'rot' ? [S.yaw, S.pitch] : track === 'pos' ? [S.panX, S.panY] : track === 'shape' ? { model, col: modelCol, alb: modelAlb, dep: modelDep, name: modelName } : track === 'depth' ? [S.rlDepth] : track === 'pixels' ? [S.sizeMin, S.sizeMax] : [S.zoom];
+  let v = track === 'rot' ? [S.yaw, S.pitch] : track === 'pos' ? [S.panX, S.panY] : track === 'shape' ? { model, col: modelCol, alb: modelAlb, dep: modelDep, name: modelName } : track === 'depth' ? kfDepthState() : track === 'pixels' ? [S.sizeMin, S.sizeMax] : [S.zoom];
   if (track === 'shape' && !model) return toast('El modelo todavía se está cargando.');
   if (track === 'rot' && K.length) {
     // the turn goes the short way from the key before it (yaw is kept unwrapped, so turns past 180° add up)
@@ -2356,7 +2394,7 @@ let kfMouse = null;
 addEventListener('pointermove', e => { kfMouse = [e.clientX, e.clientY]; });
 function kfInsertMenu(x, y) {
   const it = (v, label, key) => `<button role="menuitem" data-v="${v}" data-key="${key}">${label}<kbd>${key.toUpperCase()}</kbd></button>`;
-  kfMenu(`<h4>Insertar keyframe</h4>${it('pos', 'Posición', 'p')}${it('rot', 'Rotación', 'r')}${it('zoom', 'Zoom', 'z')}${it('shape', 'Forma (el modelo de ahora)', 'f')}${it('depth', 'Profundidad (imagen)', 'd')}${it('pixels', 'Tamaño del píxel', 's')}<hr>${it('all', 'Todas las propiedades', 't')}`, x, y,
+  kfMenu(`<h4>Insertar keyframe</h4>${it('pos', 'Posición', 'p')}${it('rot', 'Rotación', 'r')}${it('zoom', 'Zoom', 'z')}${it('shape', 'Forma (el modelo de ahora)', 'f')}${it('depth', 'Profundidad (Lejos / Cerca y relieve)', 'd')}${it('pixels', 'Tamaño del píxel', 's')}<hr>${it('all', 'Todas las propiedades', 't')}`, x, y,
     v => v === 'all' ? ['rot', 'pos', 'zoom', 'depth', 'pixels'].forEach(kfInsert) : kfInsert(v));
 }
 addEventListener('keydown', e => {
@@ -2377,20 +2415,22 @@ addEventListener('keydown', e => {
     kfInsertMenu(x, y);
   } else if ((e.key === 'Delete' || e.key === 'Backspace') && KF.sel && KF.open) {
     e.preventDefault(); const K = KF[KF.sel.tr]; K.splice(K.indexOf(KF.sel.k), 1); KF.sel = null; kfDraw();
-  } else if (e.key === ' ' && KF.open && kfCount()) { e.preventDefault(); kfToggle(); }
+  } else if (e.key === ' ' && KF.open && (kfCount() || videoSource)) { e.preventDefault(); kfToggle(); }
 }, true);
 // ---- playing
-let kfRaf = 0, kfT0 = 0;
+let kfRaf = 0, kfT0 = 0, kfRun = 0;
 function kfToggle() {
-  if (KF.playing) { KF.playing = false; cancelAnimationFrame(kfRaf); shown = null; kfSeek(KF.t); kfDraw(); return; }
-  if (!kfAnimated()) return toast('Agregá al menos dos keyframes en una pista (I) para animar.');
+  if (KF.playing) { KF.playing = false; kfRun++; cancelAnimationFrame(kfRaf); shown = null; kfSeek(KF.t); kfDraw(); return; }
+  if (!kfAnimated() && !videoSource) return toast('Agregá al menos dos keyframes en una pista (I) para animar.');
   if (KF.t >= KF.dur - 1e-3) KF.t = 0;
   KF.playing = true; cancelAnimationFrame(player); player = 0; kfT0 = performance.now() - KF.t * 1000; kfDraw();
-  const step = now => {
-    if (!KF.playing || filming) return;
+  const run = ++kfRun;
+  const step = async now => {
+    if (!KF.playing || filming || run !== kfRun) return;
     KF.t = ((now - kfT0) / 1000) % KF.dur; kfTime();
-    shown = kfFrame(KF.t, true); render();
-    kfRaf = requestAnimationFrame(step);
+    if (videoSource) await kfSeekMedia(KF.t, true);
+    else { shown = kfFrame(KF.t, true); render(); }
+    if (KF.playing && !filming && run === kfRun) kfRaf = requestAnimationFrame(step);
   };
   kfRaf = requestAnimationFrame(step);
 }
@@ -2434,7 +2474,7 @@ kfArea.addEventListener('pointerup', () => {
 });
 // the video of the keyframes (the same encoder as the animations)
 $('#kf-video').addEventListener('click', () => {
-  if (!kfAnimated()) return toast('Agregá al menos dos keyframes en una pista (I) para exportar.');
+  if (!kfAnimated() && !videoSource) return toast('Agregá al menos dos keyframes en una pista (I) para exportar.');
   if (KF.playing) kfToggle();
   kfFilm = true; $('#video').click();
 });
@@ -2449,7 +2489,7 @@ function kfAutoKey() {
   if (r && (Math.abs(wrapDeg(r.v[0] - S.yaw)) > 1e-6 || Math.abs(r.v[1] - S.pitch) > 1e-6)) { r.v = [r.v[0] + wrapDeg(S.yaw - r.v[0]), S.pitch]; changed = true; }
   if (p && (Math.abs(p.v[0] - S.panX) > 1e-6 || Math.abs(p.v[1] - S.panY) > 1e-6)) { p.v = [S.panX, S.panY]; changed = true; }
   if (z && Math.abs(z.v[0] - S.zoom) > 1e-9) { z.v = [S.zoom]; changed = true; }
-  for (const [tr, value] of [['depth', [S.rlDepth]], ['pixels', [S.sizeMin, S.sizeMax]]]) {
+  for (const [tr, value] of [['depth', kfDepthState()], ['pixels', [S.sizeMin, S.sizeMax]]]) {
     const k = kfNow(tr);
     if (k && value.some((v, i) => Math.abs(v - k.v[i]) > 1e-9)) { k.v = value; changed = true; }
   }
