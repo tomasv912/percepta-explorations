@@ -146,7 +146,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .kf-tab:hover { background: var(--fill); }
 .kf-tab b { font: 600 10px var(--mono); padding: 1px 5px; border-radius: 4px; background: var(--fill); color: var(--text-2); }
 .kf { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: var(--kfh); display: flex; flex-direction: column; background: var(--surface); border-top: 1px solid var(--line); font: 12px var(--font); color: var(--text); user-select: none; }
-main.kf-open { --kfh: 200px; }
+main.kf-open { --kfh: 260px; }
 main.kf-open .kf-tab { display: none; }
 main.kf-open .pth { bottom: calc(14px + var(--kfh)); }
 main.kf-open { padding-bottom: calc(16px + var(--kfh)); }
@@ -170,14 +170,14 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 .kf-head input#kf-dur { width: 44px; }
 .kf-head .sp { flex: 1; }
 .kf-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 92px 1fr; }
-.kf-names { display: grid; grid-template-rows: 22px repeat(4, 1fr); border-right: 1px solid var(--line); color: var(--text-2); }
+.kf-names { display: grid; grid-template-rows: 22px repeat(6, 1fr); border-right: 1px solid var(--line); color: var(--text-2); }
 .kf-names span { display: flex; align-items: center; padding: 0 12px; }
 .kf-area { position: relative; margin: 0 18px; touch-action: none; }
 .kf-ruler { position: absolute; left: 0; right: 0; top: 0; height: 22px; cursor: ew-resize; border-bottom: 1px solid var(--line); }
 .kf-ruler i { position: absolute; top: 12px; width: 1px; height: 9px; background: var(--line); }
 .kf-ruler i.s { top: 6px; height: 15px; background: var(--text-3); }
 .kf-ruler em { position: absolute; top: 2px; transform: translateX(4px); font: normal 9px var(--mono); color: var(--text-3); }
-.kf-rows { position: absolute; left: 0; right: 0; top: 22px; bottom: 0; display: grid; grid-template-rows: repeat(4, 1fr); }
+.kf-rows { position: absolute; left: 0; right: 0; top: 22px; bottom: 0; display: grid; grid-template-rows: repeat(6, 1fr); }
 .kf-row { position: relative; cursor: ew-resize; }
 .kf-row::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--line); }
 .kf-row .seg { position: absolute; top: 50%; height: 1px; background: var(--text-3); }
@@ -223,7 +223,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
     <div class="drop" id="drop" hidden>Soltá un GIF, un video, una imagen o un modelo (.obj, .fbx, .glb, .gltf)</div>
     <div class="hud" id="stats">—</div>
     <div class="crop-hud gone" id="crop-hud"><button id="crop-tool" aria-pressed="false" title="Recortar (C): arrastrá un recuadro sobre el modelo, o clic para acercar ×2. Las flechas lo desplazan">Recortar</button><b id="crop-label" hidden>Recorte</b><button id="crop-back" hidden title="Vuelve al recorte anterior">Vista anterior</button><button id="crop-clear" hidden title="Muestra el cuadro entero">Quitar recorte</button></div>
-    <button class="kf-tab" id="kf-tab" title="Línea de tiempo con keyframes de rotación, posición, zoom y forma (I inserta un keyframe)"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 7h12" stroke="currentColor" stroke-width="1.2"/><rect x="3.2" y="4.7" width="4.6" height="4.6" transform="rotate(45 5.5 7)" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/></svg>Timeline <b id="kf-count" hidden></b></button>
+    <button class="kf-tab" id="kf-tab" title="Línea de tiempo con keyframes de rotación, posición, zoom, forma, profundidad y tamaño (I inserta un keyframe)"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 7h12" stroke="currentColor" stroke-width="1.2"/><rect x="3.2" y="4.7" width="4.6" height="4.6" transform="rotate(45 5.5 7)" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/></svg>Timeline <b id="kf-count" hidden></b></button>
     <div class="kf" id="kf" hidden role="region" aria-label="Línea de tiempo de keyframes">
       <div class="kf-head">
         <button class="ic" id="kf-pp" title="Reproducir (barra espaciadora con la línea de tiempo abierta)" aria-label="Reproducir"></button>
@@ -242,10 +242,10 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         <button class="ic" id="kf-fold" title="Plegar la línea de tiempo" aria-label="Plegar la línea de tiempo"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3"/></svg></button>
       </div>
       <div class="kf-body">
-        <div class="kf-names"><span></span><span>Rotación</span><span>Posición</span><span>Zoom</span><span>Forma</span></div>
+        <div class="kf-names"><span></span><span>Rotación</span><span>Posición</span><span>Zoom</span><span>Forma</span><span>Profundidad</span><span>Tamaño píxel</span></div>
         <div class="kf-area" id="kf-area">
           <div class="kf-ruler" id="kf-ruler"></div>
-          <div class="kf-rows" id="kf-rows"><div class="kf-row" data-track="rot"></div><div class="kf-row" data-track="pos"></div><div class="kf-row" data-track="zoom"></div><div class="kf-row" data-track="shape"></div></div>
+          <div class="kf-rows" id="kf-rows"><div class="kf-row" data-track="rot"></div><div class="kf-row" data-track="pos"></div><div class="kf-row" data-track="zoom"></div><div class="kf-row" data-track="shape"></div><div class="kf-row" data-track="depth"></div><div class="kf-row" data-track="pixels"></div></div>
           <div class="kf-play" id="kf-play"></div>
         </div>
       </div>
@@ -380,7 +380,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
       <section>
         <h2>Color</h2>
         <div class="seg" data-key="colorSrc" aria-label="Color">
-          <button data-v="ink">Un color</button><button data-v="pal" title="Los colores de la paleta, al azar (el amarillo, solo en modo oscuro); el negro y el blanco quedan para el fondo">Paleta</button><button data-v="orig" title="El color original del modelo (sus materiales), uno por partícula">Original</button>
+          <button data-v="ink">Un color</button><button data-v="mono" title="Tres tonos de un mismo color según la luz: sombras, medios tonos y luces">Monocromática</button><button data-v="pal" title="Los colores de la paleta, al azar (el amarillo, solo en modo oscuro); el negro y el blanco quedan para el fondo">Paleta</button><button data-v="orig" title="El color original del modelo (sus materiales), uno por partícula">Original</button>
         </div>
         <div class="row gone" id="how-row" style="grid-template-columns:auto 1fr">
           <span>Comportamiento</span>
@@ -388,6 +388,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         </div>
         <div class="gone"><label class="check" title="Cada partícula dibujada con su contorno en vez de rellena; la línea queda adentro, así no cambia el tamaño"><input type="checkbox" data-check="stroke"> Contorno (sin relleno)</label></div>
         <div class="gone"><div id="sl-strokeW"></div></div>
+        <div id="monosets" aria-label="Paleta monocromática"></div>
         <div id="palsets" class="gone"></div>
         <div id="sl-bloom"></div>
         <label class="check" title="Solo brillan los píxeles amarillos, blancos y lavanda"><input type="checkbox" data-check="bloomSel"> Bloom solo en amarillo, blanco y lavanda</label>
@@ -462,7 +463,7 @@ const DEFAULTS = {
   count: 40000, size: 3, sizeMin: .6, sizeMax: 3, contrast: 1, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
-  colorMode: 'random', colorSrc: 'pal', colorHow: 'random', bloom: 0, bloomSel: false, dof: false, dofA: [.3, .25], dofB: [.7, .8], imgRot: false, ink: '#111111', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
+  monoPalette: 0, colorMode: 'random', colorSrc: 'pal', colorHow: 'random', bloom: 0, bloomSel: false, dof: false, dofA: [.3, .25], dofB: [.7, .8], imgRot: false, ink: '#111111', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
   rlDepth: 0, rlCut: 0, pbType: 'auto', mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '16:9', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
@@ -1134,7 +1135,7 @@ function stipple(n, r, sc = scene) {
 // disappear on the background becomes another palette colour, chosen by k.
 // The palette in use: all of it on the dark background; on a light one, without the yellow (it never shows there).
 const YELLOW = '#f5b921';
-const palNow = st => lum(st.bg) < 128 ? st.palette : st.palette.filter(c => c.toLowerCase() !== YELLOW);
+const palNow = st => st.colorSrc === 'mono' || lum(st.bg) < 128 ? st.palette : st.palette.filter(c => c.toLowerCase() !== YELLOW);
 const usablePal = st => { const P = palNow(st).filter(c => c.toLowerCase() !== st.bg.toLowerCase()); return P.length ? P : palNow(st); };
 const palOnly = (c, st, k = 0) => { const U = usablePal(st); return U.some(u => u.toLowerCase() === c.toLowerCase()) ? c : U[k % U.length]; };
 const lum = h => { const n = parseInt(h.slice(1), 16); return .2126 * (n >> 16 & 255) + .7152 * (n >> 8 & 255) + .0722 * (n & 255); };
@@ -1145,6 +1146,8 @@ function toneList() {
   return toneMemo.v;
 }
 function colorOf(p) {
+  // Surface samples store darkness (0 = lit, 1 = shadow), not brightness.
+  if (S.colorSrc === 'mono') return PerceptaMono.shade(S.palette, 1 - p.tone);
   // Original: the material's colour in the light that falls on it (like a render), never quite reaching the paper
   // (Por tono: shaded by its light; Al azar: the colour as it is)
   if (S.colorMode === 'orig' && p.rgb !== undefined) { const k = S.colorHow === 'random' ? 1 : .45 + .55 * clamp(p.tone ?? 1), c = p.rgb;
@@ -1267,7 +1270,7 @@ const SLIDERS = {
   count: { label: 'Densidad', min: 2000, max: 200000, step: 1000, fmt: v => Math.round(v / 1000) + 'k', emph: true },
   size: { label: 'Tamaño del píxel', min: 1, max: 24, step: .5, fmt: v => v + ' px', emph: true },
   sizeMin: { label: 'Tamaño mínimo', min: .2, max: 24, step: .1, fmt: v => v.toLocaleString('es') + ' px', emph: true },
-  sizeMax: { label: 'Tamaño máximo', min: .5, max: 24, step: .5, fmt: v => v.toLocaleString('es') + ' px', emph: true },
+  sizeMax: { label: 'Tamaño del píxel', min: .5, max: 24, step: .5, fmt: v => v.toLocaleString('es') + ' px', emph: true },
   threshold: { label: 'Umbral', min: 0, max: .9, step: .01, fmt: v => v ? Math.round(v * 100) + '%' : 'sin umbral' },
   contrast: { label: 'Contraste', min: .5, max: 12, step: .05, fmt: v => v.toFixed(2) },
   hoverRadius: { label: 'Radio', min: 30, max: 500, step: 5, fmt: v => v + ' px', emph: true },
@@ -1278,7 +1281,7 @@ const SLIDERS = {
   paintDur: { label: 'Vuelo', min: .1, max: 3, step: .05, fmt: v => v.toFixed(2).replace('.', ',') + ' s' },
   revHold: { label: 'Quieto al final', min: 0, max: .8, step: .01, fmt: pct },
   bloom: { label: 'Bloom', min: 0, max: 1, step: .01, fmt: pct, emph: true },
-  rlDepth: { label: 'Relieve', min: 0, max: 2, step: .05, fmt: v => v.toFixed(2), emph: true },
+  rlDepth: { label: 'Profundidad', min: 0, max: 2, step: .05, fmt: v => v.toFixed(2), emph: true },
   rlCut: { label: 'Cortar saltos', min: 0, max: 1, step: .01, fmt: pct },
   mzHeight: { label: 'Alturas', min: .5, max: 8, step: .1, fmt: v => '×' + v.toFixed(1).replace('.', ','), emph: true },
   bH: { label: 'Altura', min: 1, max: 20, step: .1, fmt: v => v.toFixed(1), emph: true },
@@ -1315,6 +1318,10 @@ $('#presets').addEventListener('click', e => {
 });
 const renderInks = () => { $('#inks').innerHTML = [...S.palette, ...(S.onlyPal ? [] : [INK, WHITE])].map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join(''); };
 renderInks();
+const markMono = palettePicker($('#monosets'), () => S.palette, colors => {
+  S.monoPalette = PERCEPTA_MONO_PALETTES.findIndex(p => p.colors.join() === colors.join());
+  S.palette = colors; renderInks(); sync();
+}, PERCEPTA_MONO_PALETTES);
 const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.palette = colors; renderInks(); sync(); });
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
 $('#colorHow').addEventListener('change', e => { S.colorHow = e.target.value; sync(); });
@@ -1339,10 +1346,11 @@ function sync(fast) {
   if (rotLocked()) { S.yaw = 0; S.pitch = 0; S.turn = false; }
   // the largest is the size everything spaces by and draws at (a pixel's share of it, sc, goes down to the smallest)
   S.size = S.sizeMax; if (S.sizeMin > S.sizeMax) S.sizeMin = S.sizeMax;
-  S.colorHow = 'random'; // Comportamiento: always Al azar (not offered)
+  if (PerceptaMono.sync(S)) renderInks();
+  S.colorHow = S.colorSrc === 'mono' ? 'tone' : 'random'; // Monochrome shades follow the lighting.
   S.chaos = 0; S.blend = false; // Caos and Pasaje: not offered
   S.onlyPal = false; // the palette never has black or white in it (they are for the background), so nothing to choose
-  S.colorMode = S.colorSrc === 'pal' ? S.colorHow : S.colorSrc; // Color: its source, and for the palette its behaviour
+  S.colorMode = (S.colorSrc === 'pal' || S.colorSrc === 'mono') ? S.colorHow : S.colorSrc; // Color: its source, and for the palette its behaviour
   window.kfHook?.(); // keyframes: a change made with the playhead on a key rewrites that key; the diamonds follow
   for (const k of Object.keys(SLIDERS)) {
     const input = $('#in-' + k), d = SLIDERS[k], at = d.values ? d.values.reduce((b, v, i) => Math.abs(v - S[k]) < Math.abs(d.values[b] - S[k]) ? i : b, 0) : S[k];
@@ -1353,7 +1361,7 @@ function sync(fast) {
   document.querySelectorAll('.seg[data-key]').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S[seg.dataset.key])));
   document.querySelectorAll('[data-check]').forEach(inp => inp.checked = S[inp.dataset.check]);
   document.querySelectorAll('[data-ink]').forEach(b => b.setAttribute('aria-pressed', b.dataset.ink.toLowerCase() === S.ink.toLowerCase()));
-  $('#inks').hidden = S.colorSrc !== 'ink'; $('#how-row').hidden = S.colorSrc === 'ink'; $('#colorHow').value = S.colorHow; $('#onlypal-row').hidden = S.colorSrc !== 'pal'; $('#palsets').hidden = S.colorSrc === 'orig'; $('#sl-strokeW').hidden = !S.stroke; markPalette();
+  $('#inks').hidden = S.colorSrc !== 'ink'; $('#how-row').hidden = S.colorSrc === 'ink'; $('#colorHow').value = S.colorHow; $('#onlypal-row').hidden = S.colorSrc !== 'pal'; $('#palsets').hidden = S.colorSrc === 'orig'; $('#sl-strokeW').hidden = !S.stroke; markPalette(); $('#monosets').hidden = S.colorSrc !== 'mono'; markMono();
   const gridOnly = S.snap && !S.blend && !S.lines;
   $('#sl-count').hidden = gridOnly; $('#sl-size').hidden = false; if (typeof syncModeBar === 'function') syncModeBar();
   $('#sl-lineGap').hidden = $('#sl-lineFollow').hidden = $('#sl-lineDot').hidden = $('#lineAM-row').hidden = !S.lines;
@@ -1395,7 +1403,7 @@ function placeBar() {
 }
 function render() {
   // the picture as large as the stage allows, 16 px from its edges (and above the timeline when it is open)
-  const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 32) / AW, (r.height - 32 - (stage.classList.contains('kf-open') ? 200 : 0)) / AH));
+  const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 32) / AW, (r.height - 32 - (stage.classList.contains('kf-open') ? 260 : 0)) / AH));
   const w = Math.round(AW * k), h = Math.round(AH * k), dpr = devicePixelRatio || 1;
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
   placeBar();
@@ -1942,7 +1950,7 @@ function zipStored(files) {
 let kfFilm = false; // Exportar video of the keyframe timeline: its length, frame rate and format, every frame its view
 $('#video').addEventListener('click', async () => {
   if (filming || (S.anim === 'none' && !S.turn && !kfFilm && !videoSource)) return;
-  const format = kfFilm ? $('#kf-fmt').value : S.vidFmt, png = format === 'png', gif = format === 'gif', view0 = [S.yaw, S.pitch, S.panX, S.panY, S.zoom];
+  const format = kfFilm ? $('#kf-fmt').value : S.vidFmt, png = format === 'png', gif = format === 'gif', view0 = [S.yaw, S.pitch, S.panX, S.panY, S.zoom, S.rlDepth, S.sizeMin, S.sizeMax];
   if (!png && !gif && (!('VideoEncoder' in window) || !window.Mp4Muxer)) return toast('Este navegador no puede exportar video: probá con Chrome, Edge o Safari.');
   const btn = kfFilm ? $('#kf-video') : $('#video'), label = btn.textContent, fps = Math.min(gif ? 15 : Infinity, kfFilm ? +$('#kf-fps').value : +S.ttFps);
   const source = videoSource, sourceTime = source?.currentTime, sourcePlaying = source && !source.paused;
@@ -2062,7 +2070,7 @@ $('#video').addEventListener('click', async () => {
       source.start(); if (sourcePlaying) source.play().catch(() => {});
     }
     for (const p of pts) p.dx = p.dy = p.vx = p.vy = 0;
-    if (kfFilm) [S.yaw, S.pitch, S.panX, S.panY, S.zoom] = view0;
+    if (kfFilm) [S.yaw, S.pitch, S.panX, S.panY, S.zoom, S.rlDepth, S.sizeMin, S.sizeMax] = view0;
     filming = false; kfFilm = false; btn.disabled = false; btn.textContent = label; key = ''; shown = null; sync();
   }
 });
@@ -2116,8 +2124,8 @@ function syncModeBar() {
 // a track of keys. Between two keys the value eases along the curve chosen for that stretch (its button in the
 // middle). I opens the menu to insert a key of any of the three at the playhead, with the view as it is now.
 // Playing (or scrubbing) sets the view at that moment; Píxeles fijos keeps the pixels on the model while it moves.
-const KF = { dur: 5, t: 0, rot: [], pos: [], zoom: [], shape: [], mRot: 180, mNoise: 50, mSpread: 60, sel: null, playing: false, open: false };
-const KF_TRACKS = { rot: 'rotación', pos: 'posición', zoom: 'zoom', shape: 'forma' };
+const KF = { dur: 5, t: 0, rot: [], pos: [], zoom: [], shape: [], depth: [], pixels: [], mRot: 180, mNoise: 50, mSpread: 60, sel: null, playing: false, open: false };
+const KF_TRACKS = { rot: 'rotación', pos: 'posición', zoom: 'zoom', shape: 'forma', depth: 'profundidad', pixels: 'tamaño del píxel' };
 // Curves: Lineal, Suave (in and out), Entrada (slow start), Salida (slow end), Constante (holds, then jumps).
 const EASES = [['inout', 'Suave', u => u * u * (3 - 2 * u)], ['linear', 'Lineal', u => u], ['in', 'Entrada suave', u => u * u * u], ['out', 'Salida suave', u => 1 - (1 - u) ** 3], ['hold', 'Constante', u => u < 1 ? 0 : 1]];
 const easeFn = k => (EASES.find(e => e[0] === k) || EASES[0])[2];
@@ -2127,8 +2135,8 @@ const easeIcon = (k, s = 14) => {
   const d = k === 'hold' ? `M2,${s - 2}H${s - 2}V2` : 'M' + pts.join('L');
   return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 };
-const kfCount = () => KF.rot.length + KF.pos.length + KF.zoom.length + KF.shape.length;
-const kfAnimated = () => ['rot', 'pos', 'zoom', 'shape'].some(k => KF[k].length > 1);
+const kfCount = () => Object.keys(KF_TRACKS).reduce((n, tr) => n + KF[tr].length, 0);
+const kfAnimated = () => Object.keys(KF_TRACKS).some(k => KF[k].length > 1);
 // the value of a track at time t (null with no keys)
 function kfValue(track, t) {
   const K = KF[track]; if (!K.length) return null;
@@ -2142,10 +2150,14 @@ function kfValue(track, t) {
 }
 // the view at time t: what the tracks say, the rest as it is
 function kfView(t) {
-  const r = kfValue('rot', t), p = kfValue('pos', t), z = kfValue('zoom', t);
-  return { yaw: r ? r[0] : S.yaw, pitch: r ? r[1] : S.pitch, panX: p ? p[0] : S.panX, panY: p ? p[1] : S.panY, zoom: z ? z[0] : S.zoom };
+  const r = kfValue('rot', t), p = kfValue('pos', t), z = kfValue('zoom', t), d = kfValue('depth', t), px = kfValue('pixels', t);
+  return { yaw: r ? r[0] : S.yaw, pitch: r ? r[1] : S.pitch, panX: p ? p[0] : S.panX, panY: p ? p[1] : S.panY, zoom: z ? z[0] : S.zoom, rlDepth: d ? d[0] : S.rlDepth, sizeMin: px ? px[0] : S.sizeMin, sizeMax: px ? px[1] : S.sizeMax };
 }
-const kfApply = v => { S.yaw = wrapDeg(v.yaw); S.pitch = v.pitch; S.panX = v.panX; S.panY = v.panY; S.zoom = v.zoom; };
+const kfApply = v => { S.yaw = wrapDeg(v.yaw); S.pitch = v.pitch; S.panX = v.panX; S.panY = v.panY; S.zoom = v.zoom;
+  S.rlDepth = v.rlDepth; S.sizeMax = v.sizeMax; S.sizeMin = Math.min(v.sizeMin, v.sizeMax); S.size = S.sizeMax;
+  // Playback and export do not call sync(): rebuild the image relief here as its depth changes.
+  if (preset === 'relief' && reliefSrc && !modelName.includes('.') && presetSeed !== presetSig()) loadPreset();
+};
 // The pixels of the frame at time t (the view is left set to that moment).
 function kfFrame(t, fast) {
   const v = kfView(t); kfApply(v);
@@ -2278,7 +2290,7 @@ const kfStep = () => KF.dur > 20 ? 1 : KF.dur > 8 ? .5 : .25; // the ruler's sub
 function kfSnap(t, ticks, not) {
   if (ticks) { const st = kfStep(); return clamp(Math.round(t / st) * st, 0, KF.dur); }
   const px = kfArea.getBoundingClientRect().width / KF.dur; let best = null, bd = 8;
-  for (const tr of ['rot', 'pos', 'zoom', 'shape']) for (const k of KF[tr]) { if (k === not) continue; const d = Math.abs(k.t - t) * px; if (d < bd) { bd = d; best = k.t; } }
+  for (const tr of Object.keys(KF_TRACKS)) for (const k of KF[tr]) { if (k === not) continue; const d = Math.abs(k.t - t) * px; if (d < bd) { bd = d; best = k.t; } }
   if (best !== null) return best;
   const f = +$('#kf-fps').value; return Math.round(t * f) / f;
 }
@@ -2317,7 +2329,7 @@ function kfHoldFrame(fast) {
 }
 function kfInsert(track) {
   const t = KF.t, K = KF[track];
-  let v = track === 'rot' ? [S.yaw, S.pitch] : track === 'pos' ? [S.panX, S.panY] : track === 'shape' ? { model, col: modelCol, alb: modelAlb, dep: modelDep, name: modelName } : [S.zoom];
+  let v = track === 'rot' ? [S.yaw, S.pitch] : track === 'pos' ? [S.panX, S.panY] : track === 'shape' ? { model, col: modelCol, alb: modelAlb, dep: modelDep, name: modelName } : track === 'depth' ? [S.rlDepth] : track === 'pixels' ? [S.sizeMin, S.sizeMax] : [S.zoom];
   if (track === 'shape' && !model) return toast('El modelo todavía se está cargando.');
   if (track === 'rot' && K.length) {
     // the turn goes the short way from the key before it (yaw is kept unwrapped, so turns past 180° add up)
@@ -2344,8 +2356,8 @@ let kfMouse = null;
 addEventListener('pointermove', e => { kfMouse = [e.clientX, e.clientY]; });
 function kfInsertMenu(x, y) {
   const it = (v, label, key) => `<button role="menuitem" data-v="${v}" data-key="${key}">${label}<kbd>${key.toUpperCase()}</kbd></button>`;
-  kfMenu(`<h4>Insertar keyframe</h4>${it('pos', 'Posición', 'p')}${it('rot', 'Rotación', 'r')}${it('zoom', 'Zoom', 'z')}${it('shape', 'Forma (el modelo de ahora)', 'f')}<hr>${it('all', 'Los tres', 't')}`, x, y,
-    v => v === 'all' ? ['rot', 'pos', 'zoom'].forEach(kfInsert) : kfInsert(v));
+  kfMenu(`<h4>Insertar keyframe</h4>${it('pos', 'Posición', 'p')}${it('rot', 'Rotación', 'r')}${it('zoom', 'Zoom', 'z')}${it('shape', 'Forma (el modelo de ahora)', 'f')}${it('depth', 'Profundidad (imagen)', 'd')}${it('pixels', 'Tamaño del píxel', 's')}<hr>${it('all', 'Todas las propiedades', 't')}`, x, y,
+    v => v === 'all' ? ['rot', 'pos', 'zoom', 'depth', 'pixels'].forEach(kfInsert) : kfInsert(v));
 }
 addEventListener('keydown', e => {
   // an open menu takes every key (so its letters don't reach the page's own shortcuts: R, C…)
@@ -2386,7 +2398,7 @@ $('#kf-pp').addEventListener('click', kfToggle);
 $('#kf-tab').addEventListener('click', () => kfOpen(true));
 $('#kf-fold').addEventListener('click', () => kfOpen(false));
 $('#kf-ins').addEventListener('click', e => { const r = e.currentTarget.getBoundingClientRect(); kfInsertMenu(r.left, r.top - 190); });
-$('#kf-clear').addEventListener('click', () => { if (!kfCount()) return; if (KF.playing) kfToggle(); KF.rot = []; KF.pos = []; KF.zoom = []; KF.shape = []; KF.sel = null; kfDraw(); toast('Keyframes borrados.'); });
+$('#kf-clear').addEventListener('click', () => { if (!kfCount()) return; if (KF.playing) kfToggle(); for (const tr of Object.keys(KF_TRACKS)) KF[tr] = []; KF.sel = null; kfDraw(); toast('Keyframes borrados.'); });
 $('#kf-dur').addEventListener('change', e => { KF.dur = clamp(+e.target.value || 5, .5, 120); e.target.value = KF.dur; KF.t = Math.min(KF.t, KF.dur); kfDraw(); });
 $('#kf-fps').value = '30';
 for (const [id, k, lo, hi] of [['#kf-mrot', 'mRot', -720, 720], ['#kf-mspread', 'mSpread', 0, 300], ['#kf-mnoise', 'mNoise', 0, 400]]) {
@@ -2437,13 +2449,17 @@ function kfAutoKey() {
   if (r && (Math.abs(wrapDeg(r.v[0] - S.yaw)) > 1e-6 || Math.abs(r.v[1] - S.pitch) > 1e-6)) { r.v = [r.v[0] + wrapDeg(S.yaw - r.v[0]), S.pitch]; changed = true; }
   if (p && (Math.abs(p.v[0] - S.panX) > 1e-6 || Math.abs(p.v[1] - S.panY) > 1e-6)) { p.v = [S.panX, S.panY]; changed = true; }
   if (z && Math.abs(z.v[0] - S.zoom) > 1e-9) { z.v = [S.zoom]; changed = true; }
+  for (const [tr, value] of [['depth', [S.rlDepth]], ['pixels', [S.sizeMin, S.sizeMax]]]) {
+    const k = kfNow(tr);
+    if (k && value.some((v, i) => Math.abs(v - k.v[i]) > 1e-9)) { k.v = value; changed = true; }
+  }
   // Forma: only when another model was chosen (going to a key never changes the model, so it never rewrites one)
   const f = kfNow('shape');
   if (!videoSource && model && model !== kfSeen) { if (f && f.v.model !== model) { f.v = { model, col: modelCol, alb: modelAlb, dep: modelDep, name: modelName }; f.cache = null; changed = true; } kfSeen = model; }
   return changed;
 }
 // the diamonds in the panel: Giro and Inclinación (Rotación), Escala (Zoom), Posición
-const KF_DIAS = [['yaw', 'rot'], ['pitch', 'rot'], ['zoom', 'zoom']].map(([sl, tr]) => {
+const KF_DIAS = [['yaw', 'rot'], ['pitch', 'rot'], ['zoom', 'zoom'], ['rlDepth', 'depth'], ['sizeMin', 'pixels'], ['sizeMax', 'pixels']].map(([sl, tr]) => {
   const host = $('#sl-' + sl), b = document.createElement('button'); b.className = 'kf-dia'; b.dataset.track = tr; b.innerHTML = '<i></i>';
   host.classList.add('kf-has'); host.insertBefore(b, host.querySelector('input')); return b;
 });
@@ -2525,7 +2541,7 @@ loadPresets();
 
 // The model half of Pixel: what it shares with the image half (taken when coming from it), the model asked for, and a
 // 3D file given to it.
-PerceptaShared.init({ S, names: { one: 'ink', pal: 'pal', orig: 'orig' },
+PerceptaShared.init({ S, names: { one: 'ink', pal: 'pal', mono: 'mono', orig: 'orig' },
   apply: q => { const p = q.get('preset'); if (p && PRESETS.some(x => x[0] === p) && (p !== preset || modelName.includes('.'))) { preset = p; modelName = ''; } },
   after: () => { if (preset === 'relief') reliefSrc = null; if (!modelName.includes('.')) loadPreset(); key = ''; sync(); } });
 PerceptaHandoff.on('model-file', f => openFile(f));
