@@ -1,0 +1,36 @@
+<!doctype html><meta charset="utf-8"><title>GIF media regression tests</title>
+<pre id="results">Running…</pre>
+<script src="../vendor/omggif.js"></script><script src="../video-source.js"></script><script src="../gif-media.js"></script>
+<script>
+window.testResults = (async () => {
+  const results = [], assert = (ok, name) => { if (!ok) throw new Error(name); results.push(name); };
+  const bytes = [], writer = new GifWriter(bytes, 4, 2, { palette: [0xff0000, 0x0000ff, 0x00ff00, 0], loop: 0 });
+  writer.addFrame(0, 0, 4, 2, new Uint8Array(8), { delay: 20, disposal: 1 });
+  writer.addFrame(0, 0, 2, 2, new Uint8Array(4).fill(1), { delay: 30, disposal: 3 });
+  writer.addFrame(2, 0, 2, 2, new Uint8Array(4).fill(2), { delay: 40, disposal: 2 });
+  writer.addFrame(0, 0, 1, 1, new Uint8Array([1]), { delay: 10, disposal: 1 }); writer.end();
+  let frame;
+  const source = await PixelGif.open(new File([new Uint8Array(bytes)], 'test.gif', {type:'image/gif'}), f => frame = f, error => { throw error; });
+  document.body.append(source.element); source.sample();
+  const at = (x,y) => { const i = y * frame.gw + x; return [frame.rgb[i], frame.alpha[i]]; };
+  assert(source.duration === 1, 'Variable frame durations preserved');
+  assert(at(10,10)[0] === 0xff0000, 'First frame decoded');
+  await source.seek(.25); assert(at(10,10)[0] === 0x0000ff && at(80,10)[0] === 0xff0000, 'Partial frames composite over previous frame');
+  await source.seek(.55); assert(at(10,10)[0] === 0xff0000 && at(80,10)[0] === 0x00ff00, 'Disposal 3 restores previous frame');
+  await source.seek(.95); assert(at(80,10)[1] === 0, 'Disposal 2 clears previous rectangle');
+  await source.seek(.05); assert(at(80,10)[0] === 0xff0000 && at(80,10)[1] === 1, 'Backward seeking resets composite');
+  source.start(); await source.play(); await new Promise(r => setTimeout(r, 350)); source.pause();
+  assert(at(10,10)[0] === 0x0000ff, 'Playback advances through GIF frames');
+  const time = source.currentTime; await new Promise(r => setTimeout(r, 120)); assert(source.currentTime === time, 'Pause holds frame');
+  source.dispose(); assert(!source.element.isConnected, 'Disposal removes controls');
+  let failed = false; try { await PixelGif.open(new File(['bad'], 'bad.gif'), () => {}, () => {}); } catch { failed = true; }
+  assert(failed, 'Invalid GIF rejected');
+  const encoder = PixelGif.encoder(4, 2, ['#ff0000', '#0000ff']);
+  for (const c of [[255,0,0,255],[0,0,255,255]]) encoder.add(Uint8ClampedArray.from(Array(8).fill(c).flat()), 20);
+  const reader = new GifReader(new Uint8Array(await encoder.finish().arrayBuffer())), decoded = new Uint8Array(32);
+  assert(reader.numFrames() === 2 && reader.loopCount() === 0, 'Export is animated and loops');
+  reader.decodeAndBlitFrameRGBA(1, decoded);
+  assert(decoded[2] === 255 && decoded[0] === 0 && reader.frameInfo(1).delay === 20, 'Export preserves colors and timing');
+  document.querySelector('#results').textContent = results.join('\n'); return results;
+})().catch(error => { document.querySelector('#results').textContent = 'FAIL: ' + error.message; throw error; });
+</script>

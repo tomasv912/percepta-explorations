@@ -213,11 +213,14 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 <body>
 <script src="../toolbar.js"></script>
 <script src="../stipple3d.js"></script>
+<script src="../video-source.js"></script>
+<script src="../vendor/omggif.js"></script>
+<script src="../gif-media.js"></script>
 <script src="../vendor/mp4-muxer.js"></script>
 <div class="app">
   <main id="stage">
     <div class="frame" id="frame"><canvas id="cv" role="img" aria-label="Un modelo 3D dibujado con píxeles"></canvas></div>
-    <div class="drop" id="drop" hidden>Soltá una imagen o un modelo (.obj, .fbx, .glb, .gltf)</div>
+    <div class="drop" id="drop" hidden>Soltá un GIF, un video, una imagen o un modelo (.obj, .fbx, .glb, .gltf)</div>
     <div class="hud" id="stats">—</div>
     <div class="crop-hud gone" id="crop-hud"><button id="crop-tool" aria-pressed="false" title="Recortar (C): arrastrá un recuadro sobre el modelo, o clic para acercar ×2. Las flechas lo desplazan">Recortar</button><b id="crop-label" hidden>Recorte</b><button id="crop-back" hidden title="Vuelve al recorte anterior">Vista anterior</button><button id="crop-clear" hidden title="Muestra el cuadro entero">Quitar recorte</button></div>
     <button class="kf-tab" id="kf-tab" title="Línea de tiempo con keyframes de rotación, posición, zoom y forma (I inserta un keyframe)"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M1 7h12" stroke="currentColor" stroke-width="1.2"/><rect x="3.2" y="4.7" width="4.6" height="4.6" transform="rotate(45 5.5 7)" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/></svg>Timeline <b id="kf-count" hidden></b></button>
@@ -233,7 +236,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         <span class="sp"></span>
         <label>Cuadros <select id="kf-fps" aria-label="Cuadros por segundo"><option>12</option><option>15</option><option>24</option><option>30</option><option>60</option></select></label>
         <select id="kf-res" aria-label="Resolución del video" title="Lado largo del video: 4K 3840 px, 2K 2560 px, Full HD 1920 px"><option value="4k">4K</option><option value="2k">2K</option><option value="hd">Full HD</option></select>
-        <select id="kf-fmt" aria-label="Formato del video" title="MP4, o cada cuadro como PNG sin pérdida en un .zip"><option value="mp4">MP4</option><option value="png">PNG (.zip)</option></select>
+        <select id="kf-fmt" aria-label="Formato del video" title="MP4, GIF animado (hasta 640 px y 15 fps), o secuencia PNG"><option value="mp4">MP4</option><option value="gif">GIF</option><option value="png">PNG (.zip)</option></select>
         <button class="primary" id="kf-video" title="Exporta la animación de los keyframes como video">Exportar</button>
         <button class="ic" id="kf-clear" title="Borrar todos los keyframes" aria-label="Borrar todos los keyframes"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><path d="M2.5 4h9M5.5 4V2.5h3V4M3.8 4l.6 8h5.2l.6-8"/></svg></button>
         <button class="ic" id="kf-fold" title="Plegar la línea de tiempo" aria-label="Plegar la línea de tiempo"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3"/></svg></button>
@@ -283,20 +286,21 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         <button data-v="8">8</button><button data-v="9">9</button><button data-v="12">12</button><button data-v="15">15</button><button data-v="24">24</button><button data-v="30">30</button><button data-v="60">60</button>
       </div>
       <div class="seg" data-key="vidFmt" aria-label="Formato del video" data-for="hover turn reveal paint">
-        <button data-v="mp4" title="MP4 4K, a calidad máxima">MP4</button><button data-v="png" title="Secuencia de imágenes: cada cuadro como PNG, sin pérdida, en un .zip (pesa mucho más)">Secuencia PNG (.zip)</button>
+        <button data-v="mp4" title="MP4 4K, a calidad máxima">MP4</button><button data-v="gif" title="GIF animado en loop, hasta 640 px y 15 fps">GIF</button><button data-v="png" title="Secuencia de imágenes: cada cuadro como PNG, sin pérdida, en un .zip (pesa mucho más)">Secuencia PNG (.zip)</button>
       </div>
       <button class="btn primary" id="video" data-for="hover turn reveal paint" title="MP4 4K en loop, recortado al modelo, con el fondo (MP4 no tiene transparencia)">Exportar video</button>
     </div>
   </main>
 
   <aside>
+    <div id="source-video" style="padding: 12px 16px; border-bottom: 1px solid var(--line)" hidden><p class="hint">Video / GIF · relieve por luminosidad. Pausá o mové la posición para elegir un cuadro. La exportación no incluye audio.</p></div>
     <div class="controls">
 
       <section>
         <h2>Fuente</h2>
         <div class="presets" id="presets" aria-label="Fuente"></div>
         <div id="relief-controls">
-          <button class="btn" id="relief-upload" title="Una imagen (JPG, PNG…): se convierte en un modelo 3D con su profundidad">Subir imagen</button>
+          <button class="btn" id="relief-upload" title="Una imagen o un video: se convierte en un relieve 3D">Subir imagen, video o GIF</button>
           <div id="sl-rlDepth"></div>
           <div id="sl-rlCut"></div>
           <p class="hint" id="relief-status" hidden></p>
@@ -328,8 +332,8 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
           <div id="sl-bSlab"></div>
           <label class="check"><input type="checkbox" data-check="bCrown"> Coronamiento y aguja</label>
         </div>
-        <button class="btn" id="upload" title="Un modelo 3D (.obj, .fbx, .glb, .gltf) o una imagen (se convierte en un modelo 3D)">Subir modelo 3D</button>
-        <input type="file" id="file" accept=".obj,.fbx,.glb,.gltf,image/*" hidden>
+        <button class="btn" id="upload" title="Un modelo 3D (.obj, .fbx, .glb, .gltf), una imagen o un video (se convierte en un relieve 3D)">Subir archivo</button>
+        <input type="file" id="file" accept=".obj,.fbx,.glb,.gltf,image/*,video/*,.gif,.mp4,.webm,.mov,.m4v,.ogv" hidden>
         <div id="sl-yaw"></div>
         <div id="sl-pitch"></div>
         <div id="sl-zoom"></div>
@@ -789,13 +793,14 @@ function shapeMesh(kind, seed) {
   return { P: Float32Array.from(P), I: Uint32Array.from(I) };
 }
 // What the current preset is made from: its seed, and Building's settings or the shape.
-const presetSig = () => preset + ':' + (preset === 'relief' ? [reliefSrc?.id, S.rlDepth, S.rlCut].join() : preset === 'pbuild' ? [S.seed, S.pbType].join() : preset === 'blocks' ? [S.seed, S.mzCount, S.mzHeight].join() : preset === 'shapes' ? S.shape + ':' + S.seed : preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
+const presetSig = () => preset + ':' + (preset === 'relief' ? [reliefSrc?.id, reliefSrc?.revision, S.rlDepth, S.rlCut].join() : preset === 'pbuild' ? [S.seed, S.pbType].join() : preset === 'blocks' ? [S.seed, S.mzCount, S.mzHeight].join() : preset === 'shapes' ? S.shape + ':' + S.seed : preset === 'building' ? JSON.stringify([S.seed, S.bKind, S.bW, S.bD, S.bH, S.bFloors, S.bTiers, S.bTaper, S.bTwist, S.bFins, S.bSlab, S.bCrown]) : S.seed);
 // ---------- Imagen ----------
 // Every picture becomes a 3D model, a relief: a sheet the size of the picture, each point pushed towards the viewer by its depth (the
 // image half's depth map, near = high), so it turns like a model. Where the depth jumps (an edge in front of what is
 // behind) the sheet is torn instead of stretched, and the picture's empty paper (white, or transparent) is left out.
 // Each triangle keeps the picture's tone (it sets how dark it is drawn, with the light on top) and its colour.
-let reliefSrc = null, reliefLoading = null;
+let reliefSrc = null, reliefLoading = null, videoSource = null, inputVersion = 0;
+function stopVideo() { videoSource?.dispose(); videoSource = null; $('#source-video').hidden = true; }
 // The picture and its depth come from the image half (pixel-image/: it reads the picture and works out its depth), never
 // shown: in Pixel it is the page's other frame; alone, a hidden frame of its own.
 let svcP = null;
@@ -821,7 +826,7 @@ async function reliefImage() {
   return { id: 'default', gw, gh, lum, rgb, alpha: null, depth, ar: pic.naturalWidth / pic.naturalHeight };
 }
 function reliefMesh(R) {
-  const L = 240, cols = R.ar >= 1 ? L : Math.max(8, Math.round(L * R.ar)), rows = R.ar >= 1 ? Math.max(8, Math.round(L / R.ar)) : L;
+  const L = R.video ? 96 : 240, cols = R.ar >= 1 ? L : Math.max(8, Math.round(L * R.ar)), rows = R.ar >= 1 ? Math.max(8, Math.round(L / R.ar)) : L;
   const at = (A, u, v) => { const gx = u * (R.gw - 1), gy = v * (R.gh - 1), i = Math.floor(gx), j = Math.floor(gy), fx = gx - i, fy = gy - j, i1 = Math.min(R.gw - 1, i + 1), j1 = Math.min(R.gh - 1, j + 1);
     return (A[j * R.gw + i] * (1 - fx) + A[j * R.gw + i1] * fx) * (1 - fy) + (A[j1 * R.gw + i] * (1 - fx) + A[j1 * R.gw + i1] * fx) * fy; };
   const near = (A, u, v) => A[Math.round(v * (R.gh - 1)) * R.gw + Math.round(u * (R.gw - 1))];
@@ -834,7 +839,7 @@ function reliefMesh(R) {
   const I = [], col = [], alb = [], dep = [], jump = .02 + (1 - S.rlCut) * .3;
   const tri = (a, b, c) => {
     if (Al[a] < .5 || Al[b] < .5 || Al[c] < .5) return;
-    if (Lm[a] > .93 && Lm[b] > .93 && Lm[c] > .93) return; // the paper
+    if (!R.video && Lm[a] > .93 && Lm[b] > .93 && Lm[c] > .93) return; // the paper
     if (D[a] < .05 && D[b] < .05 && D[c] < .05) return; // the farthest: the sky, the wall at the back
     if (Math.max(D[a], D[b], D[c]) - Math.min(D[a], D[b], D[c]) > jump) return; // torn where the depth jumps
     I.push(a, b, c);
@@ -846,11 +851,13 @@ function reliefMesh(R) {
 }
 const reliefStatus = t => { const el = $('#relief-status'); if (el) { el.textContent = t; el.hidden = !t; } };
 function loadRelief() {
-  if (reliefLoading) return;
+  if (reliefLoading || videoSource) return;
+  const version = inputVersion;
   const slow = setTimeout(() => reliefStatus('Calculando la profundidad de la imagen… (la primera vez descarga el modelo de profundidad)'), 400);
   reliefLoading = reliefImage().then(R => {
     clearTimeout(slow); reliefStatus('');
-    reliefLoading = null; if (preset !== 'relief') return;
+    reliefLoading = null; if (preset !== 'relief' || videoSource) return;
+    if (version !== inputVersion) return loadRelief();
     reliefSrc = R; const m = reliefMesh(R);
     if (!m.I.length) return toast('La imagen no tiene nada para levantar.');
     // a picture given (or Imagen chosen) is shown straight on: no turn, no tilt
@@ -878,7 +885,7 @@ function loadPreset() {
   const sig = presetSig(), which = preset;
   if (which === 'relief') {
     // the picture as fetched: only the sheet again (Relieve, Cortar saltos); none yet (or chosen again): fetched first
-    if (reliefSrc) { const m = reliefMesh(reliefSrc); if (m.I.length) setModelTris(indexedTris(m.P, m.I), 'Imagen', m.col, m.alb, m.dep); presetSeed = sig; return; }
+    if (reliefSrc) { const m = reliefMesh(reliefSrc); if (m.I.length) setModelTris(indexedTris(m.P, m.I), reliefSrc.video ? (videoSource?.kind || 'Video') : 'Imagen', m.col, m.alb, m.dep); presetSeed = sig; return; }
     return loadRelief();
   }
   if (which === 'blocks') { const m = blocks(S.seed); setModelTris(indexedTris(m.P, m.I), 'Manzanas'); presetSeed = sig; return; }
@@ -1303,6 +1310,7 @@ $('#presets').innerHTML = PRESETS.map(([k, n]) => `<button data-p="${k}">${n}</b
 $('#presets').addEventListener('click', e => {
   const b = e.target.closest('[data-p]'); if (!b || b.dataset.p === 'file') return;
   // Imagen: the image half, if it has a picture already; otherwise pick one
+  if (filming) return; inputVersion++; stopVideo();
   preset = b.dataset.p; modelName = ''; if (preset === 'relief') reliefSrc = null; loadPreset(); key = ''; sync(); // a source chosen: no longer the file given before
 });
 const renderInks = () => { $('#inks').innerHTML = [...S.palette, ...(S.onlyPal ? [] : [INK, WHITE])].map(h => `<button data-ink="${h}" style="background:${h}" title="${h}" aria-label="${h}"></button>`).join(''); };
@@ -1349,8 +1357,8 @@ function sync(fast) {
   const gridOnly = S.snap && !S.blend && !S.lines;
   $('#sl-count').hidden = gridOnly; $('#sl-size').hidden = false; if (typeof syncModeBar === 'function') syncModeBar();
   $('#sl-lineGap').hidden = $('#sl-lineFollow').hidden = $('#sl-lineDot').hidden = $('#lineAM-row').hidden = !S.lines;
-  document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn'))); });
-  if (!filming) $('#video').textContent = S.vidFmt === 'png' ? 'Exportar secuencia (.zip)' : 'Exportar video';
+  document.querySelectorAll('[data-for]').forEach(el => { const f = el.dataset.for.split(' '); el.hidden = !(f.includes(S.anim) || (S.turn && f.includes('turn')) || (videoSource && el.id === 'video') || (videoSource && ['ttFps', 'vidFmt'].includes(el.dataset.key))); });
+  if (!filming) $('#video').textContent = S.vidFmt === 'png' ? 'Exportar secuencia (.zip)' : S.vidFmt === 'gif' ? 'Exportar GIF' : 'Exportar video';
   $('#turn').setAttribute('aria-pressed', S.turn);
   const fileB = $('[data-p="file"]'), isFile = modelName.includes('.');
   if (fileB.hidden === isFile) fileB.hidden = !isFile;
@@ -1769,15 +1777,38 @@ frame.addEventListener('pointerleave', () => { hover = null; animate(); });
 
 // ---------- Input ----------
 async function openFile(file) {
-  if (!file) return;
+  if (!file || filming) return;
+  const version = ++inputVersion;
+  if (PixelVideo.accepts(file) || PixelGif.accepts(file)) {
+    try {
+      const source = await (PixelGif.accepts(file) ? PixelGif : PixelVideo).open(file, R => {
+        if (videoSource !== source) return;
+        reliefSrc = R;
+        const mesh = reliefMesh(R);
+        setModelTris(indexedTris(mesh.P, mesh.I), source.kind, mesh.col, mesh.alb, mesh.dep);
+        presetSeed = presetSig(); key = ''; shown = null;
+        if (!filming) sync();
+      }, () => toast('No se pudo reproducir el video. Probá con MP4 o WebM.'));
+      if (version !== inputVersion) { source.dispose(); return; }
+      stopVideo(); videoSource = source; preset = 'relief'; modelName = ''; reliefSrc = null;
+      $('#source-video').appendChild(source.element); $('#source-video').hidden = false;
+      // Stable framing across frames, including clips that begin with a blank frame.
+      fitKey = 'relief:' + source.id; fitAt = [0, 0, 0, Math.hypot(source.width / source.height, 1) / 2];
+      source.sample(); source.start();
+      source.play().catch(() => toast('Video cargado. Presioná reproducir para comenzar.'));
+    } catch (error) { if (version === inputVersion) toast(PixelGif.accepts(file) ? 'No se pudo leer el GIF. ' + error.message : 'No se pudo leer el video. Probá con MP4 o WebM compatible con tu navegador.'); }
+    return;
+  }
+  stopVideo();
   if (file.type?.startsWith('image/')) {
     // every image becomes a 3D model (Imagen): read by the image half, then raised by its depth
     preset = 'relief'; modelName = modelName.includes('.') ? '' : modelName; reliefSrc = null; sync();
-    return (await imageSvc()).load(file).then(() => { reliefSrc = null; loadRelief(); }, () => toast('No se pudo leer la imagen.'));
+    return (await imageSvc()).load(file).then(() => { if (version !== inputVersion) return; reliefSrc = null; loadRelief(); }, () => toast('No se pudo leer la imagen.'));
   }
   try {
     const name = file.name.toLowerCase();
     const pos = name.endsWith('.obj') ? Stipple3D.parseOBJ(await file.text()) : name.endsWith('.fbx') ? await Stipple3D.parseFBX(await file.arrayBuffer()) : Stipple3D.parseGLB(await file.arrayBuffer());
+    if (version !== inputVersion) return;
     if (!pos.length) throw new Error('empty');
     setModel(pos, file.name); key = ''; sync(); toast(`${file.name}: ${(pos.length / 9).toLocaleString('es')} triángulos`);
   } catch (err) { toast('No se pudo leer el modelo (OBJ, FBX, GLB o glTF con los datos adentro).'); }
@@ -1794,8 +1825,8 @@ stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#dro
 // Ctrl+V: a copied .obj, .glb or .gltf file (or an image, for the image half).
 addEventListener('paste', e => {
   if (e.target.closest?.('textarea, input:not([type=range]):not([type=checkbox])')) return; // typing, not a slider
-  const f = [...(e.clipboardData?.files || [])].find(f => /\.(obj|fbx|glb|gltf)$/i.test(f.name) || f.type.startsWith('image/'));
-  if (f) { e.preventDefault(); openFile(f); } else if (e.clipboardData?.files?.length) toast('Pegá un modelo (.obj, .fbx, .glb, .gltf) o una imagen.');
+  const f = [...(e.clipboardData?.files || [])].find(f => /\.(obj|fbx|glb|gltf)$/i.test(f.name) || f.type.startsWith('image/') || PixelVideo.accepts(f) || PixelGif.accepts(f));
+  if (f) { e.preventDefault(); openFile(f); } else if (e.clipboardData?.files?.length) toast('Pegá un modelo (.obj, .fbx, .glb, .gltf), una imagen o un video.');
 });
 
 // ---------- Export ----------
@@ -1910,38 +1941,40 @@ function zipStored(files) {
 // the pixels cover over the loop. The last frame is one step short of the first, so it loops without a seam.
 let kfFilm = false; // Exportar video of the keyframe timeline: its length, frame rate and format, every frame its view
 $('#video').addEventListener('click', async () => {
-  if (filming || (S.anim === 'none' && !S.turn && !kfFilm)) return;
-  const png = kfFilm ? $('#kf-fmt').value === 'png' : S.vidFmt === 'png', view0 = [S.yaw, S.pitch, S.panX, S.panY, S.zoom];
-  if (!png && (!('VideoEncoder' in window) || !window.Mp4Muxer)) return toast('Este navegador no puede exportar video: probá con Chrome, Edge o Safari.');
-  const btn = kfFilm ? $('#kf-video') : $('#video'), label = btn.textContent, fps = kfFilm ? +$('#kf-fps').value : +S.ttFps;
-  const run = !kfFilm && S.anim === 'paint' ? paintRun(fps) : null;
+  if (filming || (S.anim === 'none' && !S.turn && !kfFilm && !videoSource)) return;
+  const format = kfFilm ? $('#kf-fmt').value : S.vidFmt, png = format === 'png', gif = format === 'gif', view0 = [S.yaw, S.pitch, S.panX, S.panY, S.zoom];
+  if (!png && !gif && (!('VideoEncoder' in window) || !window.Mp4Muxer)) return toast('Este navegador no puede exportar video: probá con Chrome, Edge o Safari.');
+  const btn = kfFilm ? $('#kf-video') : $('#video'), label = btn.textContent, fps = Math.min(gif ? 15 : Infinity, kfFilm ? +$('#kf-fps').value : +S.ttFps);
+  const source = videoSource, sourceTime = source?.currentTime, sourcePlaying = source && !source.paused;
+  const run = !source && !kfFilm && S.anim === 'paint' ? paintRun(fps) : null;
   // keyframes play once (first frame to last, both kept); the animations loop (the last frame one step short of the first)
-  const T = kfFilm ? KF.dur : run ? run.T : S.anim === 'boil' && !S.turn ? boilCount() / S.fps : S.ttDur, N = Math.max(2, Math.round(T * fps) + (kfFilm ? 1 : 0));
+  const T = kfFilm ? KF.dur : source ? source.duration : run ? run.T : S.anim === 'boil' && !S.turn ? boilCount() / S.fps : S.ttDur, N = Math.max(2, Math.round(T * fps) + (kfFilm ? 1 : 0));
   // Hover: a pointer sweeps a figure of eight over the model; one loop to settle, then the loop that is kept.
   let sim = null;
   const hoverSim = () => {
-    const b = bounds(pts), list = pts.map(p => ({ x: p.x, y: p.y, tone: p.tone, pick: p.pick, sc: p.sc, rgb: p.rgb })), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, rx = (b.x1 - b.x0) * .4, ry = (b.y1 - b.y0) * .3;
+    const b = bounds(pts) || { x0: 0, y0: 0, x1: AW, y1: AH }, list = pts.map(p => ({ x: p.x, y: p.y, tone: p.tone, pick: p.pick, sc: p.sc, rgb: p.rgb })), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, rx = (b.x1 - b.x0) * .4, ry = (b.y1 - b.y0) * .3;
     const at = i => { const a = 2 * Math.PI * i / N; return [cx + rx * Math.sin(a), cy + ry * Math.sin(2 * a)]; };
     for (let i = 0; i < N; i++) hoverStep(list, at(i), 1 / fps);
     return { list, at };
   };
-  const sweep = (() => { const b = bounds(pts), cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, rx = (b.x1 - b.x0) * .4, ry = (b.y1 - b.y0) * .3; return i => { const a = 2 * Math.PI * i / N; return [cx + rx * Math.sin(a), cy + ry * Math.sin(2 * a)]; }; })();
+  const sweep = (() => { const b = bounds(pts) || { x0: 0, y0: 0, x1: AW, y1: AH }, cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2, rx = (b.x1 - b.x0) * .4, ry = (b.y1 - b.y0) * .3; return i => { const a = 2 * Math.PI * i / N; return [cx + rx * Math.sin(a), cy + ry * Math.sin(2 * a)]; }; })();
   const frameAt = i => {
     if (kfFilm) return kfFrame(Math.min(T, i / fps), false);
     if (run) return run.at(i);
     if (S.turn) return comboFrame(i / N, false, S.anim === 'hover' ? sweep(i) : null);
     if (S.anim === 'boil') return boilFrame(Math.floor(i / fps * S.fps) % boilCount());
     if (S.anim === 'float') return floatFrame(i / N);
-    if (S.anim === 'hover') { hoverStep(sim.list, sim.at(i), 1 / fps); return sim.list; }
+    if (S.anim === 'hover') { if (source) return pushOver(pts, sweep(i)); hoverStep(sim.list, sim.at(i), 1 / fps); return sim.list; }
     if (isMotion()) return motionFrame(i / N);
-    return turnFrame(i / N, false);
+    return source ? build(false) : turnFrame(i / N, false);
   };
   filming = true; btn.disabled = true; cancelAnimationFrame(player);
   try {
+    source?.suspend();
     // The crop: for a turn, everything the model sweeps; otherwise every frame's pixels.
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     const pad = S.size * (1 + S.jitter) + 4 + (S.anim === 'float' ? S.floatAmp * 2 : S.anim === 'hover' ? S.hoverRadius * .5 * S.hoverForce : 0);
-    if (run || kfFilm) { x0 = y0 = -1e9; x1 = y1 = 1e9; } // the whole frame (or the recorte): pixels fly in from the pointer
+    if (source || run || kfFilm) { x0 = y0 = -1e9; x1 = y1 = 1e9; } // the whole frame (or the recorte): pixels fly in from the pointer
     else if (S.turn) {
       const box = viewBoxNow(), k = AW / (box.x1 - box.x0);
       for (let i = 0; i < N; i++) {
@@ -1957,20 +1990,32 @@ $('#video').addEventListener('click', async () => {
     const b = { x0: Math.max(b0.x0, x0 - pad), y0: Math.max(b0.y0, y0 - pad), x1: Math.min(b0.x1, x1 + pad), y1: Math.min(b0.y1, y1 + pad) };
     // 4K: the crop drawn as large as fits 3840 × 2160 (or 2160 × 3840 when it stands up), every pixel redrawn at
     // that size so it stays sharp; even dimensions (H.264).
-    const bw = b.x1 - b.x0, bh = b.y1 - b.y0, [RL, RS] = kfFilm ? { '4k': [3840, 2160], '2k': [2560, 1440], hd: [1920, 1080] }[$('#kf-res').value] : [3840, 2160], sc = Math.min(RL / Math.max(bw, bh), RS / Math.min(bw, bh)), W = Math.round((b.x1 - b.x0) * sc / 2) * 2, H = Math.round((b.y1 - b.y0) * sc / 2) * 2;
+    const bw = b.x1 - b.x0, bh = b.y1 - b.y0, [RL, RS] = gif ? [640, 640] : kfFilm ? { '4k': [3840, 2160], '2k': [2560, 1440], hd: [1920, 1080] }[$('#kf-res').value] : [3840, 2160], sc = Math.min(RL / Math.max(bw, bh), RS / Math.min(bw, bh)), W = Math.round((b.x1 - b.x0) * sc / 2) * 2, H = Math.round((b.y1 - b.y0) * sc / 2) * 2;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d');
-    const paint = i => {
+    const paint = async i => {
+      if (source) { await source.seek((i / fps) % source.duration); pts = build(false); shown = null; }
       const list = frameAt(i);
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = S.bg; ctx.fillRect(0, 0, W, H);
       ctx.setTransform(sc, 0, 0, sc, 0, 0); drawB(ctx, list, b.x0, b.y0);
     };
-    const name = kfFilm ? 'keyframes' : [{ boil: 'a-mano', float: 'flotar', hover: 'hover', paint: 'interactivo', reveal: 'reveal-' + S.revDir, enter: 'entrada-' + S.entDir + (S.entInf ? '-infinito' : '') }[S.anim], S.turn && 'turntable'].filter(Boolean).join('-');
+    const name = kfFilm ? 'keyframes' : source ? source.kind.toLowerCase() : [{ boil: 'a-mano', float: 'flotar', hover: 'hover', paint: 'interactivo', reveal: 'reveal-' + S.revDir, enter: 'entrada-' + S.entDir + (S.entInf ? '-infinito' : '') }[S.anim], S.turn && 'turntable'].filter(Boolean).join('-');
+    if (gif) {
+      const encoder = PixelGif.encoder(W, H, [S.bg, ...S.palette]);
+      for (let i = 0; i < N; i++) {
+        await paint(i);
+        const delay = Math.max(2, Math.round((i + 1) * 100 / fps) - Math.round(i * 100 / fps));
+        encoder.add(ctx.getImageData(0, 0, W, H).data, delay);
+        btn.textContent = `Renderizando GIF ${i + 1} / ${N}`;
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+      download(`pixel-model-${name}-${S.seed}.gif`, encoder.finish()); return;
+    }
     if (png) {
       // Lossless: every frame a PNG, numbered, in a .zip (stored: PNGs don't shrink further).
       const files = [];
       for (let i = 0; i < N; i++) {
-        paint(i);
+        await paint(i);
         const blob = await new Promise(res => c.toBlob(res, 'image/png'));
         files.push([`${name}-${String(i + 1).padStart(4, '0')}.png`, new Uint8Array(await blob.arrayBuffer())]);
         btn.textContent = `Renderizando ${i + 1} / ${N}`;
@@ -1998,7 +2043,7 @@ $('#video').addEventListener('click', async () => {
     enc.configure(config);
     for (let i = 0; i < N; i++) {
       if (failed) throw failed;
-      paint(i);
+      await paint(i);
       const f = new VideoFrame(c, { timestamp: Math.round(i * 1e6 / fps), duration: Math.round(1e6 / fps) });
       enc.encode(f, { keyFrame: i % fps === 0 }); f.close();
       btn.textContent = `Renderizando ${i + 1} / ${N}`;
@@ -2012,6 +2057,10 @@ $('#video').addEventListener('click', async () => {
   } catch (err) {
     console.error(err); toast('No se pudo exportar el video.');
   } finally {
+    if (source) {
+      try { await source.seek(sourceTime); } catch {}
+      source.start(); if (sourcePlaying) source.play().catch(() => {});
+    }
     for (const p of pts) p.dx = p.dy = p.vx = p.vy = 0;
     if (kfFilm) [S.yaw, S.pitch, S.panX, S.panY, S.zoom] = view0;
     filming = false; kfFilm = false; btn.disabled = false; btn.textContent = label; key = ''; shown = null; sync();
@@ -2390,7 +2439,7 @@ function kfAutoKey() {
   if (z && Math.abs(z.v[0] - S.zoom) > 1e-9) { z.v = [S.zoom]; changed = true; }
   // Forma: only when another model was chosen (going to a key never changes the model, so it never rewrites one)
   const f = kfNow('shape');
-  if (model && model !== kfSeen) { if (f && f.v.model !== model) { f.v = { model, col: modelCol, alb: modelAlb, dep: modelDep, name: modelName }; f.cache = null; changed = true; } kfSeen = model; }
+  if (!videoSource && model && model !== kfSeen) { if (f && f.v.model !== model) { f.v = { model, col: modelCol, alb: modelAlb, dep: modelDep, name: modelName }; f.cache = null; changed = true; } kfSeen = model; }
   return changed;
 }
 // the diamonds in the panel: Giro and Inclinación (Rotación), Escala (Zoom), Posición

@@ -140,7 +140,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
     <div class="frame" id="frame">
       <canvas id="cv" role="img" aria-label="Olas o imagen formadas por cubos"></canvas>
     </div>
-    <div class="drop" id="drop" hidden>Soltá la imagen</div>
+    <div class="drop" id="drop" hidden>Soltá una imagen, un video o un modelo 3D</div>
     <div class="crop-hud" id="crop-hud" hidden><b id="crop-label">Recorte</b><button id="crop-back" title="Vuelve al recorte anterior">Vista anterior</button><button id="crop-clear" title="Muestra la imagen entera">Quitar recorte</button></div>
     <div class="hud"><span id="stats">—</span><span class="dim"><kbd>R</kbd> nueva semilla</span></div>
   </main>
@@ -154,9 +154,9 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
         </div>
         <button class="btn" id="upload">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10.5V2.5M4.5 6 8 2.5 11.5 6"/><path d="M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2"/></svg>
-          Subir imagen o modelo 3D
+          Subir imagen, video o modelo 3D
         </button>
-        <input type="file" id="file" accept="image/*,.obj,.fbx,.glb,.gltf" hidden>
+        <input type="file" id="file" accept="image/*,video/*,.mp4,.webm,.mov,.m4v,.ogv,.obj,.fbx,.glb,.gltf" hidden>
         <p class="hint" id="source-hint"></p>
         <div id="wave-controls" class="gone">
           <div id="sl-layers"></div>
@@ -1459,9 +1459,10 @@ const tools = RetouchTools({
 
 // ---------- Image input ----------
 // A 3D file goes to the model half (it turns); an image stays here and is drawn with its depth.
+const isVideo = f => !!f && (f.type === 'image/gif' || f.type?.startsWith('video/') || /\.(gif|mp4|webm|mov|m4v|ogv)$/i.test(f.name));
 const is3D = f => /\.(obj|fbx|glb|gltf)$/i.test(f?.name || '');
 function openFile(file) {
-  if (is3D(file)) { toast('Abriendo el modelo…'); return PerceptaHandoff.send('pixel-model/', 'model-file', file); }
+  if (is3D(file) || isVideo(file)) { toast(isVideo(file) ? 'Abriendo el video…' : 'Abriendo el modelo…'); return PerceptaHandoff.send('pixel-model/', 'model-file', file); }
   if (!file || !file.type.startsWith('image/')) return toast('Eso no parece una imagen ni un modelo 3D.');
   const el = new Image(), url = URL.createObjectURL(file);
   el.onload = () => { URL.revokeObjectURL(url); loadImage(el); S.source = 'image'; sync(); toast('Imagen cargada.'); };
@@ -1476,7 +1477,7 @@ stage.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 
 stage.addEventListener('dragover', e => e.preventDefault());
 stage.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; openFile(e.dataTransfer.files[0]); });
 addEventListener('paste', e => {
-  const f3 = [...(e.clipboardData?.files || [])].find(is3D); if (f3) return openFile(f3);
+  const f3 = [...(e.clipboardData?.files || [])].find(f => is3D(f) || isVideo(f)); if (f3) return openFile(f3);
   const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
   if (item) openFile(item.getAsFile());
 });
