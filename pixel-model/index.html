@@ -146,7 +146,7 @@ footer { border-top: 1px solid var(--line); padding: 16px; display: flex; flex-d
 .kf-tab:hover { background: var(--fill); }
 .kf-tab b { font: 600 10px var(--mono); padding: 1px 5px; border-radius: 4px; background: var(--fill); color: var(--text-2); }
 .kf { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; height: var(--kfh); display: flex; flex-direction: column; background: var(--surface); border-top: 1px solid var(--line); font: 12px var(--font); color: var(--text); user-select: none; }
-main.kf-open { --kfh: 260px; }
+main.kf-open { --kfh: 290px; }
 main.kf-open .kf-tab { display: none; }
 main.kf-open .pth { bottom: calc(14px + var(--kfh)); }
 main.kf-open { padding-bottom: calc(16px + var(--kfh)); }
@@ -170,14 +170,14 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 .kf-head input#kf-dur { width: 44px; }
 .kf-head .sp { flex: 1; }
 .kf-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 92px 1fr; }
-.kf-names { display: grid; grid-template-rows: 22px repeat(6, 1fr); border-right: 1px solid var(--line); color: var(--text-2); }
+.kf-names { display: grid; grid-template-rows: 22px repeat(7, 1fr); border-right: 1px solid var(--line); color: var(--text-2); }
 .kf-names span { display: flex; align-items: center; padding: 0 12px; }
 .kf-area { position: relative; margin: 0 18px; touch-action: none; }
 .kf-ruler { position: absolute; left: 0; right: 0; top: 0; height: 22px; cursor: ew-resize; border-bottom: 1px solid var(--line); }
 .kf-ruler i { position: absolute; top: 12px; width: 1px; height: 9px; background: var(--line); }
 .kf-ruler i.s { top: 6px; height: 15px; background: var(--text-3); }
 .kf-ruler em { position: absolute; top: 2px; transform: translateX(4px); font: normal 9px var(--mono); color: var(--text-3); }
-.kf-rows { position: absolute; left: 0; right: 0; top: 22px; bottom: 0; display: grid; grid-template-rows: repeat(6, 1fr); }
+.kf-rows { position: absolute; left: 0; right: 0; top: 22px; bottom: 0; display: grid; grid-template-rows: repeat(7, 1fr); }
 .kf-row { position: relative; cursor: ew-resize; }
 .kf-row::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--line); }
 .kf-row .seg { position: absolute; top: 50%; height: 1px; background: var(--text-3); }
@@ -242,10 +242,10 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         <button class="ic" id="kf-fold" title="Plegar la línea de tiempo" aria-label="Plegar la línea de tiempo"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5 6 7.5l3-3"/></svg></button>
       </div>
       <div class="kf-body">
-        <div class="kf-names"><span></span><span>Rotación</span><span>Posición</span><span>Zoom</span><span>Forma</span><span>Profundidad</span><span>Tamaño píxel</span></div>
+        <div class="kf-names"><span></span><span>Rotación</span><span>Posición</span><span>Zoom</span><span>Forma</span><span>Profundidad</span><span>Tamaño píxel</span><span>Color</span></div>
         <div class="kf-area" id="kf-area">
           <div class="kf-ruler" id="kf-ruler"></div>
-          <div class="kf-rows" id="kf-rows"><div class="kf-row" data-track="rot"></div><div class="kf-row" data-track="pos"></div><div class="kf-row" data-track="zoom"></div><div class="kf-row" data-track="shape"></div><div class="kf-row" data-track="depth"></div><div class="kf-row" data-track="pixels"></div></div>
+          <div class="kf-rows" id="kf-rows"><div class="kf-row" data-track="rot"></div><div class="kf-row" data-track="pos"></div><div class="kf-row" data-track="zoom"></div><div class="kf-row" data-track="shape"></div><div class="kf-row" data-track="depth"></div><div class="kf-row" data-track="pixels"></div><div class="kf-row" data-track="color"></div></div>
           <div class="kf-play" id="kf-play"></div>
         </div>
       </div>
@@ -388,7 +388,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         </div>
         <div class="gone"><label class="check" title="Cada partícula dibujada con su contorno en vez de rellena; la línea queda adentro, así no cambia el tamaño"><input type="checkbox" data-check="stroke"> Contorno (sin relleno)</label></div>
         <div class="gone"><div id="sl-strokeW"></div></div>
-        <div id="monosets" aria-label="Paleta monocromática"></div>
+        <div id="monosets" aria-label="Monocromático"></div>
         <div id="palsets" class="gone"></div>
         <div id="sl-bloom"></div>
         <label class="check" title="Solo brillan los píxeles amarillos, blancos y lavanda"><input type="checkbox" data-check="bloomSel"> Bloom solo en amarillo, blanco y lavanda</label>
@@ -1146,6 +1146,7 @@ function toneList() {
   return toneMemo.v;
 }
 function colorOf(p) {
+  if (kfMix) { const c = kfMix.get(p); if (c) return c; } // part way through a Color change on the timeline
   // Surface samples store darkness (0 = lit, 1 = shadow), not brightness.
   if (S.colorSrc === 'mono') return PerceptaMono.shade(S.palette, 1 - p.tone);
   // Original: the material's colour in the light that falls on it (like a render), never quite reaching the paper
@@ -1193,6 +1194,7 @@ function dofK(p) {
 }
 const sizeOf = p => S.size * lens() * dofK(p);
 function draw(ctx, list, ox = 0, oy = 0, q = RES) {
+  kfColorPrep(list);
   if (gridded()) list = snapList(list);
   const groups = new Map();
   for (const p of list) { const c = colorOf(p); let l = groups.get(c); if (!l) groups.set(c, l = []); l.push(p); }
@@ -1220,6 +1222,7 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
 let bloomL = null, bloomLv = [];
 const GLOW = new Set(['#f5b921', '#fafafa', '#e3dcfd']); // amarillo, blanco, lavanda
 function drawB(ctx, list, ox = 0, oy = 0, q = RES) {
+  kfColorPrep(list);
   if (!(S.bloom > 0)) return draw(ctx, list, ox, oy, q);
   const T = ctx.getTransform(), W = ctx.canvas.width, H = ctx.canvas.height, sc = Math.hypot(T.a, T.b);
   const L = bloomL ||= document.createElement('canvas'); if (L.width !== W || L.height !== H) { L.width = W; L.height = H; }
@@ -1343,6 +1346,7 @@ let artKey = '';
 // Giro, Inclinación and Turntable are not offered.
 const rotLocked = () => preset === 'relief' && !modelName.includes('.') && !S.imgRot;
 function sync(fast) {
+  if (kfColorT !== null && JSON.stringify(kfColorState()) !== kfColorSig) { kfColorT = null; kfMix = null; kfColorMid = false; } // the colour changed by hand
   if (rotLocked()) { S.yaw = 0; S.pitch = 0; S.turn = false; }
   // the largest is the size everything spaces by and draws at (a pixel's share of it, sc, goes down to the smallest)
   S.size = S.sizeMax; if (S.sizeMin > S.sizeMax) S.sizeMin = S.sizeMax;
@@ -1381,7 +1385,7 @@ function sync(fast) {
   $('#upload').hidden = preset === 'relief' && !modelName.includes('.'); // with Imagen: only Subir imagen
   if (preset && !modelName.includes('.') && presetSeed !== presetSig()) loadPreset();
   if (!model) { $('#stats').textContent = 'Cargando el modelo…'; return; }
-  updateBg(S.bgFlip); syncTheme(); window.syncTools?.();
+  if (!kfColorMid) updateBg(S.bgFlip); syncTheme(); // (a background part way through a Color change is no menu option) window.syncTools?.();
   const seedEl = $('#seed'); if (seedEl.value !== String(S.seed)) seedEl.value = S.seed;
   if (S.aspect + S.orient !== artKey) { artKey = S.aspect + S.orient; setArtboard(); S.panX = S.panY = 0; if (typeof crop !== 'undefined') { crop = null; cropStack = []; cropUI(); } }
   const k = JSON.stringify([modelName, presetSeed, AW, AH, S.yaw, S.pitch, zS(), S.lightAz, S.lightEl, S.ambient, S.shadow, count(), S.size, S.sizeMin, S.contrast, S.threshold, S.edge, S.jitter, S.seed, S.lines, S.lineGap, S.lineFollow, S.lineAM, S.lineDot, S.chaos, S.square, S.anim === 'stable', S.lines && S.blend && [S.blendA, S.blendB]]);
@@ -1403,7 +1407,7 @@ function placeBar() {
 }
 function render() {
   // the picture as large as the stage allows, 16 px from its edges (and above the timeline when it is open)
-  const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 32) / AW, (r.height - 32 - (stage.classList.contains('kf-open') ? 260 : 0)) / AH));
+  const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 32) / AW, (r.height - 32 - (stage.classList.contains('kf-open') ? 290 : 0)) / AH));
   const w = Math.round(AW * k), h = Math.round(AH * k), dpr = devicePixelRatio || 1;
   frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
   placeBar();
@@ -2127,9 +2131,9 @@ function syncModeBar() {
 // a track of keys. Between two keys the value eases along the curve chosen for that stretch (its button in the
 // middle). I opens the menu to insert a key of any of the three at the playhead, with the view as it is now.
 // Playing (or scrubbing) sets the view at that moment; Píxeles fijos keeps the pixels on the model while it moves.
-const KF = { dur: 5, t: 0, rot: [], pos: [], zoom: [], shape: [], depth: [], pixels: [], mRot: 180, mNoise: 50, mSpread: 60, sel: null, playing: false, open: false };
+const KF = { dur: 5, t: 0, rot: [], pos: [], zoom: [], shape: [], depth: [], pixels: [], color: [], mRot: 180, mNoise: 50, mSpread: 60, sel: null, playing: false, open: false };
 const kfDepthState = () => [S.rlDepth, ...S.dofA, ...S.dofB, Number(S.dof)];
-const KF_TRACKS = { rot: 'rotación', pos: 'posición', zoom: 'zoom', shape: 'forma', depth: 'profundidad', pixels: 'tamaño del píxel' };
+const KF_TRACKS = { rot: 'rotación', pos: 'posición', zoom: 'zoom', shape: 'forma', depth: 'profundidad', pixels: 'tamaño del píxel', color: 'color' };
 // Curves: Lineal, Suave (in and out), Entrada (slow start), Salida (slow end), Constante (holds, then jumps).
 const EASES = [['inout', 'Suave', u => u * u * (3 - 2 * u)], ['linear', 'Lineal', u => u], ['in', 'Entrada suave', u => u * u * u], ['out', 'Salida suave', u => 1 - (1 - u) ** 3], ['hold', 'Constante', u => u < 1 ? 0 : 1]];
 const easeFn = k => (EASES.find(e => e[0] === k) || EASES[0])[2];
@@ -2163,9 +2167,46 @@ const kfApply = v => { S.yaw = wrapDeg(v.yaw); S.pitch = v.pitch; S.panX = v.pan
   // Playback and export do not call sync(): rebuild the image relief here as its depth changes.
   if (preset === 'relief' && reliefSrc && !modelName.includes('.') && presetSeed !== presetSig()) loadPreset();
 };
+// ---- Color: a track of colour settings (the mode, the palette, the ink, the background). Between two keys every pixel
+// goes from its colour in the first to its colour in the second, on the stretch's curve, and the background with it.
+const kfColorState = () => ({ src: S.colorSrc, pal: S.palette.slice(), ink: S.ink, bg: S.bg, mono: S.monoPalette });
+function kfColorSet(st) {
+  S.colorSrc = st.src; S.palette = st.pal.slice(); S.ink = st.ink; S.bg = st.bg; S.monoPalette = st.mono;
+  S.colorHow = st.src === 'mono' ? 'tone' : 'random'; S.colorMode = st.src === 'pal' || st.src === 'mono' ? S.colorHow : st.src;
+}
+const hexMix = (a, b, u) => { const p = parseInt(a.slice(1), 16), q = parseInt(b.slice(1), 16), m = sh => Math.round((p >> sh & 255) + ((q >> sh & 255) - (p >> sh & 255)) * u); return '#' + (1 << 24 | m(16) << 16 | m(8) << 8 | m(0)).toString(16).slice(1); };
+// the stretch of the Color track at time t: its keys and how far along (u, on its curve)
+function kfColorSeg(t) {
+  const K = KF.color; if (!K.length) return null;
+  if (t <= K[0].t) return { a: K[0], u: 0 };
+  const L = K[K.length - 1]; if (t >= L.t) return { a: L, u: 0 };
+  let i = 0; while (K[i + 1].t < t) i++;
+  return { a: K[i], b: K[i + 1], u: easeFn(K[i].ease)((t - K[i].t) / ((K[i + 1].t - K[i].t) || 1)) };
+}
+// The timeline's colour at time t put in the settings (in a change: the second key's, the background part way). It
+// holds until the colour is changed by hand (then that is what shows; on a key, it rewrites the key).
+let kfColorT = null, kfColorSig = '', kfMix = null, kfMixAt = null, kfColorMid = false;
+function kfColorPut(t) {
+  const g = kfColorSeg(t); if (!g) { kfColorT = null; kfColorMid = false; return; }
+  kfColorMid = !!g.b && g.u > 0 && g.u < 1;
+  if (!g.b || g.u <= 0) kfColorSet(g.a.v); else if (g.u >= 1) kfColorSet(g.b.v); else { kfColorSet(g.b.v); S.bg = hexMix(g.a.v.bg, g.b.v.bg, g.u); }
+  kfColorT = t; kfColorSig = JSON.stringify(kfColorState()); kfMix = null; kfMixAt = null;
+}
+// each pixel's colour part way through a change (worked out once for a list at a moment)
+function kfColorPrep(list) {
+  if (kfColorT === null || !KF.color.length) { kfMix = null; return; }
+  if (kfMixAt && kfMixAt.list === list && kfMixAt.t === kfColorT) return;
+  const g = kfColorSeg(kfColorT); kfMix = null; kfMixAt = { list, t: kfColorT };
+  if (!g || !g.b || g.u <= 0 || g.u >= 1) return;
+  const keep = kfColorState();
+  kfColorSet(g.a.v); const ca = list.map(colorOf);
+  kfColorSet(g.b.v); const cb = list.map(colorOf);
+  kfColorSet(keep);
+  const m = new Map(); list.forEach((p, i) => m.set(p, hexMix(ca[i], cb[i], g.u))); kfMix = m;
+}
 // The pixels of the frame at time t (the view is left set to that moment).
 function kfFrame(t, fast) {
-  const v = kfView(t); kfApply(v);
+  const v = kfView(t); kfApply(v); kfColorPut(t);
   if (KF.shape.length) return kfShapeFrame(t, fast);
   // Píxeles fijos (or Estable): the pixels kept on the model as it moves
   return S.ttFixed || S.anim === 'stable' ? stableFrame(v.yaw, fast) : build(fast);
@@ -2354,6 +2395,7 @@ function kfSeekMedia(t, fast) {
 }
 function kfSeek(t, fast) {
   KF.t = clamp(t, 0, KF.dur); kfTime();
+  kfColorPut(KF.t);
   if (videoSource && KF.open && !filming) return kfSeekMedia(KF.t, fast);
   if (!kfCount()) return;
   kfApply(kfView(KF.t)); shown = null; kfHold = KF.shape.length ? model : null; sync(fast);
@@ -2367,7 +2409,7 @@ function kfHoldFrame(fast) {
 function kfInsert(track) {
   if (videoSource && !KF.open) kfOpen(true);
   const t = KF.t, K = KF[track];
-  let v = track === 'rot' ? [S.yaw, S.pitch] : track === 'pos' ? [S.panX, S.panY] : track === 'shape' ? { model, col: modelCol, alb: modelAlb, dep: modelDep, name: modelName } : track === 'depth' ? kfDepthState() : track === 'pixels' ? [S.sizeMin, S.sizeMax] : [S.zoom];
+  let v = track === 'rot' ? [S.yaw, S.pitch] : track === 'pos' ? [S.panX, S.panY] : track === 'shape' ? { model, col: modelCol, alb: modelAlb, dep: modelDep, name: modelName } : track === 'depth' ? kfDepthState() : track === 'pixels' ? [S.sizeMin, S.sizeMax] : track === 'color' ? kfColorState() : [S.zoom];
   if (track === 'shape' && !model) return toast('El modelo todavía se está cargando.');
   if (track === 'rot' && K.length) {
     // the turn goes the short way from the key before it (yaw is kept unwrapped, so turns past 180° add up)
@@ -2394,8 +2436,8 @@ let kfMouse = null;
 addEventListener('pointermove', e => { kfMouse = [e.clientX, e.clientY]; });
 function kfInsertMenu(x, y) {
   const it = (v, label, key) => `<button role="menuitem" data-v="${v}" data-key="${key}">${label}<kbd>${key.toUpperCase()}</kbd></button>`;
-  kfMenu(`<h4>Insertar keyframe</h4>${it('pos', 'Posición', 'p')}${it('rot', 'Rotación', 'r')}${it('zoom', 'Zoom', 'z')}${it('shape', 'Forma (el modelo de ahora)', 'f')}${it('depth', 'Profundidad (Lejos / Cerca y relieve)', 'd')}${it('pixels', 'Tamaño del píxel', 's')}<hr>${it('all', 'Todas las propiedades', 't')}`, x, y,
-    v => v === 'all' ? ['rot', 'pos', 'zoom', 'depth', 'pixels'].forEach(kfInsert) : kfInsert(v));
+  kfMenu(`<h4>Insertar keyframe</h4>${it('pos', 'Posición', 'p')}${it('rot', 'Rotación', 'r')}${it('zoom', 'Zoom', 'z')}${it('shape', 'Forma (el modelo de ahora)', 'f')}${it('depth', 'Profundidad (Lejos / Cerca y relieve)', 'd')}${it('pixels', 'Tamaño del píxel', 's')}${it('color', 'Color (modo, paleta, tinta y fondo)', 'c')}<hr>${it('all', 'Todas las propiedades', 't')}`, x, y,
+    v => v === 'all' ? ['rot', 'pos', 'zoom', 'depth', 'pixels', 'color'].forEach(kfInsert) : kfInsert(v));
 }
 addEventListener('keydown', e => {
   // an open menu takes every key (so its letters don't reach the page's own shortcuts: R, C…)
@@ -2489,6 +2531,7 @@ function kfAutoKey() {
   if (r && (Math.abs(wrapDeg(r.v[0] - S.yaw)) > 1e-6 || Math.abs(r.v[1] - S.pitch) > 1e-6)) { r.v = [r.v[0] + wrapDeg(S.yaw - r.v[0]), S.pitch]; changed = true; }
   if (p && (Math.abs(p.v[0] - S.panX) > 1e-6 || Math.abs(p.v[1] - S.panY) > 1e-6)) { p.v = [S.panX, S.panY]; changed = true; }
   if (z && Math.abs(z.v[0] - S.zoom) > 1e-9) { z.v = [S.zoom]; changed = true; }
+  { const c = kfNow('color'), v = kfColorState(); if (c && JSON.stringify(v) !== JSON.stringify(c.v)) { c.v = v; changed = true; } }
   for (const [tr, value] of [['depth', kfDepthState()], ['pixels', [S.sizeMin, S.sizeMax]]]) {
     const k = kfNow(tr);
     if (k && value.some((v, i) => Math.abs(v - k.v[i]) > 1e-9)) { k.v = value; changed = true; }
