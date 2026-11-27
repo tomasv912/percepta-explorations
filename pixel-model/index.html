@@ -381,6 +381,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 
       <section id="prism-sec">
         <h2>Prisma</h2>
+        <div class="seg" data-key="pType" aria-label="Partícula" title="A: el prisma (vidrio con burbujas). B: la esfera suave que brilla (Partículas B)"><button data-v="a">A · Prisma</button><button data-v="b">B · Brillo</button></div>
         <div id="sl-pFrom"></div>
         <div id="sl-pDur"></div>
         <div id="sl-pMove"></div>
@@ -480,7 +481,7 @@ const DEFAULTS = {
   count: 40000, size: 3, sizeMin: .6, sizeMax: 3, contrast: 1, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
-  monoPalette: 0, colorMode: 'random', colorSrc: 'pal', colorHow: 'random', pFrom: 100, pDur: .6, pMove: .35, pSpeed: .6, pTurb: 1.2, bloom: 0, bloomSel: false, dof: false, dofA: [.3, .25], dofB: [.7, .8], imgRot: false, ink: '#111111', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
+  monoPalette: 0, colorMode: 'random', colorSrc: 'pal', colorHow: 'random', pType: 'a', pFrom: 100, pDur: .6, pMove: .35, pSpeed: .6, pTurb: 1.2, bloom: 0, bloomSel: false, dof: false, dofA: [.3, .25], dofB: [.7, .8], imgRot: false, ink: '#111111', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
   rlDepth: 0, rlCut: 0, pbType: 'auto', mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '16:9', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
@@ -1272,9 +1273,10 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
   ctx.save();
   for (const [c, x, y, z, a] of fades) { ctx.globalAlpha = a; ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, z / 2, 0, Math.PI * 2); ctx.fill(); }
   const pal = palNow(S), anim = S.pMove > 0 ? { t: prismT, move: S.pMove, speed: S.pSpeed, turb: S.pTurb } : null;
+  PrismSprite.style = S.pType === 'b' ? 'b' : 'a'; const ex = PrismSprite.extent(); // (B's drawing is larger: its glow)
   for (const [c, x, y, z, a, p] of prisms) {
-    ctx.globalAlpha = a;
-    for (const [img, iw] of PrismSprite.frames(prismColor(c), pal, Math.floor((p.pick ?? .5) * 997) % PrismSprite.VARIANTS, anim, z * dev)) { ctx.globalAlpha = a * iw; ctx.drawImage(img, x - z / 2, y - z / 2, z, z); }
+    const Z = z * ex;
+    for (const [img, iw] of PrismSprite.frames(prismColor(c), pal, Math.floor((p.pick ?? .5) * 997) % PrismSprite.VARIANTS, anim, Z * dev)) { ctx.globalAlpha = a * iw; ctx.drawImage(img, x - Z / 2, y - Z / 2, Z, Z); }
   }
   ctx.restore();
 }

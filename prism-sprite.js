@@ -55,26 +55,30 @@
   };
   // The bubbles of a prism, at time t: [x, y, r, which] in units of the sphere's radius (centre 0), which: 0 the main
   // colour, 1 the accent; the big ones first (behind).
-  function layout(main, variant, t = 0, move = 0, turb = 1) {
+  function layout(main, variant, t = 0, move = 0, turb = 1, style = 'a') {
     const r = rng(variant * 7919 + parseInt(main.slice(1), 16) % 9973), balls = [];
+    // B: a big, dark, very soft blob too (which 2), off to one side
+    if (style === 'b') { const a = r() * Math.PI * 2; balls.push([Math.cos(a) * .35, Math.sin(a) * .35, .42 + r() * .12, 2]); }
     const cx0 = (r() - .5) * .25, cy0 = (r() - .3) * .2;
     balls.push([cx0, cy0, .26 + r() * .08, 0]);
     for (let i = 0, n = 5 + Math.floor(r() * 4); i < n; i++) { const a = r() * Math.PI * 2, d = .25 + r() * .45; balls.push([cx0 + Math.cos(a) * d, cy0 + Math.sin(a) * d, .09 + r() * .17, 0]); }
     for (let i = 0, n = 2 + Math.floor(r() * 2); i < n; i++) { const a = r() * Math.PI * 2; balls.push([Math.cos(a) * .95, Math.sin(a) * .95, .18 + r() * .14, 0]); } // running out past the rim
     for (let i = 0, n = 6 + Math.floor(r() * 5); i < n; i++) { const a = r() * Math.PI * 2, d = .3 + r() * .55; balls.push([Math.cos(a) * d, Math.sin(a) * d, .04 + r() * .06, 1]); }
     balls.forEach((b, i) => { const [dx, dy] = drift(variant * 131 + i * 17 + 5, t, move, turb); b[0] += dx * .3; b[1] += dy * .3; });
-    return balls.sort((a, b) => b[2] - a[2]).slice(0, 28);
+    return balls.sort((a, b) => (b[3] === 2) - (a[3] === 2) || b[2] - a[2]).slice(0, 28); // (the dark blob furthest behind)
   }
   // ---- The glass, on the graphics card (WebGL), with the settings of the Figma "Glass" effect of the Prism
   // (refraction 1, depth 75 of the 120 px radius, dispersion 1, light intensity 1, splay 1) and its progressive
   // background blur (none at the top, 47.6 px at the bottom). The bubbles are worked out in the shader too (each a
   // lit sphere: light shade, colour, dark shade, with a soft dark rim), so a moving prism is just drawn again.
+  const WARM = '#FFC266'; // B: the warm light inside (the Figma orbs: a pale yellow to orange core)
   const GLASS = { refraction: 1, depth: 75 / 120, dispersion: 1, light: 1, splay: 1, blur: 47.6 / 120, lightAngle: -2.36 };
   const VS = 'attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }';
   const FS = `precision highp float;
 uniform vec2 uRes; uniform float uScale; uniform int uN; uniform vec4 uB[28]; uniform vec3 uC[8];
-uniform float uRefr, uDepth, uDisp, uLight, uSplay, uBlur, uAng, uLine;
+uniform float uRefr, uDepth, uDisp, uLight, uSplay, uBlur, uAng, uLine, uStyle; uniform vec3 uWarm;
 vec3 ramp(float ci, float g) {
+  if (ci > 1.5) return uC[3] * .75; // B's dark blob
   vec3 l = ci < .5 ? uC[0] : uC[4], b = ci < .5 ? uC[1] : uC[5], d = ci < .5 ? uC[2] : uC[6], e = ci < .5 ? uC[3] : uC[7];
   if (g < .5) return mix(l, b, g / .5);
   if (g < .92) return mix(b, d, (g - .5) / .42);
@@ -82,14 +86,20 @@ vec3 ramp(float ci, float g) {
 }
 vec4 field(vec2 p, float bw) {
   vec3 col = vec3(0.); float a = 0.;
+  if (uStyle > .5) { // B: the sphere filled with its colour, warm where the light gathers (lower right), darker away
+    float g = clamp(length(p - vec2(.45, .5)) / 1.7, 0., 1.);
+    vec3 f = g < .35 ? mix(mix(uWarm, uC[1], .35), uC[1], g / .35) : mix(uC[1], uC[2], (g - .35) / .65);
+    col = f * .72; a = .72;
+  }
   for (int i = 0; i < 28; i++) {
     if (i >= uN) break;
     vec4 b = uB[i]; vec2 q = (p - b.xy) / b.z; float d = length(q);
-    float w = max(bw / b.z, 1.5 / (uRes.x * .5 * b.z));
+    float w = max((bw + uStyle * (b.w > 1.5 ? .34 : .14)) / b.z, 1.5 / (uRes.x * .5 * b.z)); // (B: every bubble blurred as in Figma: 16 px, the dark blob 40, of the 120 px radius)
     float m = 1. - smoothstep(1. - w, 1. + w, d);
     if (m <= 0.) continue;
     float g = clamp(length(q - vec2(-.32, -.38)) / 1.42, 0., 1.);
-    vec3 c = ramp(b.w, g) * mix(1., .8, smoothstep(.72, 1., d));
+    g = mix(g, .5, clamp(uStyle * w * .6, 0., .85)); // (a blurred bubble's light is blurred with it)
+    vec3 c = ramp(b.w, g) * mix(1., .8, smoothstep(.72, 1., d) * (1. - uStyle * .8));
     col = col * (1. - m) + c * m; a = a * (1. - m) + m;
   }
   return vec4(col, a);
@@ -98,7 +108,12 @@ void main() {
   vec2 uv = (gl_FragCoord.xy / uRes) * 2. - 1.; uv.y = -uv.y; uv *= uScale;
   float r = length(uv), aa = 2. * uScale / uRes.x;
   float inside = 1. - smoothstep(1. - aa, 1. + aa, r);
-  if (inside <= 0.) { gl_FragColor = vec4(0.); return; }
+  if (inside <= 0.) {
+    // B: a glow of its colour round it, fading out a quarter of its radius away
+    if (uStyle > .5) { float h = exp(-pow((r - 1.) / .13, 2.)) * .55; gl_FragColor = vec4(mix(uC[1], uC[0], .4) * h, h); }
+    else gl_FragColor = vec4(0.);
+    return;
+  }
   // the glass bends what is behind it within depth of its rim: drawn in from further out, more near the edge,
   // each colour a little differently (dispersion)
   float band = smoothstep(1. - uDepth, 1., r), k = uRefr * .34 * band * band;
@@ -129,17 +144,19 @@ void main() {
       gl.useProgram(prog);
       const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
       const pl = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(pl); gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
-      loc = {}; for (const n of ['uRes', 'uScale', 'uN', 'uB', 'uC', 'uRefr', 'uDepth', 'uDisp', 'uLight', 'uSplay', 'uBlur', 'uAng', 'uLine']) loc[n] = gl.getUniformLocation(prog, n);
+      loc = {}; for (const n of ['uRes', 'uScale', 'uN', 'uB', 'uC', 'uRefr', 'uDepth', 'uDisp', 'uLight', 'uSplay', 'uBlur', 'uAng', 'uLine', 'uStyle', 'uWarm']) loc[n] = gl.getUniformLocation(prog, n);
       return true;
     } catch (e) { console.warn('Prism: sin WebGL, vidrio aproximado', e); gl = null; glFailed = true; return false; }
   }
   const rgb01 = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
-  function buildGL(main, accent, balls, S) {
+  // B keeps a margin for its glow: its sphere is this share of the drawing (drawn that much bigger, see extent)
+  const B_SPHERE = .78;
+  function buildGL(main, accent, balls, S, style = 'a') {
     if (!glInit()) return null;
     if (glCv.width !== S || glCv.height !== S) { glCv.width = glCv.height = S; }
     gl.viewport(0, 0, S, S); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
-    const R = S / 2 - 3 * S / SIZE;
-    gl.uniform2f(loc.uRes, S, S); gl.uniform1f(loc.uScale, (S / 2) / R); gl.uniform1i(loc.uN, balls.length);
+    const R = style === 'b' ? S / 2 * B_SPHERE : S / 2 - 3 * S / SIZE;
+    gl.uniform2f(loc.uRes, S, S); gl.uniform1f(loc.uScale, (S / 2) / R); gl.uniform1f(loc.uStyle, style === 'b' ? 1 : 0); gl.uniform3fv(loc.uWarm, new Float32Array(rgb01(WARM))); gl.uniform1i(loc.uN, balls.length);
     const B = new Float32Array(28 * 4); balls.forEach((b, i) => B.set(b, i * 4)); gl.uniform4fv(loc.uB, B);
     const C = []; for (const col of [main, accent]) for (const st of [1, 0, -1, -2]) C.push(...rgb01(shade(col, st))); gl.uniform3fv(loc.uC, new Float32Array(C));
     gl.uniform1f(loc.uRefr, GLASS.refraction); gl.uniform1f(loc.uDepth, GLASS.depth); gl.uniform1f(loc.uDisp, GLASS.dispersion);
@@ -182,22 +199,28 @@ void main() {
     o.strokeStyle = 'rgba(218,218,218,.85)'; o.lineWidth = 1.2 * u; o.beginPath(); o.arc(c, c, R, 0, Math.PI * 2); o.stroke();
     return out;
   }
-  function build(main, accent, variant, t = 0, move = 0, turb = 1, S = SIZE) {
-    const balls = layout(main, variant, t, move, turb);
-    return buildGL(main, accent, balls, S) || build2D(main, accent, balls, S);
+  function build(main, accent, variant, t = 0, move = 0, turb = 1, S = SIZE, style = 'a') {
+    const balls = layout(main, variant, t, move, turb, style);
+    return buildGL(main, accent, balls, S, style) || build2D(main, accent, balls, S);
   }
+  // the accent of B's small bubbles: a pale tint of the colour itself (the Figma orbs: light, lavender-white spots)
+  const accentOf = (m, others, variant, style) => style === 'b' ? shade(m, 2) : others.length ? others[(variant * 3 + 1) % others.length] : shade(m, 2);
   window.PrismSprite = {
     VARIANTS: 6,
     shade,
+    // which particle: 'a' the prism (glass with sharp bubbles), 'b' the soft glowing orb (Partículas B, Figma 5969:2815)
+    style: 'a',
+    // how much bigger than the particle a drawing is (B's glow reaches out of its sphere)
+    extent() { return this.style === 'b' ? 1 / B_SPHERE : 1; },
     // the prism of a colour (accent: another colour of the palette for the small bubbles), one of VARIANTS layouts
     // anim (optional): { t: seconds, move: 0–1, speed, turb } — the bubbles drifting; without it, the still prism
     // px: how big it is drawn (device pixels), so a big prism is drawn finely enough (256, 512 or 1024 across)
     get(main, palette, variant = 0, anim = null, px = 0) {
       const m = main.toLowerCase(), others = (palette || []).map(x => x.toLowerCase()).filter(x => x !== m);
-      const accent = others.length ? others[(variant * 3 + 1) % others.length] : shade(m, 2);
+      const st = this.style, accent = accentOf(m, others, variant, st);
       if (anim && anim.move > 0) return this.frames(main, palette, variant, anim, px)[0][0];
-      const res = px > 600 ? 1024 : px > 300 ? 512 : SIZE, k = m + '|' + accent + '|' + variant + '|' + res;
-      let s = cache.get(k); if (!s) { s = build(m, accent, variant, 0, 0, 1, res); cache.set(k, s); }
+      const res = px > 600 ? 1024 : px > 300 ? 512 : SIZE, k = st + '|' + m + '|' + accent + '|' + variant + '|' + res;
+      let s = cache.get(k); if (!s) { s = build(m, accent, variant, 0, 0, 1, res, st); cache.set(k, s); }
       return s;
     },
     // What to draw for a prism now: [[sprite, 1]]. Moving: the prism drawn again for this moment (60 steps a second,
@@ -207,11 +230,11 @@ void main() {
       if (!anim || !(anim.move > 0)) return [[this.get(main, palette, variant, null, px), 1]];
       const res = px > 600 ? 768 : px > 300 ? 512 : px > 150 ? 320 : 192;
       const m = main.toLowerCase(), others = (palette || []).map(x => x.toLowerCase()).filter(x => x !== m);
-      const accent = others.length ? others[(variant * 3 + 1) % others.length] : shade(m, 2);
+      const st = this.style, accent = accentOf(m, others, variant, st);
       const tq = Math.round(anim.t * anim.speed * 60) / 60, set = [tq, anim.move, anim.turb].join();
       if (set !== liveKey) { liveKey = set; live = new Map(); }
-      const k = m + '|' + accent + '|' + variant + '|' + res;
-      let s = live.get(k); if (!s) { s = build(m, accent, variant, tq, anim.move, anim.turb, res); live.set(k, s); }
+      const k = st + '|' + m + '|' + accent + '|' + variant + '|' + res;
+      let s = live.get(k); if (!s) { s = build(m, accent, variant, tq, anim.move, anim.turb, res, st); live.set(k, s); }
       return [[s, 1]];
     },
   };
