@@ -184,6 +184,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 .kf-key { position: absolute; top: 50%; width: 11px; height: 11px; margin: -6px 0 0 -6px; transform: rotate(45deg); border: 1.5px solid var(--text-2); background: var(--surface); border-radius: 2px; cursor: grab; padding: 0; z-index: 1; }
 .kf-key:hover { border-color: var(--text); }
 .kf-key.sel { background: #A8A5EC; border-color: var(--text); }
+.kf-box { position: absolute; z-index: 3; pointer-events: none; border: 1px solid #7B52D4; background: rgb(123 82 212 / .12); border-radius: 2px; }
 .kf-ease { position: absolute; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; display: grid; place-items: center; padding: 0; border: 1.5px solid #A8A5EC; border-radius: 5px; background: var(--surface); color: var(--text); cursor: pointer; z-index: 1; }
 .kf-ease:hover { background: #E4DEFC; }
 .kf-ease svg, .kf-menu svg { display: block; }
@@ -1219,11 +1220,14 @@ const PRISM = new URLSearchParams(location.search).get('look') === 'prism';
 let prismT = 0, prismSeen = false, prismRaf = 0, prismClock = 0, prismBusy = false;
 // Each particle turns into a prism (and back into flat colour) over Duración, once it is past Prisma desde on screen
 // (or back under it): its own state, going from 0 (flat) to 1 (prism) at the pace the time allows.
-const prismV = new WeakMap();
+// A particle is known by its id where it has one (Estable / Píxeles fijos: the same particle from frame to frame) or
+// else by its place in the list (a list drawn again for a new zoom or a new frame keeps its order): an animation,
+// whose every frame is a new list, carries each particle's state on.
+const prismById = new Map(), prismByIdx = new Map(); let prismLen = -1;
 function prismState(p, on) {
-  const goal = on ? 1 : 0;
-  let st = prismV.get(p);
-  if (!st) { prismV.set(p, st = { v: goal, at: prismClock }); return goal; } // (one seen for the first time starts as it should be)
+  const goal = on ? 1 : 0, M = p.id !== undefined ? prismById : prismByIdx, key = p.id !== undefined ? p.id : p._pi;
+  let st = M.get(key);
+  if (!st) { M.set(key, st = { v: goal, at: prismClock }); return goal; } // (one seen for the first time starts as it should be)
   const dt = Math.min(.25, Math.max(0, prismClock - st.at)); st.at = prismClock;
   st.v = S.pDur > 0 ? clamp(st.v + (goal ? 1 : -1) * dt / S.pDur) : goal;
   if (st.v !== goal) prismBusy = true;
@@ -1240,6 +1244,7 @@ function prismColor(c) {
 function draw(ctx, list, ox = 0, oy = 0, q = RES) {
   kfColorPrep(list); themePrep(list);
   if (gridded()) list = snapList(list);
+  if (PRISM) { if (list.length !== prismLen) { prismLen = list.length; prismByIdx.clear(); } list.forEach((p, i) => { p._pi = i; }); }
   const groups = new Map(), T = ctx.getTransform(), dev = Math.hypot(T.a, T.b), prisms = [], fades = [], CW = ctx.canvas.width, CH = ctx.canvas.height;
   for (const p of list) { const c = colorOf(p); let l = groups.get(c); if (!l) groups.set(c, l = []); l.push(p); }
   for (const [c, l] of groups) {
@@ -2239,7 +2244,7 @@ function syncModeBar() {
 // a track of keys. Between two keys the value eases along the curve chosen for that stretch (its button in the
 // middle). I opens the menu to insert a key of any of the three at the playhead, with the view as it is now.
 // Playing (or scrubbing) sets the view at that moment; Píxeles fijos keeps the pixels on the model while it moves.
-const KF = { dur: 5, t: 0, rot: [], pos: [], zoom: [], shape: [], depth: [], pixels: [], color: [], mRot: 180, mNoise: 50, mSpread: 60, sel: null, playing: false, open: false };
+const KF = { multi: new Set(), dur: 5, t: 0, rot: [], pos: [], zoom: [], shape: [], depth: [], pixels: [], color: [], mRot: 180, mNoise: 50, mSpread: 60, sel: null, playing: false, open: false };
 const kfDepthState = () => [S.rlDepth, ...S.dofA, ...S.dofB, Number(S.dof)];
 const KF_TRACKS = { rot: 'rotación', pos: 'posición', zoom: 'zoom', shape: 'forma', depth: 'profundidad', pixels: 'tamaño del píxel', color: 'color' };
 // Curves: Lineal, Suave (in and out), Entrada (slow start), Salida (slow end), Constante (holds, then jumps).
@@ -2476,7 +2481,7 @@ function kfDraw() {
       html += `<div class="seg" style="left:${kfX(K[i].t)};width:${(K[i + 1].t - K[i].t) / KF.dur * 100}%"></div>`;
       html += `<button class="kf-ease" data-i="${i}" style="left:${kfX((K[i].t + K[i + 1].t) / 2)}" title="Curva: ${(EASES.find(e => e[0] === K[i].ease) || EASES[0])[1]}" aria-label="Curva entre keyframes">${easeIcon(K[i].ease)}</button>`;
     }
-    K.forEach((k, i) => { html += `<button class="kf-key${KF.sel && KF.sel.tr === tr && KF.sel.k === k ? ' sel' : ''}" data-i="${i}" style="left:${kfX(k.t)}" title="Keyframe de ${KF_TRACKS[tr]} · ${k.t.toFixed(2)} s (arrastrá para moverlo, Supr lo borra)" aria-label="Keyframe de ${KF_TRACKS[tr]} en ${k.t.toFixed(2)} s"></button>`; });
+    K.forEach((k, i) => { html += `<button class="kf-key${KF.multi.has(k) || (KF.sel && KF.sel.tr === tr && KF.sel.k === k) ? ' sel' : ''}" data-i="${i}" style="left:${kfX(k.t)}" title="Keyframe de ${KF_TRACKS[tr]} · ${k.t.toFixed(2)} s (arrastrá para moverlo, Supr lo borra)" aria-label="Keyframe de ${KF_TRACKS[tr]} en ${k.t.toFixed(2)} s"></button>`; });
     row.innerHTML = html;
   }
   kfTime();
@@ -2525,7 +2530,7 @@ function kfInsert(track) {
   }
   const same = K.find(k => Math.abs(k.t - t) < 1e-3);
   if (same) { same.v = v; same.cache = null; } else { K.push({ t, v, ease: 'inout' }); K.sort((a, b) => a.t - b.t); }
-  KF.sel = { tr: track, k: same || K.find(k => Math.abs(k.t - t) < 1e-3) };
+  KF.sel = { tr: track, k: same || K.find(k => Math.abs(k.t - t) < 1e-3) }; KF.multi = new Set([KF.sel.k]);
   if (!KF.open) kfOpen(true); else kfDraw();
   toast(`Keyframe de ${KF_TRACKS[track]} en ${t.toFixed(2)} s`);
 }
@@ -2563,8 +2568,14 @@ addEventListener('keydown', e => {
     e.preventDefault(); e.stopImmediatePropagation();
     const f = frame.getBoundingClientRect(), [x, y] = kfMouse && kfMouse[0] >= f.left && kfMouse[0] <= f.right && kfMouse[1] >= f.top && kfMouse[1] <= f.bottom ? kfMouse : [f.left + f.width / 2 - 95, f.top + f.height / 2 - 80];
     kfInsertMenu(x, y);
-  } else if ((e.key === 'Delete' || e.key === 'Backspace') && KF.sel && KF.open) {
-    e.preventDefault(); const K = KF[KF.sel.tr]; K.splice(K.indexOf(KF.sel.k), 1); KF.sel = null; kfDraw();
+  } else if ((e.key === 'Delete' || e.key === 'Backspace') && (KF.multi.size || KF.sel) && KF.open) {
+    // every selected key goes
+    e.preventDefault(); const gone = new Set(KF.multi); if (KF.sel) gone.add(KF.sel.k);
+    for (const tr of Object.keys(KF_TRACKS)) KF[tr] = KF[tr].filter(k => !gone.has(k));
+    KF.sel = null; KF.multi.clear(); kfDraw(); toast(gone.size > 1 ? `${gone.size} keyframes borrados` : 'Keyframe borrado'); if (!KF.playing) kfSeek(KF.t);
+  } else if (e.key === 'Escape' && KF.open && KF.multi.size) { KF.multi.clear(); KF.sel = null; kfDraw();
+  } else if ((e.key === 'a' || e.key === 'A') && (e.metaKey || e.ctrlKey) && KF.open) {
+    e.preventDefault(); KF.multi = new Set(Object.keys(KF_TRACKS).flatMap(tr => KF[tr])); kfDraw();
   } else if (e.key === ' ' && KF.open && (kfCount() || videoSource)) { e.preventDefault(); kfToggle(); }
 }, true);
 // ---- playing
@@ -2588,7 +2599,7 @@ $('#kf-pp').addEventListener('click', kfToggle);
 $('#kf-tab').addEventListener('click', () => kfOpen(true));
 $('#kf-fold').addEventListener('click', () => kfOpen(false));
 $('#kf-ins').addEventListener('click', e => { const r = e.currentTarget.getBoundingClientRect(); kfInsertMenu(r.left, r.top - 190); });
-$('#kf-clear').addEventListener('click', () => { if (!kfCount()) return; if (KF.playing) kfToggle(); for (const tr of Object.keys(KF_TRACKS)) KF[tr] = []; KF.sel = null; kfDraw(); toast('Keyframes borrados.'); });
+$('#kf-clear').addEventListener('click', () => { if (!kfCount()) return; if (KF.playing) kfToggle(); for (const tr of Object.keys(KF_TRACKS)) KF[tr] = []; KF.sel = null; KF.multi.clear(); kfDraw(); toast('Keyframes borrados.'); });
 $('#kf-dur').addEventListener('change', e => { KF.dur = clamp(+e.target.value || 5, .5, 120); e.target.value = KF.dur; KF.t = Math.min(KF.t, KF.dur); kfDraw(); });
 $('#kf-fps').value = '30';
 for (const [id, k, lo, hi] of [['#kf-mrot', 'mRot', -720, 720], ['#kf-mspread', 'mSpread', 0, 300], ['#kf-mnoise', 'mNoise', 0, 400]]) {
@@ -2607,19 +2618,59 @@ kfArea.addEventListener('pointerdown', e => {
   }
   if (KF.playing) kfToggle();
   kfArea.setPointerCapture(e.pointerId);
-  if (key) { const tr = key.closest('.kf-row').dataset.track, k = KF[tr][+key.dataset.i]; KF.sel = { tr, k }; kfDrag = { k, tr, x: e.clientX, t: k.t, moved: false }; kfDraw(); return; }
-  KF.sel = null; kfDrag = { scrub: true }; kfSeek(kfSnap(kfAt(e), e.shiftKey), true); kfDraw();
+  // a key: alone (or, if it is one of several selected, all of them) to drag; Shift adds it to the selection or takes
+  // it out
+  if (key) {
+    const tr = key.closest('.kf-row').dataset.track, k = KF[tr][+key.dataset.i];
+    if (e.shiftKey) { if (KF.multi.has(k)) KF.multi.delete(k); else KF.multi.add(k); }
+    else if (!KF.multi.has(k)) KF.multi = new Set([k]);
+    KF.sel = { tr, k };
+    const group = [...KF.multi].map(m => ({ k: m, tr: kfTrackOf(m), t0: m.t })).filter(g => g.tr);
+    kfDrag = { k, tr, x: e.clientX, t: k.t, moved: false, group }; kfDraw(); return;
+  }
+  // the ruler: go to that moment
+  if (e.target.closest('#kf-ruler')) { if (!e.shiftKey) { KF.multi.clear(); KF.sel = null; } kfDrag = { scrub: true }; kfSeek(kfSnap(kfAt(e), e.shiftKey), true); kfDraw(); return; }
+  // an empty stretch of the tracks: a box to select the keys in it (Shift: add to those selected); a click without
+  // dragging goes to that moment, as before
+  const r = kfArea.getBoundingClientRect(), el = document.createElement('div'); el.className = 'kf-box'; kfArea.appendChild(el);
+  kfDrag = { box: true, x0: e.clientX - r.left, y0: e.clientY - r.top, el, base: e.shiftKey ? new Set(KF.multi) : new Set(), moved: false };
 });
+const kfTrackOf = k => Object.keys(KF_TRACKS).find(tr => KF[tr].includes(k));
 kfArea.addEventListener('pointermove', e => {
   if (!kfDrag) return;
   if (kfDrag.scrub) return kfSeek(kfSnap(kfAt(e), e.shiftKey), true);
-  const r = kfArea.getBoundingClientRect(), t = kfSnap(clamp(kfDrag.t + (e.clientX - kfDrag.x) / r.width * KF.dur, 0, KF.dur), e.shiftKey, kfDrag.k);
-  if (Math.abs(e.clientX - kfDrag.x) > 2) kfDrag.moved = true;
-  if (kfDrag.moved) { const K = KF[kfDrag.tr]; if (!K.some(k => k !== kfDrag.k && Math.abs(k.t - t) < 1e-3)) { kfDrag.k.t = t; K.sort((a, b) => a.t - b.t); kfDraw(); } }
+  const r = kfArea.getBoundingClientRect();
+  if (kfDrag.box) {
+    const d = kfDrag, x = e.clientX - r.left, y = e.clientY - r.top;
+    if (Math.abs(x - d.x0) + Math.abs(y - d.y0) > 3) d.moved = true;
+    if (!d.moved) return;
+    const x0 = Math.min(d.x0, x), x1 = Math.max(d.x0, x), y0 = Math.min(d.y0, y), y1 = Math.max(d.y0, y);
+    Object.assign(d.el.style, { left: x0 + 'px', top: y0 + 'px', width: x1 - x0 + 'px', height: y1 - y0 + 'px' });
+    const inside = new Set(d.base);
+    for (const b of kfArea.querySelectorAll('.kf-key')) {
+      const q = b.getBoundingClientRect(), cx = q.left + q.width / 2 - r.left, cy = q.top + q.height / 2 - r.top;
+      if (cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1) inside.add(KF[b.closest('.kf-row').dataset.track][+b.dataset.i]);
+    }
+    KF.multi = inside; KF.sel = null; kfDraw(); kfArea.appendChild(d.el); return;
+  }
+  // dragging a key, or all those selected with it: by the same time, held inside the timeline, each on a time its
+  // track has free
+  const d = kfDrag, lead = d.group.find(g => g.k === d.k) || { t0: d.t };
+  if (Math.abs(e.clientX - d.x) > 2) d.moved = true;
+  if (!d.moved) return;
+  let nt = kfSnap(clamp(lead.t0 + (e.clientX - d.x) / r.width * KF.dur, 0, KF.dur), e.shiftKey, d.k), dt = nt - lead.t0;
+  const lo = Math.min(...d.group.map(g => g.t0)), hi = Math.max(...d.group.map(g => g.t0)); dt = clamp(dt, -lo, KF.dur - hi);
+  const moving = new Set(d.group.map(g => g.k));
+  const clash = d.group.some(g => KF[g.tr].some(o => !moving.has(o) && Math.abs(o.t - (g.t0 + dt)) < 1e-3));
+  if (clash) return;
+  for (const g of d.group) g.k.t = g.t0 + dt;
+  for (const tr of new Set(d.group.map(g => g.tr))) KF[tr].sort((a, b) => a.t - b.t);
+  kfDraw();
 });
-kfArea.addEventListener('pointerup', () => {
+kfArea.addEventListener('pointerup', e => {
   const d = kfDrag; kfDrag = null; if (!d) return;
   if (d.scrub) return kfSeek(KF.t);
+  if (d.box) { d.el.remove(); if (!d.moved) { if (!e.shiftKey) { KF.multi.clear(); KF.sel = null; } kfSeek(kfSnap(kfAt(e), e.shiftKey)); kfDraw(); } return; }
   if (!d.moved) kfSeek(d.k.t); else kfSeek(KF.t);
 });
 // the video of the keyframes (the same encoder as the animations)
@@ -2657,7 +2708,7 @@ const KF_DIAS = [['yaw', 'rot'], ['pitch', 'rot'], ['zoom', 'zoom'], ['rlDepth',
 { const host = $('.kf-posrow'), b = document.createElement('button'); b.className = 'kf-dia'; b.dataset.track = 'pos'; b.innerHTML = '<i></i>'; host.classList.add('kf-has'); host.appendChild(b); KF_DIAS.push(b); }
 for (const b of KF_DIAS) b.addEventListener('click', () => {
   const tr = b.dataset.track, k = kfNow(tr);
-  if (k) { KF[tr].splice(KF[tr].indexOf(k), 1); if (KF.sel?.k === k) KF.sel = null; kfDraw(); kfDiamonds(); toast(`Keyframe de ${KF_TRACKS[tr]} borrado`); }
+  if (k) { KF[tr].splice(KF[tr].indexOf(k), 1); KF.multi.delete(k); if (KF.sel?.k === k) KF.sel = null; kfDraw(); kfDiamonds(); toast(`Keyframe de ${KF_TRACKS[tr]} borrado`); }
   else { kfInsert(tr); kfDiamonds(); }
 });
 function kfDiamonds() {
