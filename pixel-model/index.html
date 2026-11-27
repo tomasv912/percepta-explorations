@@ -1146,6 +1146,7 @@ function toneList() {
   return toneMemo.v;
 }
 function colorOf(p) {
+  if (themeMix) { const c = themeMix.get(p); if (c) return c; } // part way from light to dark (or back)
   if (kfMix) { const c = kfMix.get(p); if (c) return c; } // part way through a Color change on the timeline
   // Surface samples store darkness (0 = lit, 1 = shadow), not brightness.
   if (S.colorSrc === 'mono') return PerceptaMono.shade(S.palette, 1 - p.tone);
@@ -1194,7 +1195,7 @@ function dofK(p) {
 }
 const sizeOf = p => S.size * lens() * dofK(p);
 function draw(ctx, list, ox = 0, oy = 0, q = RES) {
-  kfColorPrep(list);
+  kfColorPrep(list); themePrep(list);
   if (gridded()) list = snapList(list);
   const groups = new Map();
   for (const p of list) { const c = colorOf(p); let l = groups.get(c); if (!l) groups.set(c, l = []); l.push(p); }
@@ -1222,7 +1223,7 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
 let bloomL = null, bloomLv = [];
 const GLOW = new Set(['#f5b921', '#fafafa', '#e3dcfd']); // amarillo, blanco, lavanda
 function drawB(ctx, list, ox = 0, oy = 0, q = RES) {
-  kfColorPrep(list);
+  kfColorPrep(list); themePrep(list);
   if (!(S.bloom > 0)) return draw(ctx, list, ox, oy, q);
   const T = ctx.getTransform(), W = ctx.canvas.width, H = ctx.canvas.height, sc = Math.hypot(T.a, T.b);
   const L = bloomL ||= document.createElement('canvas'); if (L.width !== W || L.height !== H) { L.width = W; L.height = H; }
@@ -1329,7 +1330,50 @@ const markPalette = palettePicker($('#palsets'), () => S.palette, colors => { S.
 $('#inks').addEventListener('click', e => { const b = e.target.closest('[data-ink]'); if (b) { S.ink = b.dataset.ink; sync(); } });
 $('#colorHow').addEventListener('change', e => { S.colorHow = e.target.value; sync(); });
 const updateBg = PerceptaBg.control($('#bg'), $('#bg-chip'), $('#bg-flip'), () => S.palette, () => S.bg, v => { S.bg = v; sync(); }, () => { S.bgFlip = !S.bgFlip; sync(); });
-const syncTheme = PerceptaTheme(stage, () => S.bg.toLowerCase() === '#111111', d => { S.bg = d ? '#111111' : '#FAFAFA'; S.bgFlip = false; sync(); });
+// Claro ⇄ Oscuro is a transition (1.6 s, eased in and out): the background and every pixel go from their colour to the
+// new one; the yellow (only in the dark) comes on like lights, each at its own moment with a flicker, and goes off the
+// same way back to the light.
+let themeAnim = null, themeMix = null, themeAt = null;
+const THEME_DUR = 1600, YELLOW_ON = '#f5b921';
+function setDarkAnimated(d) {
+  const to = d ? '#111111' : '#FAFAFA';
+  if (S.bg.toLowerCase() === to.toLowerCase()) return;
+  const from = themeAnim ? themeBg() : S.bg, old = kfColorState(); old.bg = from;
+  S.bg = to; S.bgFlip = false;
+  themeAnim = { old, neu: null, from, to, t0: performance.now() }; themeAt = null;
+  sync(); themeAnim.neu = kfColorState();
+  const tick = () => { if (!themeAnim) return; if (performance.now() - themeAnim.t0 >= THEME_DUR) { themeAnim = null; themeMix = null; themeAt = null; schedule(); return; } schedule(); requestAnimationFrame(tick); };
+  requestAnimationFrame(tick);
+}
+const smoother = u => u * u * u * (u * (u * 6 - 15) + 10);
+const themeU = () => themeAnim ? Math.min(1, (performance.now() - themeAnim.t0) / THEME_DUR) : 1;
+const themeBg = () => themeAnim ? hexMix(themeAnim.from, themeAnim.to, smoother(themeU())) : S.bg;
+// each pixel's colour at this moment of the transition (worked out once per list and frame)
+function themePrep(list) {
+  if (!themeAnim || !themeAnim.neu) { themeMix = null; return; }
+  const u = themeU();
+  if (themeAt && themeAt.list === list && themeAt.u === u) return;
+  themeAt = { list, u }; themeMix = null;
+  const keep = kfColorState(), was = kfMix; kfMix = null;
+  kfColorSet(themeAnim.old); const ca = list.map(colorOf);
+  kfColorSet(themeAnim.neu); const cb = list.map(colorOf);
+  kfColorSet(keep); kfMix = was;
+  const e = smoother(u), bgNow = themeBg(), m = new Map();
+  // a light: off (the background) until its moment, then on to 70 %, a dip, and fully on
+  const lamp = k => k <= 0 ? 0 : k < .3 ? k / .3 * .7 : k < .45 ? .25 : Math.min(1, .25 + (k - .45) / .55 * .75);
+  list.forEach((p, i) => {
+    const a = ca[i], b = cb[i], aY = a.toLowerCase() === YELLOW_ON, bY = b.toLowerCase() === YELLOW_ON, d = .22 + nHash(i, 5, 9) * .6;
+    let c;
+    if (bY && !aY) { // coming on: the old colour fades out, then the light comes on
+      c = u < d ? hexMix(a, bgNow, smoother(u / d)) : hexMix(bgNow, b, lamp((u - d) / Math.max(.08, 1 - d)));
+    } else if (aY && !bY) { // going off: flickers off, then the new colour fades in
+      const d2 = d * .6; c = u < d2 ? hexMix(bgNow, a, 1 - lamp(u / d2)) : hexMix(bgNow, b, smoother((u - d2) / (1 - d2)));
+    } else c = hexMix(a, b, e);
+    m.set(p, c);
+  });
+  themeMix = m;
+}
+const syncTheme = PerceptaTheme(stage, () => S.bg.toLowerCase() === '#111111', setDarkAnimated);
 // (Animación: still unless one is chosen; the chosen one clicked again goes back to still)
 document.querySelectorAll('.seg[data-key]').forEach(seg => seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) { S[seg.dataset.key] = seg.dataset.key === 'anim' && S.anim === b.dataset.v ? 'none' : b.dataset.v; sync(); } }));
 document.querySelectorAll('[data-check]').forEach(inp => inp.addEventListener('change', () => { S[inp.dataset.check] = inp.checked; if (inp.dataset.check === 'onlyPal') renderInks(); sync(); }));
@@ -1409,7 +1453,7 @@ function render() {
   // the picture as large as the stage allows, 16 px from its edges (and above the timeline when it is open)
   const r = stage.getBoundingClientRect(), k = Math.max(.01, Math.min((r.width - 32) / AW, (r.height - 32 - (stage.classList.contains('kf-open') ? 290 : 0)) / AH));
   const w = Math.round(AW * k), h = Math.round(AH * k), dpr = devicePixelRatio || 1;
-  frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = S.bg;
+  frame.style.width = w + 'px'; frame.style.height = h + 'px'; frame.style.background = themeBg();
   placeBar();
   const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
   if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
