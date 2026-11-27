@@ -6,6 +6,7 @@
   // pixel-image/, a 3D model at pixel-model/, both held by the page at the root. All the same tab.
   const EXPLORATIONS = [
     { name: 'Pixel', path: '', also: ['pixel-model/', 'pixel-image/'] },
+    { name: 'Prism', path: 'prism/' },
   ];
   // Tools that belong to no direction: only on Home, not in the bar.
   const GENERAL = [{ name: 'Photo Preset', path: 'photo-preset/' }];
@@ -49,7 +50,8 @@
   nav.innerHTML = `<a class="tb-brand" href="${link('home/')}"${isHere('home/') ? ' aria-current="page"' : ''}>Percepta</a><div class="tb-tabs">${links}${crumb}</div>`;
   // Inside Pixel (one half of it, in its frame) the page holding both has the bar
   window.PERCEPTA_EMBED = window !== window.top && !!window.parent.PixelShell;
-  script.remove(); // no bar on top (the nav is built but not shown)
+  // the bar on top of a page of its own (not inside Pixel or Prism's frames, nor a hidden helper frame)
+  if (window === window.top) script.replaceWith(nav); else script.remove();
   window.PERCEPTA_EXPLORATIONS = EXPLORATIONS; window.PERCEPTA_GENERAL = GENERAL;
 
   // The palette every tool with colour uses (more can be listed to offer a choice). White and black stay as they are (#FAFAFA, #111111): they are the two

@@ -213,6 +213,7 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
 <body>
 <script src="../toolbar.js"></script>
 <script src="../stipple3d.js"></script>
+<script src="../prism-sprite.js"></script>
 <script src="../video-source.js"></script>
 <script src="../vendor/omggif.js"></script>
 <script src="../gif-media.js"></script>
@@ -468,6 +469,7 @@ const DEFAULTS = {
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
 const S = structuredClone(DEFAULTS);
+if (new URLSearchParams(location.search).get('look') === 'prism') { S.bg = '#111111'; document.title = 'Prism'; } // Prism opens on the dark (and its panel is named so)
 const roundNow = () => true; // the pixel is always round
 const apartD = (dx, dy) => S.square ? Math.max(Math.abs(dx), Math.abs(dy)) : Math.hypot(dx, dy);
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -1194,10 +1196,24 @@ function dofK(p) {
   return DOF_FAR + (1 - DOF_FAR) * t;
 }
 const sizeOf = p => S.size * lens() * dofK(p);
+// Prism (the exploration of that name: this page with ?look=prism): a particle big enough on screen becomes a prism, a
+// glass sphere with bubbles of its colour (prism-sprite.js). From 6 to 14 pixels across it turns from the dot
+// into the prism (in screen pixels: twice as many device pixels on a 2× screen); smaller, it stays a dot. So zooming
+// in (Escala, the lens) is what turns the picture into prisms.
+const PRISM = new URLSearchParams(location.search).get('look') === 'prism';
+const PRISM_FROM = 6 * (devicePixelRatio || 1), PRISM_TO = 14 * (devicePixelRatio || 1);
+// the prism's colour: the pixel's own, or (part way through a colour change) the nearest of the palette, so a
+// transition doesn't make a sprite per passing colour
+function prismColor(c) {
+  const P = [...palNow(S), ...(window.PERCEPTA_MONO_PALETTES || []).flatMap(m => m.colors), S.ink];
+  if (P.some(x => x.toLowerCase() === c.toLowerCase())) return c;
+  const n = parseInt(c.slice(1), 16), d = h => { const m = parseInt(h.slice(1), 16); return ((n >> 16 & 255) - (m >> 16 & 255)) ** 2 + ((n >> 8 & 255) - (m >> 8 & 255)) ** 2 + ((n & 255) - (m & 255)) ** 2; };
+  return P.reduce((a, b) => d(b) < d(a) ? b : a);
+}
 function draw(ctx, list, ox = 0, oy = 0, q = RES) {
   kfColorPrep(list); themePrep(list);
   if (gridded()) list = snapList(list);
-  const groups = new Map();
+  const groups = new Map(), T = ctx.getTransform(), dev = Math.hypot(T.a, T.b), prisms = [], fades = [];
   for (const p of list) { const c = colorOf(p); let l = groups.get(c); if (!l) groups.set(c, l = []); l.push(p); }
   for (const [c, l] of groups) {
     ctx.fillStyle = c; ctx.beginPath();
@@ -1209,6 +1225,7 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
       const s = sizeOf(p), z0 = p.sc === undefined ? s : s * p.sc; if (z0 <= .05) continue;
       const hh = line ? PerceptaStroke.half(z0 / 2, S.strokeW) : 0, g = line && hh ? ctx : line ? solid : ctx, z = line && hh ? hh * 2 : z0;
       const cx = lensX(p.x + (p.dx || 0), f) - ox, cy = lensY(p.y + (p.dy || 0), f) - oy;
+      if (PRISM) { const t = clamp((z0 * dev - PRISM_FROM) / (PRISM_TO - PRISM_FROM)); if (t > 0) { prisms.push([c, cx, cy, z0, t, p]); if (t < 1) fades.push([c, cx, cy, z0, 1 - t]); continue; } }
       // Líneas horizontales: circles
       if (roundNow()) { g.moveTo(cx + z / 2, cy); g.arc(cx, cy, z / 2, 0, Math.PI * 2); continue; }
       if (line && hh) g.rect(cx - z / 2, cy - z / 2, z, z);
@@ -1216,6 +1233,16 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
     }
     if (line) { ctx.stroke(); ctx.fill(solid); } else ctx.fill();
   }
+  if (!prisms.length) return;
+  // the dots on their way out, then the prisms (each one of the variants, by the pixel's own number)
+  ctx.save();
+  for (const [c, x, y, z, a] of fades) { ctx.globalAlpha = a; ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, z / 2, 0, Math.PI * 2); ctx.fill(); }
+  const pal = palNow(S);
+  for (const [c, x, y, z, a, p] of prisms) {
+    ctx.globalAlpha = a;
+    ctx.drawImage(PrismSprite.get(prismColor(c), pal, Math.floor((p.pick ?? .5) * 997) % PrismSprite.VARIANTS), x - z / 2, y - z / 2, z, z);
+  }
+  ctx.restore();
 }
 // Bloom: the pixels glow. They are drawn on a layer of their own, which is shrunk by halves (each a softer copy) and
 // three of the softest are laid back, stretched, under the sharp pixels: added light on a dark background, a soft

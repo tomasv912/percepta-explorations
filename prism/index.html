@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prism</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --page: #f4f2ee;
+  --stage: #e9e6e0;
+  --surface: #fbfaf8;
+  --fill: #efece7;
+  --line: #dcd7cf;
+  --text: #1a1714;
+  --text-2: #5e5850;
+  --text-3: #8f887e;
+  --accent: #1a1714;
+  --accent-text: #fbfaf8;
+  --font: Inter, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+    --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #161513; --stage: #11100f; --surface: #1d1c1a; --fill: #282624; --line: #34312d;
+  --text: #eeeae4; --text-2: #b0a99f; --text-3: #7d776e; --accent: #eeeae4; --accent-text: #161513;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { display: flex; flex-direction: column; background: var(--page); color: var(--text); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
+/* the two halves, one over the other; only the one in use shows (both stay loaded, so going between them is instant) */
+.halves { position: relative; flex: 1; min-height: 0; }
+.halves iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; visibility: hidden; background: var(--page); }
+.halves iframe.on { visibility: visible; }
+</style>
+</head>
+<body>
+<script>
+// Prism: Pixel (the same page, pixel-model/, with ?look=prism) whose particles, zoomed in, become prisms: glass spheres
+// with bubbles of their colour. Everything else is as in Pixel: any model or image, Escala and the lens, the timeline.
+// Pixel: everything that goes in becomes a 3D model that turns: Rascacielos, Building, Manzanas, Formas, a .obj / .fbx
+// / .glb / .gltf, and an image too (raised into a relief by its depth map). The model half (pixel-model/) is what is
+// shown; the image half (pixel-image/) is loaded beside it, hidden, and reads the pictures and works out their depth.
+window.PixelShell = (() => {
+  // every source is a 3D model now (an image too: raised by its depth), so the model half is the one shown; the image
+  // half stays hidden, reading pictures and working out their depth for it
+  const frames = {}, half = () => frames.model;
+  const show = f => {
+    for (const g of Object.values(frames)) g.classList.toggle('on', g === f);
+    try { f.contentWindow.focus(); f.contentWindow.dispatchEvent(new Event('resize')); } catch {}
+  };
+  return {
+    attach(model, image) { frames.model = model; frames.image = image; show(model); }, // it opens on Imagen (a default picture, until another is given)
+    // the other half takes the shared settings and the query (its preset), redraws, and shows
+    go(o, path, q) { const f = half(path); f.contentWindow.PerceptaShared?.receive(o, q); show(f); },
+    // a file or a render handed over: the half it is for takes it and shows
+    deliver(path, key, o) { const f = half(path); if (o) f.contentWindow.PerceptaShared?.receive(o, ''); show(f); return f.contentWindow.PerceptaHandoff?.deliver(key); },
+    hasImage: () => { try { return !!frames.image.contentWindow.PixelImage?.hasImage(); } catch { return false; } },
+    // Imagen (model half): the image half's picture and depth; a picture given there, kept by the image half
+    imageRelief: () => frames.image.contentWindow.PixelImage?.relief(),
+    loadImage: file => frames.image.contentWindow.PixelImage?.load(file),
+  };
+})();
+</script>
+<script src="../toolbar.js"></script>
+<div class="halves">
+  <iframe id="half-model" src="../pixel-model/?look=prism" title="Prism: un modelo 3D cuyas partículas, de cerca, son prismas"></iframe>
+  <iframe id="half-image" src="../pixel-image/" title="Pixel con una imagen"></iframe>
+</div>
+<script>
+PixelShell.attach(document.getElementById('half-model'), document.getElementById('half-image'));
+</script>
+</body>
+</html>
