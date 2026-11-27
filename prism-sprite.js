@@ -53,26 +53,111 @@
     const y = Math.cos(t * f[0] * 1.13 + ph[3]) * .55 + Math.cos(t * f[1] * .91 + ph[4]) * .3 + Math.cos(t * f[2] * 1.07 + ph[5]) * .15;
     return [x * move, y * move];
   };
-  function build(main, accent, variant, t = 0, move = 0, turb = 1, S = SIZE) {
-    const c = S / 2, R = S / 2 - 3 * S / SIZE, r = rng(variant * 7919 + parseInt(main.slice(1), 16) % 9973);
-    // the bubbles, on their own layer
+  // The bubbles of a prism, at time t: [x, y, r, which] in units of the sphere's radius (centre 0), which: 0 the main
+  // colour, 1 the accent; the big ones first (behind).
+  function layout(main, variant, t = 0, move = 0, turb = 1) {
+    const r = rng(variant * 7919 + parseInt(main.slice(1), 16) % 9973), balls = [];
+    const cx0 = (r() - .5) * .25, cy0 = (r() - .3) * .2;
+    balls.push([cx0, cy0, .26 + r() * .08, 0]);
+    for (let i = 0, n = 5 + Math.floor(r() * 4); i < n; i++) { const a = r() * Math.PI * 2, d = .25 + r() * .45; balls.push([cx0 + Math.cos(a) * d, cy0 + Math.sin(a) * d, .09 + r() * .17, 0]); }
+    for (let i = 0, n = 2 + Math.floor(r() * 2); i < n; i++) { const a = r() * Math.PI * 2; balls.push([Math.cos(a) * .95, Math.sin(a) * .95, .18 + r() * .14, 0]); } // running out past the rim
+    for (let i = 0, n = 6 + Math.floor(r() * 5); i < n; i++) { const a = r() * Math.PI * 2, d = .3 + r() * .55; balls.push([Math.cos(a) * d, Math.sin(a) * d, .04 + r() * .06, 1]); }
+    balls.forEach((b, i) => { const [dx, dy] = drift(variant * 131 + i * 17 + 5, t, move, turb); b[0] += dx * .3; b[1] += dy * .3; });
+    return balls.sort((a, b) => b[2] - a[2]).slice(0, 28);
+  }
+  // ---- The glass, on the graphics card (WebGL), with the settings of the Figma "Glass" effect of the Prism
+  // (refraction 1, depth 75 of the 120 px radius, dispersion 1, light intensity 1, splay 1) and its progressive
+  // background blur (none at the top, 47.6 px at the bottom). The bubbles are worked out in the shader too (each a
+  // lit sphere: light shade, colour, dark shade, with a soft dark rim), so a moving prism is just drawn again.
+  const GLASS = { refraction: 1, depth: 75 / 120, dispersion: 1, light: 1, splay: 1, blur: 47.6 / 120, lightAngle: -2.36 };
+  const VS = 'attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }';
+  const FS = `precision highp float;
+uniform vec2 uRes; uniform float uScale; uniform int uN; uniform vec4 uB[28]; uniform vec3 uC[8];
+uniform float uRefr, uDepth, uDisp, uLight, uSplay, uBlur, uAng, uLine;
+vec3 ramp(float ci, float g) {
+  vec3 l = ci < .5 ? uC[0] : uC[4], b = ci < .5 ? uC[1] : uC[5], d = ci < .5 ? uC[2] : uC[6], e = ci < .5 ? uC[3] : uC[7];
+  if (g < .5) return mix(l, b, g / .5);
+  if (g < .92) return mix(b, d, (g - .5) / .42);
+  return mix(d, e, (g - .92) / .08);
+}
+vec4 field(vec2 p, float bw) {
+  vec3 col = vec3(0.); float a = 0.;
+  for (int i = 0; i < 28; i++) {
+    if (i >= uN) break;
+    vec4 b = uB[i]; vec2 q = (p - b.xy) / b.z; float d = length(q);
+    float w = max(bw / b.z, 1.5 / (uRes.x * .5 * b.z));
+    float m = 1. - smoothstep(1. - w, 1. + w, d);
+    if (m <= 0.) continue;
+    float g = clamp(length(q - vec2(-.32, -.38)) / 1.42, 0., 1.);
+    vec3 c = ramp(b.w, g) * mix(1., .8, smoothstep(.72, 1., d));
+    col = col * (1. - m) + c * m; a = a * (1. - m) + m;
+  }
+  return vec4(col, a);
+}
+void main() {
+  vec2 uv = (gl_FragCoord.xy / uRes) * 2. - 1.; uv.y = -uv.y; uv *= uScale;
+  float r = length(uv), aa = 2. * uScale / uRes.x;
+  float inside = 1. - smoothstep(1. - aa, 1. + aa, r);
+  if (inside <= 0.) { gl_FragColor = vec4(0.); return; }
+  // the glass bends what is behind it within depth of its rim: drawn in from further out, more near the edge,
+  // each colour a little differently (dispersion)
+  float band = smoothstep(1. - uDepth, 1., r), k = uRefr * .34 * band * band;
+  float bw = uBlur * smoothstep(-.15, .95, uv.y) * .55 + k * .06;
+  vec4 R = field(uv * (1. - k * (1. + .1 * uDisp)), bw), G = field(uv * (1. - k), bw), B = field(uv * (1. - k * (1. - .1 * uDisp)), bw);
+  vec3 col = vec3(R.r, G.g, B.b); float a = max(max(R.a, G.a), B.a);
+  col += vec3(.01) * (1. - a); a += .01 * (1. - a); // the glass body (1 % white)
+  // the light: a sheen along the rim, towards the light and its opposite side (splay widens it), and a soft glow
+  vec2 L = vec2(cos(uAng), sin(uAng));
+  float face = abs(dot(normalize(uv + 1e-5), L)), rim = smoothstep(1. - .16 * uSplay, 1., r);
+  float spec = uLight * rim * face * face * .5 + uLight * .07 * (1. - smoothstep(0., .75, length(uv - L * .5)));
+  col += vec3(spec); a = max(a, min(1., spec));
+  // the thin light line round it
+  float line = smoothstep(1. - uLine - aa, 1. - uLine, r);
+  col = mix(col, vec3(.853), line * .9); a = max(a, line * .9);
+  gl_FragColor = vec4(col, a) * inside;
+}`;
+  let gl = null, glCv = null, prog = null, loc = null, glFailed = false;
+  function glInit() {
+    if (gl || glFailed) return !!gl;
+    try {
+      glCv = document.createElement('canvas'); glCv.width = glCv.height = 64;
+      gl = glCv.getContext('webgl', { premultipliedAlpha: true, alpha: true, preserveDrawingBuffer: true, antialias: false });
+      if (!gl) throw new Error('no webgl');
+      const sh = (type, src) => { const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+      prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+      gl.useProgram(prog);
+      const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      const pl = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(pl); gl.vertexAttribPointer(pl, 2, gl.FLOAT, false, 0, 0);
+      loc = {}; for (const n of ['uRes', 'uScale', 'uN', 'uB', 'uC', 'uRefr', 'uDepth', 'uDisp', 'uLight', 'uSplay', 'uBlur', 'uAng', 'uLine']) loc[n] = gl.getUniformLocation(prog, n);
+      return true;
+    } catch (e) { console.warn('Prism: sin WebGL, vidrio aproximado', e); gl = null; glFailed = true; return false; }
+  }
+  const rgb01 = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
+  function buildGL(main, accent, balls, S) {
+    if (!glInit()) return null;
+    if (glCv.width !== S || glCv.height !== S) { glCv.width = glCv.height = S; }
+    gl.viewport(0, 0, S, S); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    const R = S / 2 - 3 * S / SIZE;
+    gl.uniform2f(loc.uRes, S, S); gl.uniform1f(loc.uScale, (S / 2) / R); gl.uniform1i(loc.uN, balls.length);
+    const B = new Float32Array(28 * 4); balls.forEach((b, i) => B.set(b, i * 4)); gl.uniform4fv(loc.uB, B);
+    const C = []; for (const col of [main, accent]) for (const st of [1, 0, -1, -2]) C.push(...rgb01(shade(col, st))); gl.uniform3fv(loc.uC, new Float32Array(C));
+    gl.uniform1f(loc.uRefr, GLASS.refraction); gl.uniform1f(loc.uDepth, GLASS.depth); gl.uniform1f(loc.uDisp, GLASS.dispersion);
+    gl.uniform1f(loc.uLight, GLASS.light); gl.uniform1f(loc.uSplay, GLASS.splay); gl.uniform1f(loc.uBlur, GLASS.blur); gl.uniform1f(loc.uAng, GLASS.lightAngle);
+    gl.uniform1f(loc.uLine, Math.max(.004, 1.1 / R));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    const out = canvas(S); out.getContext('2d').drawImage(glCv, 0, 0); return out;
+  }
+  // ---- without WebGL: the glass approximated on a 2D canvas
+  function build2D(main, accent, balls, S) {
+    const c = S / 2, R = S / 2 - 3 * S / SIZE;
     const bub = canvas(S), bx = bub.getContext('2d');
-    let bi = 0;
-    const ball = (x, y, rad, col) => {
-      const [dx, dy] = drift(variant * 131 + bi++ * 17 + 5, t, move, turb); x += dx * R * .3; y += dy * R * .3;
+    for (const [x0, y0, rr, w] of balls) {
+      const x = c + x0 * R, y = c + y0 * R, rad = rr * R, col = w ? accent : main;
       const g = bx.createRadialGradient(x - rad * .32, y - rad * .38, rad * .05, x, y, rad);
       g.addColorStop(0, shade(col, 1)); g.addColorStop(.5, col); g.addColorStop(.92, shade(col, -1)); g.addColorStop(1, shade(col, -2));
       bx.fillStyle = g; bx.beginPath(); bx.arc(x, y, rad, 0, Math.PI * 2); bx.fill();
-    };
-    const balls = [];
-    const cx0 = c + (r() - .5) * R * .25, cy0 = c + (r() - .3) * R * .2;
-    balls.push([cx0, cy0, R * (.26 + r() * .08), main]);
-    for (let i = 0, n = 5 + Math.floor(r() * 4); i < n; i++) { const a = r() * Math.PI * 2, d = R * (.25 + r() * .45); balls.push([cx0 + Math.cos(a) * d, cy0 + Math.sin(a) * d, R * (.09 + r() * .17), main]); }
-    for (let i = 0, n = 2 + Math.floor(r() * 2); i < n; i++) { const a = r() * Math.PI * 2; balls.push([c + Math.cos(a) * R * .95, c + Math.sin(a) * R * .95, R * (.18 + r() * .14), main]); } // running out past the rim
-    for (let i = 0, n = 6 + Math.floor(r() * 5); i < n; i++) { const a = r() * Math.PI * 2, d = R * (.3 + r() * .55); balls.push([c + Math.cos(a) * d, c + Math.sin(a) * d, R * (.04 + r() * .06), accent]); }
-    balls.sort((a, b) => a[2] - b[2] < 0 ? 1 : -1); // big ones behind
-    for (const b of balls) ball(...b);
-    // the sphere: in focus at the top, out of focus towards the bottom
+    }
     const out = canvas(S), o = out.getContext('2d');
     o.save(); o.beginPath(); o.arc(c, c, R, 0, Math.PI * 2); o.clip();
     o.fillStyle = 'rgba(255,255,255,.03)'; o.fillRect(0, 0, S, S);
@@ -81,25 +166,25 @@
     const fade = sx.createLinearGradient(0, c - R, 0, c + R); fade.addColorStop(0, '#000'); fade.addColorStop(.5, '#000'); fade.addColorStop(.86, 'rgba(0,0,0,0)');
     sx.globalCompositeOperation = 'destination-in'; sx.fillStyle = fade; sx.fillRect(0, 0, S, S);
     o.drawImage(sharp, 0, 0);
-    // the rim: the content magnified and smeared, as through thick glass
     const rim = canvas(S), rx = rim.getContext('2d'), mag = 1.22;
     rx.drawImage(blurred(bub, 4), c - c * mag, c - c * mag, S * mag, S * mag);
     rx.globalCompositeOperation = 'destination-in';
     const ring = rx.createRadialGradient(c, c, R * .72, c, c, R); ring.addColorStop(0, 'rgba(0,0,0,0)'); ring.addColorStop(.55, 'rgba(0,0,0,.85)'); ring.addColorStop(1, '#000');
     rx.fillStyle = ring; rx.fillRect(0, 0, S, S);
     o.drawImage(rim, 0, 0);
-    // a faint fringe: warm on one side, cool on the other
     o.globalCompositeOperation = 'lighter';
-    const u = S / SIZE; // (lines and offsets in proportion to the size drawn)
+    const u = S / SIZE;
     for (const [col, dx, dy] of [['rgba(255,70,40,.32)', -1.6, -1.2], ['rgba(40,140,255,.32)', 1.6, 1.2]]) { o.strokeStyle = col; o.lineWidth = 3 * u; o.beginPath(); o.arc(c + dx * u, c + dy * u, R - 2.5 * u, 0, Math.PI * 2); o.stroke(); }
     o.globalCompositeOperation = 'source-over';
-    // a soft highlight, upper left
     const hl = o.createRadialGradient(c - R * .45, c - R * .5, 0, c - R * .45, c - R * .5, R * .6); hl.addColorStop(0, 'rgba(255,255,255,.16)'); hl.addColorStop(1, 'rgba(255,255,255,0)');
     o.fillStyle = hl; o.fillRect(0, 0, S, S);
     o.restore();
-    // the thin light rim
     o.strokeStyle = 'rgba(218,218,218,.85)'; o.lineWidth = 1.2 * u; o.beginPath(); o.arc(c, c, R, 0, Math.PI * 2); o.stroke();
     return out;
+  }
+  function build(main, accent, variant, t = 0, move = 0, turb = 1, S = SIZE) {
+    const balls = layout(main, variant, t, move, turb);
+    return buildGL(main, accent, balls, S) || build2D(main, accent, balls, S);
   }
   window.PrismSprite = {
     VARIANTS: 6,
@@ -115,21 +200,19 @@
       let s = cache.get(k); if (!s) { s = build(m, accent, variant, 0, 0, 1, res); cache.set(k, s); }
       return s;
     },
-    // What to draw for a prism now: [[sprite, weight], …]. Still: the one prism. Moving: the bubbles are drawn 12
-    // times a second (the prisms in use only, each kept while needed) and each moment is a blend of the two drawings
-    // around it, so the motion is smooth without drawing every prism every frame.
+    // What to draw for a prism now: [[sprite, 1]]. Moving: the prism drawn again for this moment (60 steps a second,
+    // the prisms in use only), never a blend of two drawings (a blend of two semi-transparent glasses is dimmer than
+    // either: the prisms pulsed with it).
     frames(main, palette, variant = 0, anim = null, px = 0) {
       if (!anim || !(anim.move > 0)) return [[this.get(main, palette, variant, null, px), 1]];
-      const res = px > 500 ? 576 : px > 220 ? 288 : 144; // (moving: drawn smaller, as it is drawn often)
+      const res = px > 600 ? 768 : px > 300 ? 512 : px > 150 ? 320 : 192;
       const m = main.toLowerCase(), others = (palette || []).map(x => x.toLowerCase()).filter(x => x !== m);
       const accent = others.length ? others[(variant * 3 + 1) % others.length] : shade(m, 2);
-      variant %= 3; // (moving: three layouts per colour, so fewer drawings per step)
-      const T = anim.t * anim.speed * 12, i0 = Math.floor(T), w = T - i0, set = [anim.move, anim.turb].join();
+      const tq = Math.round(anim.t * anim.speed * 60) / 60, set = [tq, anim.move, anim.turb].join();
       if (set !== liveKey) { liveKey = set; live = new Map(); }
-      const at = i => { const k = m + '|' + accent + '|' + variant + '|' + res + '|' + i; let s = live.get(k); if (!s) { s = build(m, accent, variant, i / 12, anim.move, anim.turb, res); live.set(k, s); } return s; };
-      // forget drawings more than a step behind
-      if (live.size > 400) for (const k of [...live.keys()]) { const i = +k.slice(k.lastIndexOf('|') + 1); if (i < i0 - 1 || i > i0 + 2) live.delete(k); }
-      return [[at(i0), 1 - w], [at(i0 + 1), w]];
+      const k = m + '|' + accent + '|' + variant + '|' + res;
+      let s = live.get(k); if (!s) { s = build(m, accent, variant, tq, anim.move, anim.turb, res); live.set(k, s); }
+      return [[s, 1]];
     },
   };
 })();
