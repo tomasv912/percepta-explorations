@@ -42,11 +42,24 @@
     return b;
   }
   const SIZE = 256, cache = new Map();
-  function build(main, accent, variant) {
-    const S = SIZE, c = S / 2, R = S / 2 - 3, r = rng(variant * 7919 + parseInt(main.slice(1), 16) % 9973);
+  let liveKey = '', live = new Map(); // moving prisms: their drawings by time step
+  // The bubbles drift on a turbulent noise when moving (move: how far, 0–1 of a bubble's room; speed; turb: how
+  // tangled, more and faster swirls): each bubble on a sum of slow sines of its own, so the motion never repeats
+  // soon and neighbours don't move together. At time t the prism is drawn again (smaller, as it is redrawn often).
+  const drift = (seed, t, move, turb) => {
+    if (!move) return [0, 0];
+    const q = rng(seed), f = [.31, .53 * turb, .97 * turb * turb], ph = [q(), q(), q(), q(), q(), q()].map(v => v * 6.283);
+    const x = Math.sin(t * f[0] + ph[0]) * .55 + Math.sin(t * f[1] + ph[1]) * .3 + Math.sin(t * f[2] + ph[2]) * .15;
+    const y = Math.cos(t * f[0] * 1.13 + ph[3]) * .55 + Math.cos(t * f[1] * .91 + ph[4]) * .3 + Math.cos(t * f[2] * 1.07 + ph[5]) * .15;
+    return [x * move, y * move];
+  };
+  function build(main, accent, variant, t = 0, move = 0, turb = 1, S = SIZE) {
+    const c = S / 2, R = S / 2 - 3 * S / SIZE, r = rng(variant * 7919 + parseInt(main.slice(1), 16) % 9973);
     // the bubbles, on their own layer
     const bub = canvas(S), bx = bub.getContext('2d');
+    let bi = 0;
     const ball = (x, y, rad, col) => {
+      const [dx, dy] = drift(variant * 131 + bi++ * 17 + 5, t, move, turb); x += dx * R * .3; y += dy * R * .3;
       const g = bx.createRadialGradient(x - rad * .32, y - rad * .38, rad * .05, x, y, rad);
       g.addColorStop(0, shade(col, 1)); g.addColorStop(.5, col); g.addColorStop(.92, shade(col, -1)); g.addColorStop(1, shade(col, -2));
       bx.fillStyle = g; bx.beginPath(); bx.arc(x, y, rad, 0, Math.PI * 2); bx.fill();
@@ -77,26 +90,44 @@
     o.drawImage(rim, 0, 0);
     // a faint fringe: warm on one side, cool on the other
     o.globalCompositeOperation = 'lighter';
-    for (const [col, dx, dy] of [['rgba(255,70,40,.32)', -1.6, -1.2], ['rgba(40,140,255,.32)', 1.6, 1.2]]) { o.strokeStyle = col; o.lineWidth = 3; o.beginPath(); o.arc(c + dx, c + dy, R - 2.5, 0, Math.PI * 2); o.stroke(); }
+    const u = S / SIZE; // (lines and offsets in proportion to the size drawn)
+    for (const [col, dx, dy] of [['rgba(255,70,40,.32)', -1.6, -1.2], ['rgba(40,140,255,.32)', 1.6, 1.2]]) { o.strokeStyle = col; o.lineWidth = 3 * u; o.beginPath(); o.arc(c + dx * u, c + dy * u, R - 2.5 * u, 0, Math.PI * 2); o.stroke(); }
     o.globalCompositeOperation = 'source-over';
     // a soft highlight, upper left
     const hl = o.createRadialGradient(c - R * .45, c - R * .5, 0, c - R * .45, c - R * .5, R * .6); hl.addColorStop(0, 'rgba(255,255,255,.16)'); hl.addColorStop(1, 'rgba(255,255,255,0)');
     o.fillStyle = hl; o.fillRect(0, 0, S, S);
     o.restore();
     // the thin light rim
-    o.strokeStyle = 'rgba(218,218,218,.85)'; o.lineWidth = 1.2; o.beginPath(); o.arc(c, c, R, 0, Math.PI * 2); o.stroke();
+    o.strokeStyle = 'rgba(218,218,218,.85)'; o.lineWidth = 1.2 * u; o.beginPath(); o.arc(c, c, R, 0, Math.PI * 2); o.stroke();
     return out;
   }
   window.PrismSprite = {
     VARIANTS: 6,
     shade,
     // the prism of a colour (accent: another colour of the palette for the small bubbles), one of VARIANTS layouts
-    get(main, palette, variant = 0) {
+    // anim (optional): { t: seconds, move: 0–1, speed, turb } — the bubbles drifting; without it, the still prism
+    get(main, palette, variant = 0, anim = null) {
       const m = main.toLowerCase(), others = (palette || []).map(x => x.toLowerCase()).filter(x => x !== m);
       const accent = others.length ? others[(variant * 3 + 1) % others.length] : shade(m, 2);
       const k = m + '|' + accent + '|' + variant;
+      if (anim && anim.move > 0) return this.frames(main, palette, variant, anim)[0][0];
       let s = cache.get(k); if (!s) { s = build(m, accent, variant); cache.set(k, s); }
       return s;
+    },
+    // What to draw for a prism now: [[sprite, weight], …]. Still: the one prism. Moving: the bubbles are drawn 12
+    // times a second (the prisms in use only, each kept while needed) and each moment is a blend of the two drawings
+    // around it, so the motion is smooth without drawing every prism every frame.
+    frames(main, palette, variant = 0, anim = null) {
+      if (!anim || !(anim.move > 0)) return [[this.get(main, palette, variant), 1]];
+      const m = main.toLowerCase(), others = (palette || []).map(x => x.toLowerCase()).filter(x => x !== m);
+      const accent = others.length ? others[(variant * 3 + 1) % others.length] : shade(m, 2);
+      variant %= 3; // (moving: three layouts per colour, so fewer drawings per step)
+      const T = anim.t * anim.speed * 12, i0 = Math.floor(T), w = T - i0, set = [anim.move, anim.turb].join();
+      if (set !== liveKey) { liveKey = set; live = new Map(); }
+      const at = i => { const k = m + '|' + accent + '|' + variant + '|' + i; let s = live.get(k); if (!s) { s = build(m, accent, variant, i / 12, anim.move, anim.turb, 144); live.set(k, s); } return s; };
+      // forget drawings more than a step behind
+      if (live.size > 400) for (const k of [...live.keys()]) { const i = +k.slice(k.lastIndexOf('|') + 1); if (i < i0 - 1 || i > i0 + 2) live.delete(k); }
+      return [[at(i0), 1 - w], [at(i0 + 1), w]];
     },
   };
 })();

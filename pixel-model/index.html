@@ -378,6 +378,18 @@ main.kf-open .crop-hud { bottom: calc(72px + var(--kfh)); }
         </div>
       </section>
 
+      <section id="prism-sec">
+        <h2>Prisma</h2>
+        <div id="sl-pFrom"></div>
+        <div id="sl-pTo"></div>
+        <div id="sl-pFocus"></div>
+        <div id="sl-pBlur"></div>
+        <div id="sl-pFlat"></div>
+        <div id="sl-pMove"></div>
+        <div id="sl-pSpeed"></div>
+        <div id="sl-pTurb"></div>
+      </section>
+
       <section>
         <h2>Color</h2>
         <div class="seg" data-key="colorSrc" aria-label="Color">
@@ -464,7 +476,7 @@ const DEFAULTS = {
   count: 40000, size: 3, sizeMin: .6, sizeMax: 3, contrast: 1, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
-  monoPalette: 0, colorMode: 'random', colorSrc: 'pal', colorHow: 'random', bloom: 0, bloomSel: false, dof: false, dofA: [.3, .25], dofB: [.7, .8], imgRot: false, ink: '#111111', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
+  monoPalette: 0, colorMode: 'random', colorSrc: 'pal', colorHow: 'random', pFrom: 6, pTo: 14, pFocus: .3, pBlur: .6, pFlat: .6, pMove: .35, pSpeed: .6, pTurb: 1.2, bloom: 0, bloomSel: false, dof: false, dofA: [.3, .25], dofB: [.7, .8], imgRot: false, ink: '#111111', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
   rlDepth: 0, rlCut: 0, pbType: 'auto', mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '16:9', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
@@ -1201,7 +1213,8 @@ const sizeOf = p => S.size * lens() * dofK(p);
 // into the prism (in screen pixels: twice as many device pixels on a 2× screen); smaller, it stays a dot. So zooming
 // in (Escala, the lens) is what turns the picture into prisms.
 const PRISM = new URLSearchParams(location.search).get('look') === 'prism';
-const PRISM_FROM = 6 * (devicePixelRatio || 1), PRISM_TO = 14 * (devicePixelRatio || 1);
+let prismT = 0, prismSeen = false, prismRaf = 0;
+const prismLayers = [];
 // the prism's colour: the pixel's own, or (part way through a colour change) the nearest of the palette, so a
 // transition doesn't make a sprite per passing colour
 function prismColor(c) {
@@ -1213,7 +1226,7 @@ function prismColor(c) {
 function draw(ctx, list, ox = 0, oy = 0, q = RES) {
   kfColorPrep(list); themePrep(list);
   if (gridded()) list = snapList(list);
-  const groups = new Map(), T = ctx.getTransform(), dev = Math.hypot(T.a, T.b), prisms = [], fades = [];
+  const groups = new Map(), T = ctx.getTransform(), dev = Math.hypot(T.a, T.b), prisms = [], fades = [], CW = ctx.canvas.width, CH = ctx.canvas.height;
   for (const p of list) { const c = colorOf(p); let l = groups.get(c); if (!l) groups.set(c, l = []); l.push(p); }
   for (const [c, l] of groups) {
     ctx.fillStyle = c; ctx.beginPath();
@@ -1225,7 +1238,8 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
       const s = sizeOf(p), z0 = p.sc === undefined ? s : s * p.sc; if (z0 <= .05) continue;
       const hh = line ? PerceptaStroke.half(z0 / 2, S.strokeW) : 0, g = line && hh ? ctx : line ? solid : ctx, z = line && hh ? hh * 2 : z0;
       const cx = lensX(p.x + (p.dx || 0), f) - ox, cy = lensY(p.y + (p.dy || 0), f) - oy;
-      if (PRISM) { const t = clamp((z0 * dev - PRISM_FROM) / (PRISM_TO - PRISM_FROM)); if (t > 0) { prisms.push([c, cx, cy, z0, t, p]); if (t < 1) fades.push([c, cx, cy, z0, 1 - t]); continue; } }
+      { const X = T.a * cx + T.c * cy + T.e, Y = T.b * cx + T.d * cy + T.f, m = z0 * dev; if (X < -m || Y < -m || X > CW + m || Y > CH + m) continue; } // off the canvas (zoomed in, most are)
+      if (PRISM) { const dp = devicePixelRatio || 1, t = clamp((z0 * dev - S.pFrom * dp) / (Math.max(S.pFrom + 1, S.pTo) * dp - S.pFrom * dp)); if (t > 0) { prisms.push([c, cx, cy, z0, t, p]); if (t < 1) fades.push([c, cx, cy, z0, 1 - t]); continue; } }
       // Líneas horizontales: circles
       if (roundNow()) { g.moveTo(cx + z / 2, cy); g.arc(cx, cy, z / 2, 0, Math.PI * 2); continue; }
       if (line && hh) g.rect(cx - z / 2, cy - z / 2, z, z);
@@ -1233,15 +1247,39 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
     }
     if (line) { ctx.stroke(); ctx.fill(solid); } else ctx.fill();
   }
-  if (!prisms.length) return;
+  prismSeen = prisms.length > 0;
+  if (!prismSeen) return;
   // the dots on their way out, then the prisms (each one of the variants, by the pixel's own number)
   ctx.save();
   for (const [c, x, y, z, a] of fades) { ctx.globalAlpha = a; ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, z / 2, 0, Math.PI * 2); ctx.fill(); }
-  const pal = palNow(S);
+  // Depth of field (fake): sharp within Foco of the view's middle, more and more out of focus towards its corners
+  // (Desenfoque: how much at the corners), and, as it blurs, the prism gives way to a flat disc of its colour (Aplanar).
+  // The blurred ones are drawn on three layers, each blurred as a whole (shrunk and stretched back, more for each),
+  // a prism shared between the two layers its blur falls between, so focus changes smoothly.
+  const pal = palNow(S), v = viewBox(), vcx = v.x + v.w / 2, vcy = v.y + v.h / 2, W = ctx.canvas.width, H = ctx.canvas.height;
+  const anim = S.pMove > 0 ? { t: prismT, move: S.pMove, speed: S.pSpeed, turb: S.pTurb } : null, used = [false, false, false, false];
+  // each blurred layer is drawn straight at its reduced size (the blur is its stretching back)
+  const base = Math.max(2, W / 700), fOf = k => base * 2 ** (k - 1);
+  const target = k => {
+    if (!k) return ctx;
+    let L = prismLayers[k]; if (!L) L = prismLayers[k] = document.createElement('canvas');
+    const lx = L.getContext('2d'), f = fOf(k), w = Math.max(2, Math.round(W / f)), h = Math.max(2, Math.round(H / f));
+    if (!used[k]) { used[k] = true; if (L.width !== w || L.height !== h) { L.width = w; L.height = h; } lx.setTransform(1, 0, 0, 1, 0, 0); lx.clearRect(0, 0, w, h); lx.setTransform(T.a * w / W, T.b * h / H, T.c * w / W, T.d * h / H, T.e * w / W, T.f * h / H); lx.imageSmoothingQuality = 'high'; }
+    return lx;
+  };
   for (const [c, x, y, z, a, p] of prisms) {
-    ctx.globalAlpha = a;
-    ctx.drawImage(PrismSprite.get(prismColor(c), pal, Math.floor((p.pick ?? .5) * 997) % PrismSprite.VARIANTS), x - z / 2, y - z / 2, z, z);
+    const d = Math.hypot((x + ox - vcx) / (v.w / 2), (y + oy - vcy) / (v.h / 2)) / Math.SQRT2, out = S.pBlur > 0 ? sstep(S.pFocus, 1, d) : 0;
+    const Lv = out * S.pBlur * 3, l0 = Math.min(3, Math.floor(Lv)), w1 = l0 < 3 ? Lv - l0 : 0, flat = out * S.pFlat;
+    const imgs = flat < 1 ? PrismSprite.frames(prismColor(c), pal, Math.floor((p.pick ?? .5) * 997) % PrismSprite.VARIANTS, anim) : null;
+    for (const [k, w] of [[l0, 1 - w1], [l0 + 1, w1]]) {
+      if (w <= .001) continue;
+      const g = target(k);
+      if (imgs) for (const [img, iw] of imgs) { g.globalAlpha = a * w * (1 - flat) * iw; g.drawImage(img, x - z / 2, y - z / 2, z, z); }
+      if (flat > 0) { g.globalAlpha = a * w * flat; g.fillStyle = c; g.beginPath(); g.arc(x, y, z * .42, 0, Math.PI * 2); g.fill(); }
+    }
   }
+  ctx.globalAlpha = 1; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  for (let k = 1; k <= 3; k++) if (used[k]) ctx.drawImage(prismLayers[k], 0, 0, W, H);
   ctx.restore();
 }
 // Bloom: the pixels glow. They are drawn on a layer of their own, which is shrunk by halves (each a softer copy) and
@@ -1293,7 +1331,7 @@ const SLIDERS = {
   strokeW: { label: 'Grosor del contorno', min: .1, max: 3, step: .05, fmt: v => v.toFixed(2) + ' px' },
   yaw: { label: 'Giro', min: -180, max: 180, step: 1, fmt: deg },
   pitch: { label: 'Inclinación', min: -89, max: 89, step: 1, fmt: deg },
-  zoom: { label: 'Escala', min: .4, max: 2.5, step: .01, fmt: v => '×' + v.toFixed(2) },
+  zoom: { label: 'Escala', min: .4, max: 10, step: .01, fmt: v => '×' + v.toFixed(2) },
   lightAz: { label: 'Dirección', min: 0, max: 360, step: 1, fmt: deg },
   lightEl: { label: 'Altura', min: 0, max: 85, step: 1, fmt: deg },
   ambient: { label: 'Luz ambiente', min: 0, max: .8, step: .01, fmt: pct },
@@ -1311,6 +1349,14 @@ const SLIDERS = {
   paintRate: { label: 'Ritmo', min: 200, max: 30000, step: 100, fmt: v => v.toLocaleString('es') + '/s' },
   paintDur: { label: 'Vuelo', min: .1, max: 3, step: .05, fmt: v => v.toFixed(2).replace('.', ',') + ' s' },
   revHold: { label: 'Quieto al final', min: 0, max: .8, step: .01, fmt: pct },
+  pFrom: { label: 'Prisma desde', min: 2, max: 40, step: 1, fmt: v => v + ' px' },
+  pTo: { label: 'Prisma hasta', min: 3, max: 60, step: 1, fmt: v => v + ' px' },
+  pFocus: { label: 'Foco', min: 0, max: 1, step: .01, fmt: pct },
+  pBlur: { label: 'Desenfoque', min: 0, max: 1, step: .01, fmt: pct },
+  pFlat: { label: 'Aplanar', min: 0, max: 1, step: .01, fmt: pct },
+  pMove: { label: 'Movimiento', min: 0, max: 1, step: .01, fmt: pct },
+  pSpeed: { label: 'Velocidad', min: 0, max: 3, step: .05, fmt: v => '×' + v.toFixed(2) },
+  pTurb: { label: 'Turbulencia', min: .3, max: 3, step: .05, fmt: v => v.toFixed(2) },
   bloom: { label: 'Bloom', min: 0, max: 1, step: .01, fmt: pct, emph: true },
   rlDepth: { label: 'Profundidad', min: 0, max: 2, step: .05, fmt: v => v.toFixed(2), emph: true },
   rlCut: { label: 'Cortar saltos', min: 0, max: 1, step: .01, fmt: pct },
@@ -1489,7 +1535,10 @@ function render() {
   ctx.setTransform(cv.width / AW * z, 0, 0, cv.height / AH * z, -v.x * cv.width / AW * z, -v.y * cv.height / AH * z);
   const list = shown || pts;
   if (!list) return;
+  if (PRISM) prismT = performance.now() / 1000;
   drawB(ctx, list);
+  // moving bubbles: the picture is drawn again every frame while prisms show
+  cancelAnimationFrame(prismRaf); if (PRISM && S.pMove > 0 && prismSeen && !filming) prismRaf = requestAnimationFrame(render);
   $('#stats').textContent = `${list.length.toLocaleString('es')} píxeles · ${modelName} · arrastrá para girar, con Shift para mover (doble clic: centrar)`;
 }
 new ResizeObserver(() => pts && schedule()).observe(stage);
@@ -2081,7 +2130,7 @@ $('#video').addEventListener('click', async () => {
     const ctx = c.getContext('2d');
     const paint = async i => {
       if (source) { await source.seek(kfFilm ? Math.min(i / fps, source.duration) : (i / fps) % source.duration); pts = build(false); shown = null; }
-      const list = frameAt(i);
+      const list = frameAt(i); prismT = i / fps; // (the prisms' bubbles at this frame's time)
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = S.bg; ctx.fillRect(0, 0, W, H);
       ctx.setTransform(sc, 0, 0, sc, 0, 0); drawB(ctx, list, b.x0, b.y0);
     };
@@ -2700,6 +2749,7 @@ PerceptaShared.init({ S, names: { one: 'ink', pal: 'pal', mono: 'mono', orig: 'o
   after: () => { if (preset === 'relief') reliefSrc = null; if (!modelName.includes('.')) loadPreset(); key = ''; sync(); } });
 PerceptaHandoff.on('model-file', f => openFile(f));
 loadPreset();
+if (!PRISM) $('#prism-sec').hidden = true; // (the Prisma settings only in Prism)
 window.PERCEPTA_SLIDERS = SLIDERS; // for the panel (DialKit): the sliders with uneven stops
 sync();
 </script>
