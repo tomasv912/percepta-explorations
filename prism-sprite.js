@@ -106,25 +106,27 @@
     shade,
     // the prism of a colour (accent: another colour of the palette for the small bubbles), one of VARIANTS layouts
     // anim (optional): { t: seconds, move: 0–1, speed, turb } — the bubbles drifting; without it, the still prism
-    get(main, palette, variant = 0, anim = null) {
+    // px: how big it is drawn (device pixels), so a big prism is drawn finely enough (256, 512 or 1024 across)
+    get(main, palette, variant = 0, anim = null, px = 0) {
       const m = main.toLowerCase(), others = (palette || []).map(x => x.toLowerCase()).filter(x => x !== m);
       const accent = others.length ? others[(variant * 3 + 1) % others.length] : shade(m, 2);
-      const k = m + '|' + accent + '|' + variant;
-      if (anim && anim.move > 0) return this.frames(main, palette, variant, anim)[0][0];
-      let s = cache.get(k); if (!s) { s = build(m, accent, variant); cache.set(k, s); }
+      if (anim && anim.move > 0) return this.frames(main, palette, variant, anim, px)[0][0];
+      const res = px > 600 ? 1024 : px > 300 ? 512 : SIZE, k = m + '|' + accent + '|' + variant + '|' + res;
+      let s = cache.get(k); if (!s) { s = build(m, accent, variant, 0, 0, 1, res); cache.set(k, s); }
       return s;
     },
     // What to draw for a prism now: [[sprite, weight], …]. Still: the one prism. Moving: the bubbles are drawn 12
     // times a second (the prisms in use only, each kept while needed) and each moment is a blend of the two drawings
     // around it, so the motion is smooth without drawing every prism every frame.
-    frames(main, palette, variant = 0, anim = null) {
-      if (!anim || !(anim.move > 0)) return [[this.get(main, palette, variant), 1]];
+    frames(main, palette, variant = 0, anim = null, px = 0) {
+      if (!anim || !(anim.move > 0)) return [[this.get(main, palette, variant, null, px), 1]];
+      const res = px > 500 ? 576 : px > 220 ? 288 : 144; // (moving: drawn smaller, as it is drawn often)
       const m = main.toLowerCase(), others = (palette || []).map(x => x.toLowerCase()).filter(x => x !== m);
       const accent = others.length ? others[(variant * 3 + 1) % others.length] : shade(m, 2);
       variant %= 3; // (moving: three layouts per colour, so fewer drawings per step)
       const T = anim.t * anim.speed * 12, i0 = Math.floor(T), w = T - i0, set = [anim.move, anim.turb].join();
       if (set !== liveKey) { liveKey = set; live = new Map(); }
-      const at = i => { const k = m + '|' + accent + '|' + variant + '|' + i; let s = live.get(k); if (!s) { s = build(m, accent, variant, i / 12, anim.move, anim.turb, 144); live.set(k, s); } return s; };
+      const at = i => { const k = m + '|' + accent + '|' + variant + '|' + res + '|' + i; let s = live.get(k); if (!s) { s = build(m, accent, variant, i / 12, anim.move, anim.turb, res); live.set(k, s); } return s; };
       // forget drawings more than a step behind
       if (live.size > 400) for (const k of [...live.keys()]) { const i = +k.slice(k.lastIndexOf('|') + 1); if (i < i0 - 1 || i > i0 + 2) live.delete(k); }
       return [[at(i0), 1 - w], [at(i0 + 1), w]];

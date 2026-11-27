@@ -469,6 +469,12 @@ function setArtboard() {
 // Zoom up to ×2.5 frames the model closer (drawn again, more detail, the pixels their size); past it, a lens: the
 // ×2.5 picture enlarged about the frame's middle, pixels and all, up to ×50 (a 3 px pixel becomes 60 px).
 const ZS = 2.5, ZMAX = 50, zS = () => Math.min(S.zoom, ZS), lens = () => Math.max(1, S.zoom / ZS);
+// how far the wheel zooms: ×50, or (in Prism) as far as it takes for the largest pixel to be 450 px across on screen
+function zMax() {
+  if (!(typeof PRISM !== 'undefined' && PRISM)) return ZMAX;
+  const css = (frame.getBoundingClientRect().width || 1000) / AW; // screen px per artboard px
+  return Math.max(ZMAX, ZS * 450 / Math.max(.1, S.sizeMax * css));
+}
 const lensX = (x, f) => AW / 2 + (x - AW / 2) * f, lensY = (y, f) => AH / 2 + (y - AH / 2) * f;
 function viewBoxNow() { const ar = AW / AH, h = 1.15 / zS(), hx = ar >= 1 ? h * ar : h, hy = ar >= 1 ? h : h / ar; return { x0: -hx, y0: -hy, x1: hx, y1: hy }; }
 const DEFAULTS = {
@@ -476,7 +482,7 @@ const DEFAULTS = {
   count: 40000, size: 3, sizeMin: .6, sizeMax: 3, contrast: 1, threshold: 0, edge: .8, jitter: 1, seed: 1,
   anim: 'none', fps: 8, boil: .35, floatAmp: 6, floatSpeed: .4, floatScale: 1, hoverRadius: 140, hoverForce: 1,
   ttDur: 6, ttFps: '24', ttDir: '1', ttFixed: true, turn: false, vidFmt: 'mp4',
-  monoPalette: 0, colorMode: 'random', colorSrc: 'pal', colorHow: 'random', pFrom: 6, pTo: 14, pFocus: .3, pBlur: .6, pFlat: .6, pMove: .35, pSpeed: .6, pTurb: 1.2, bloom: 0, bloomSel: false, dof: false, dofA: [.3, .25], dofB: [.7, .8], imgRot: false, ink: '#111111', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
+  monoPalette: 0, colorMode: 'random', colorSrc: 'pal', colorHow: 'random', pFrom: 60, pTo: 100, pFocus: .3, pBlur: .6, pFlat: .6, pMove: .35, pSpeed: .6, pTurb: 1.2, bloom: 0, bloomSel: false, dof: false, dofA: [.3, .25], dofB: [.7, .8], imgRot: false, ink: '#111111', palette: window.PERCEPTA_PALETTES[0].colors.slice(), bg: '#FAFAFA', bgExport: false, stroke: false, strokeW: .5,
   rlDepth: 0, rlCut: 0, pbType: 'auto', mzCount: '1', mzHeight: 1.5, shape: 'torus', bKind: 'auto', bW: 1, bD: .85, bH: 7, bFloors: 40, bTiers: 4, bTaper: .6, bTwist: 1.2, bFins: 3, bSlab: .4, bCrown: true, aspect: '16:9', orient: 'h', expScale: '1', lines: true, lineGap: 5, lineFollow: 1, lineAM: true, lineDot: 0, snap: false, cell: 6, cellGap: 1, onlyPal: false, square: false, round1a: false, dir: '1b', blend: false, blendA: [.25, .5], blendB: [.75, .5], chaos: 0, handJit: 1,
   paintRate: 2500, paintDur: 1.4, paintRand: true, revDir: 'up', revSoft: .12, revOrg: .7, revScale: true, revHold: .25, ease: 'inOut', entDir: 'left', entSpread: .5, entStagger: .6, entInf: false, entStay: .6,
 };
@@ -1209,7 +1215,7 @@ function dofK(p) {
 }
 const sizeOf = p => S.size * lens() * dofK(p);
 // Prism (the exploration of that name: this page with ?look=prism): a particle big enough on screen becomes a prism, a
-// glass sphere with bubbles of its colour (prism-sprite.js). From 6 to 14 pixels across it turns from the dot
+// glass sphere with bubbles of its colour (prism-sprite.js). From Prisma desde to Prisma hasta (60 to 100 px) it turns from the dot
 // into the prism (in screen pixels: twice as many device pixels on a 2× screen); smaller, it stays a dot. So zooming
 // in (Escala, the lens) is what turns the picture into prisms.
 const PRISM = new URLSearchParams(location.search).get('look') === 'prism';
@@ -1270,7 +1276,7 @@ function draw(ctx, list, ox = 0, oy = 0, q = RES) {
   for (const [c, x, y, z, a, p] of prisms) {
     const d = Math.hypot((x + ox - vcx) / (v.w / 2), (y + oy - vcy) / (v.h / 2)) / Math.SQRT2, out = S.pBlur > 0 ? sstep(S.pFocus, 1, d) : 0;
     const Lv = out * S.pBlur * 3, l0 = Math.min(3, Math.floor(Lv)), w1 = l0 < 3 ? Lv - l0 : 0, flat = out * S.pFlat;
-    const imgs = flat < 1 ? PrismSprite.frames(prismColor(c), pal, Math.floor((p.pick ?? .5) * 997) % PrismSprite.VARIANTS, anim) : null;
+    const imgs = flat < 1 ? PrismSprite.frames(prismColor(c), pal, Math.floor((p.pick ?? .5) * 997) % PrismSprite.VARIANTS, anim, z * dev) : null;
     for (const [k, w] of [[l0, 1 - w1], [l0 + 1, w1]]) {
       if (w <= .001) continue;
       const g = target(k);
@@ -1349,8 +1355,8 @@ const SLIDERS = {
   paintRate: { label: 'Ritmo', min: 200, max: 30000, step: 100, fmt: v => v.toLocaleString('es') + '/s' },
   paintDur: { label: 'Vuelo', min: .1, max: 3, step: .05, fmt: v => v.toFixed(2).replace('.', ',') + ' s' },
   revHold: { label: 'Quieto al final', min: 0, max: .8, step: .01, fmt: pct },
-  pFrom: { label: 'Prisma desde', min: 2, max: 40, step: 1, fmt: v => v + ' px' },
-  pTo: { label: 'Prisma hasta', min: 3, max: 60, step: 1, fmt: v => v + ' px' },
+  pFrom: { label: 'Prisma desde', min: 2, max: 400, step: 1, fmt: v => v + ' px' },
+  pTo: { label: 'Prisma hasta', min: 3, max: 400, step: 1, fmt: v => v + ' px' },
   pFocus: { label: 'Foco', min: 0, max: 1, step: .01, fmt: pct },
   pBlur: { label: 'Desenfoque', min: 0, max: 1, step: .01, fmt: pct },
   pFlat: { label: 'Aplanar', min: 0, max: 1, step: .01, fmt: pct },
@@ -1626,7 +1632,7 @@ frame.addEventListener('dblclick', () => { if (S.panX || S.panY) { S.panX = S.pa
 addEventListener('keydown', e => { if (e.key === 'Shift' && !turn) frame.classList.add('moving'); });
 addEventListener('keyup', e => { if (e.key === 'Shift' && !turn) frame.classList.remove('moving'); });
 frame.addEventListener('pointerup', endTurn); frame.addEventListener('pointercancel', endTurn);
-frame.addEventListener('wheel', e => { e.preventDefault(); S.zoom = clamp(S.zoom * Math.exp(-e.deltaY * .0015), .4, ZMAX); sync(true); clearTimeout(frame.t); frame.t = setTimeout(() => sync(), 200); }, { passive: false });
+frame.addEventListener('wheel', e => { e.preventDefault(); S.zoom = clamp(S.zoom * Math.exp(-e.deltaY * .0015), .4, zMax()); sync(true); clearTimeout(frame.t); frame.t = setTimeout(() => sync(), 200); }, { passive: false });
 
 // ---------- Animation ----------
 // Every animation is a loop of Duración del loop seconds, played on screen and exported as is. A mano: the
